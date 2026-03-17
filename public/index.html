@@ -305,12 +305,91 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
 .lp-problem{background:#fffbf0;border-left:4px solid #d97706;border-radius:0 10px 10px 0;padding:20px 24px;margin-bottom:40px;font-size:15px;color:#444;line-height:1.7}
 .lp-problem strong{color:#92400e}
 @media(max-width:700px){
-  .lp-nav{padding:12px 18px}.lp-hero{padding:56px 20px 64px}
-  .lp-section{padding:52px 20px}.lp-section-wide{padding:52px 20px}
-  .lp-section-dark{padding:52px 20px}.lp-cta-band{padding:52px 20px}
-  .lp-footer{padding:32px 20px}.lp-pfwd{padding:26px 22px}
-  .lp-steps .lp-step:not(:last-child){border-right:none;border-bottom:1px solid rgba(0,0,0,0.08)}
+  /* prevent horizontal scroll */
+  .lp{overflow-x:hidden}
+
+  /* NAV */
+  .lp-nav{padding:10px 16px;gap:8px}
+  .lp-nav-logo img{height:28px}
+  .lp-nav-brand{font-size:13px}
+  .lp-nav-right{gap:6px}
+  .lp-btn{padding:8px 14px;font-size:13px}
+  .lp-btn-lg{padding:13px 24px;font-size:15px}
+  /* hide brand text in nav to save space */
   .lp-nav-brand{display:none}
+
+  /* HERO */
+  .lp-hero{padding:44px 20px 52px}
+  .lp-hero h1{font-size:28px;margin-bottom:14px}
+  .lp-hero p{font-size:15px;margin-bottom:28px}
+  .lp-hero-cta{flex-direction:column;align-items:stretch;gap:10px;max-width:320px;margin:0 auto}
+  .lp-hero-cta .lp-btn{width:100%;justify-content:center}
+
+  /* PROBLEM BLOCK */
+  .lp-section{padding:36px 18px}
+  .lp-problem{font-size:14px;padding:16px 18px}
+
+  /* SECTION WRAPPERS */
+  .lp-section-wide{padding:36px 18px}
+  .lp-section-dark{padding:36px 18px}
+  .lp-cta-band{padding:44px 18px}
+
+  /* HOW IT WORKS STEPS — single column */
+  .lp-steps{grid-template-columns:1fr;display:flex;flex-direction:column}
+  .lp-step{padding:22px 20px}
+  .lp-step:not(:last-child){border-right:none!important;border-bottom:1px solid rgba(0,0,0,0.08)}
+  .lp-step-num{width:34px;height:34px;font-size:16px;margin-bottom:12px}
+  .lp-step h3{font-size:15px}
+  .lp-step p{font-size:13px}
+
+  /* FEATURES GRID — single column */
+  .lp-grid{grid-template-columns:1fr;gap:14px}
+  .lp-feature{padding:18px 20px}
+  .lp-feature h3{font-size:15px}
+  .lp-feature p{font-size:13px}
+
+  /* HEADINGS */
+  .lp-h2{font-size:22px}
+  .lp-sub{font-size:14px;margin-bottom:32px}
+
+  /* PAY IT FORWARD */
+  .lp-pfwd{padding:22px 18px;border-radius:12px}
+  .lp-pfwd h3{font-size:18px}
+  .lp-pfwd p{font-size:14px}
+  .lp-pfwd-deal{padding:18px 16px}
+  .lp-pfwd-deal h4{font-size:14px}
+  .lp-pfwd-item div{font-size:13px}
+  .lp-pfwd-closing{font-size:13px}
+
+  /* COMING SOON */
+  .lp-coming{grid-template-columns:1fr;gap:12px;margin-top:24px}
+  .lp-coming-item{padding:18px 20px}
+  .lp-coming-item h3{font-size:14px}
+  .lp-coming-item p{font-size:13px}
+
+  /* WHO IT'S FOR */
+  .lp-for-list{grid-template-columns:1fr;gap:10px;margin-top:22px}
+  .lp-for-item{padding:13px 15px}
+  .lp-for-item p{font-size:13px}
+
+  /* FINAL CTA BAND */
+  .lp-cta-band h2{font-size:22px}
+  .lp-cta-band p{font-size:14px;margin-bottom:26px}
+  .lp-cta-btns{flex-direction:column;align-items:stretch;max-width:280px;margin:0 auto;gap:10px}
+  .lp-cta-btns .lp-btn{width:100%;justify-content:center}
+
+  /* FOOTER */
+  .lp-footer{padding:28px 18px}
+  .lp-footer-logo img{height:22px}
+  .lp-footer-brand{font-size:13px}
+}
+
+/* Extra small phones (iPhone SE etc.) */
+@media(max-width:380px){
+  .lp-nav-logo img{height:22px}
+  .lp-nav-right .lp-btn-ghost{display:none}
+  .lp-hero h1{font-size:24px}
+  .lp-hero p{font-size:14px}
 }
 </style>
 </head>
@@ -500,7 +579,7 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
   <div class="lp-cta-band">
     <h2>Ready to Get Your Time Back?</h2>
     <p>Set up in under 5 minutes. No credit card. Just do some good in the world.</p>
-    <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
+    <div class="lp-cta-btns" style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
       <button class="lp-btn lp-btn-primary lp-btn-lg" style="background:#fff;color:#185FA5" onclick="showAuthFromLanding('register')">Start Free →</button>
       <button class="lp-btn lp-btn-lg" style="color:#fff;border:1.5px solid rgba(255,255,255,0.4);background:transparent" onclick="showAuthFromLanding('login')">Sign In</button>
     </div>
