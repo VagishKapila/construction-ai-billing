@@ -509,56 +509,9 @@ app.delete('/api/attachments/:id', auth, async (req,res) => {
   res.json({ok:true});
 });
 
-// SOV PARSE - server side Excel parsing
-
-// Contractor-proposal format parser: col A = item code (4-6 digit), col B = description, col I = total
-function parseProposalRows(json, sheetName, startRow) {
-  // Find the best amount column: prefer col I (index 8), else column with most values after col B
-  const scores = {};
-  for (const row of json.slice(startRow)) {
-    row.forEach((cell, ci) => {
-      if (ci <= 1) return;
-      const v = parseFloat(String(cell).replace(/[$,\s]/g,''));
-      if (!isNaN(v) && v > 50) scores[ci] = (scores[ci]||0) + 1;
-    });
-  }
-  let amtIdx = 8; // default col I (index 8)
-  if (!scores[8] || scores[8] === 0) {
-    const sorted = Object.entries(scores).sort((a,b) => b[1]-a[1]);
-    if (sorted.length) amtIdx = parseInt(sorted[0][0]);
-  }
-
-  const stopDesc = /^(subtotal|total|note[:\s]|excludes|grand\s*total|total\s+project|total\s+bid)/i;
-  const allRows = [];
-  const seen = new Set();
-
-  for (const row of json.slice(startRow)) {
-    const colA = String(row[0]||'').trim();
-    const colB = String(row[1]||'').trim();
-
-    if (!colB || colB.length < 2) continue;
-    if (stopDesc.test(colB)) continue; // skip subtotal/total lines but keep going (fee may follow)
-    if (/^(total|subtotal|grand\s*total)$/i.test(colA)) continue; // skip rows where col A IS "TOTAL" etc.
-
-    const rawAmt = String(row[amtIdx]||'').replace(/[$,\s]/g,'');
-    const amt = Math.round(parseFloat(rawAmt));
-
-    if (isNaN(amt) || amt <= 0) continue; // skip "By Others", blank cells
-    const key = colB.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    allRows.push({ item_id: colA, description: colB, scheduled_value: amt, is_parent: true });
-  }
-  return {
-    headers: ['Item #', 'Description', 'Scheduled Value'],
-    sheetName,
-    allRows,
-    parentRows: allRows, // all rows are top-level in proposal format
-    iItem: 0, iDesc: 1, iAmt: amtIdx
-  };
-}
-
+// SOV PARSE - Universal column detection for any spreadsheet format
+// Works by finding the column with the most text descriptions and the column
+// with the most dollar amounts — regardless of template format.
 function parseSOVFile(filePath) {
   const XLSX = require('xlsx');
   const workbook = XLSX.readFile(filePath);
@@ -571,84 +524,75 @@ function parseSOVFile(filePath) {
 
   const worksheet = workbook.Sheets[sheetName];
   const json = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+  const nCols = json.reduce((m, r) => Math.max(m, r.length), 0);
 
-  // ── Proposal format detection ───────────────────────────────────────────────
-  // Contractor proposals have 4-6 digit item codes in col A (e.g. 11300, 17750)
-  let firstCodeRow = -1, codeCount = 0;
-  for (let i = 0; i < Math.min(json.length, 50); i++) {
-    const colA = String(json[i][0]||'').trim();
-    if (/^\d{4,6}$/.test(colA)) {
-      codeCount++;
-      if (firstCodeRow < 0) firstCodeRow = i;
-    }
-  }
-  if (codeCount >= 3 && firstCodeRow >= 0) {
-    return parseProposalRows(json, sheetName, firstCodeRow);
-  }
+  // ── Universal column detection ──────────────────────────────────────────────
+  // Score each column: descScore = text cells, amtScore = numeric cells > $50
+  const descScore = new Array(nCols).fill(0);
+  const amtScore  = new Array(nCols).fill(0);
 
-  // ── Standard format: header-row detection ──────────────────────────────────
-  let headerRowIdx = 0;
-  for (let i = 0; i < Math.min(json.length, 25); i++) {
-    const rowStr = json[i].map(c => String(c)).join(' ').toUpperCase();
-    if (rowStr.includes('SECT') || rowStr.includes('DESCRIPTION')) {
-      headerRowIdx = i; break;
+  for (const row of json) {
+    for (let ci = 0; ci < row.length; ci++) {
+      const cell = String(row[ci]||'').trim();
+      if (!cell || cell.length < 2) continue;
+      const n = parseFloat(cell.replace(/[$,\s]/g,''));
+      if (!isNaN(n) && n > 50) {
+        amtScore[ci]++;
+      } else if (cell.length > 5 && (isNaN(n) || /[a-zA-Z]/.test(cell))) {
+        descScore[ci]++;
+      }
     }
   }
 
-  const headers = json[headerRowIdx].map((h, i) => String(h).trim() || ('Col' + (i+1)));
+  // Description column = highest text score
+  const maxDescVal = descScore.length > 0 ? Math.max(...descScore) : 0;
+  let iDesc = maxDescVal > 0 ? descScore.indexOf(maxDescVal) : 1;
 
-  // Detect columns
-  let iItem = 0, iDesc = 1, iAmt = -1;
-  for (let i = 0; i < headers.length; i++) {
-    const h = headers[i].toUpperCase();
-    if (/^SECT/.test(h)) iItem = i;
-    if (/DESC/.test(h)) iDesc = i;
-    if (/TOTAL|COST|VALUE|AMOUNT/.test(h)) iAmt = i;
+  // Amount column = highest numeric score, rightmost on tie (total cols are usually rightmost)
+  let iAmt = -1, bestAmt = 0;
+  for (let ci = 0; ci < nCols; ci++) {
+    if (ci === iDesc) continue;
+    if (amtScore[ci] >= bestAmt) { bestAmt = amtScore[ci]; iAmt = ci; }
   }
 
-  // Check adjacent headers (TOTAL and COST in separate cells)
-  if (iAmt < 0) {
-    for (let i = 0; i < headers.length - 1; i++) {
-      if (/TOTAL/i.test(headers[i]) && /COST|VALUE/i.test(headers[i+1])) { iAmt = i; break; }
-      if (/COST/i.test(headers[i])) { iAmt = i; break; }
-    }
+  // Item ID column = just left of description (or col 0)
+  let iItem = iDesc > 0 ? iDesc - 1 : 0;
+  if (iItem === iAmt) iItem = 0;
+
+  if (iAmt < 0 || bestAmt < 2) {
+    return { headers: ['Item #','Description','Scheduled Value'], sheetName, allRows: [], parentRows: [], iItem, iDesc, iAmt };
   }
 
-  // Fallback: find column with most numeric values above 0, after desc column
-  if (iAmt < 0) {
-    const scores = {};
-    for (const row of json.slice(headerRowIdx + 1)) {
-      row.forEach((cell, ci) => {
-        if (ci <= iDesc) return;
-        const v = parseFloat(String(cell).replace(/[$,\s]/g,''));
-        if (!isNaN(v) && v > 0) scores[ci] = (scores[ci]||0) + 1;
-      });
-    }
-    const sorted = Object.entries(scores).sort((a,b) => b[1]-a[1]);
-    if (sorted.length) iAmt = parseInt(sorted[0][0]);
-  }
-
-  // Fixed skipDesc: removed overly broad terms (project, location, architect, contact)
-  const skipDesc = /^(sect|description|drawing|est\.|special note|int\. design|drawg|subtotal|total project|excludes|contractor.s contingency|grand\s*total|total\s+bid)/i;
+  // ── Row parsing ─────────────────────────────────────────────────────────────
+  const skipDesc = /^(subtotal|total|note[:\s]|excludes|grand\s*total|total\s+project|total\s+bid|total\s+cost|section|description)/i;
+  const skipItem = /^(total|subtotal|grand\s*total)$/i;
   const allRows = [], parentRows = [];
+  const seen = new Set();
 
-  for (const row of json.slice(headerRowIdx + 1)) {
-    const itemId = String(row[iItem]||'').trim();
+  for (const row of json) {
     const desc   = String(row[iDesc]||'').trim();
+    const itemId = String(row[iItem]||'').trim();
     const rawAmt = String(row[iAmt] ||'').replace(/[$,\s]/g,'');
     const amt    = Math.round(parseFloat(rawAmt));
 
     if (!desc || desc.length < 3) continue;
     if (skipDesc.test(desc)) continue;
+    if (skipItem.test(itemId)) continue;
     if (isNaN(amt) || amt <= 0) continue;
 
-    // Parent = ends in 000, OR short alpha code (GC, GL, CF etc), OR no item id
-    const isParent = /000$/.test(itemId) || /^[A-Z]{1,5}$/.test(itemId) || itemId === '';
+    const key = desc.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    // isParent: standard 000-ending codes, short alpha codes, blank item, or 4-6 digit proposal codes
+    const isParent = /000$/.test(itemId) || /^[A-Z]{1,5}$/.test(itemId)
+                   || itemId === '' || /^\d{4,6}$/.test(itemId);
     const rowObj = { item_id: itemId, description: desc, scheduled_value: amt, is_parent: isParent };
     allRows.push(rowObj);
     if (isParent) parentRows.push(rowObj);
   }
-  return { headers, sheetName, allRows, parentRows, iItem, iDesc, iAmt };
+
+  return { headers: ['Item #','Description','Scheduled Value'], sheetName, allRows, parentRows, iItem, iDesc, iAmt };
 }
 
 app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
