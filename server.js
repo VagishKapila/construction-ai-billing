@@ -1010,4 +1010,10 @@ app.get('/api/admin/weekly-insight', adminAuth, async (req, res) => {
 
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 
-initDB().then(()=>app.listen(PORT,()=>console.log('Construction AI Billing running on port '+PORT)));
+initDB()
+  .then(() => app.listen(PORT, () => console.log(`Construction AI Billing running on port ${PORT}`)))
+  .catch(err => {
+    console.error('STARTUP FAILED:', err.message);
+    console.error('DATABASE_URL set:', !!process.env.DATABASE_URL);
+    process.exit(1);
+  });
