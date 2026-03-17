@@ -691,8 +691,12 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
         <div id="settings-msg" class="success-msg hidden"></div>
         <div class="card">
           <div class="ct">Company information</div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:12px">Auto-fills new project forms so you don't retype it every time.</p>
           <div class="fg">
-            <div class="field"><label>Company name</label><input type="text" id="set-company-name" placeholder="Your company name"/></div>
+            <div class="field"><label>Company name</label><input type="text" id="set-company-name" placeholder="Your company name (e.g. Bains Commercial)"/></div>
+            <div class="field"><label>Contact name</label><input type="text" id="set-contact-name" placeholder="Your name (appears on pay apps)"/></div>
+            <div class="field"><label>Contact phone</label><input type="tel" id="set-contact-phone" placeholder="e.g. 408-410-6151"/></div>
+            <div class="field"><label>Contact email</label><input type="email" id="set-contact-email" placeholder="your@email.com"/></div>
             <div class="field"><label>Default payment terms</label>
               <select id="set-payment-terms">
                 <option>Due on receipt</option><option>Net 15</option><option>Net 30</option><option>Net 45</option><option>Net 60</option>
@@ -1277,12 +1281,17 @@ document.addEventListener('DOMContentLoaded',()=>{
 const fmtR=n=>'$'+Math.round(parseFloat(n||0)).toLocaleString('en-US');
 const pf=n=>parseFloat(n||0).toFixed(1)+'%';
 function setupCommaInput(el){
-  if(!el) return;
+  if(!el||el._commaSetup) return;
+  el._commaSetup=true;
+  function applyFormat(){
+    const raw=this.value.replace(/[^\d.]/g,'');
+    if(!raw) return;
+    const n=parseFloat(raw);
+    if(!isNaN(n)) this.value=n.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:2});
+  }
   el.addEventListener('focus',function(){this.value=this.value.replace(/,/g,'');});
-  el.addEventListener('blur',function(){
-    const n=parseFloat(this.value.replace(/,/g,''));
-    if(!isNaN(n)&&this.value.trim()!=='') this.value=n.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:2});
-  });
+  el.addEventListener('blur',applyFormat);
+  el.addEventListener('change',applyFormat);
 }
 
 async function api(method,path,body){
@@ -1415,6 +1424,19 @@ function showNewProject(){
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
   document.getElementById('nav-new-proj').classList.add('active');
   npShowStep(1);sovRows=[];
+  // Auto-fill from saved company profile
+  if(companySettings){
+    const contractor=document.getElementById('np-contractor');
+    const cname=document.getElementById('np-contact-name');
+    const cphone=document.getElementById('np-contact-phone');
+    const cemail=document.getElementById('np-contact-email');
+    if(contractor&&!contractor.value&&companySettings.company_name) contractor.value=companySettings.company_name;
+    if(cname&&!cname.value&&companySettings.contact_name) cname.value=companySettings.contact_name;
+    if(cphone&&!cphone.value&&companySettings.contact_phone) cphone.value=companySettings.contact_phone;
+    if(cemail&&!cemail.value&&companySettings.contact_email) cemail.value=companySettings.contact_email;
+    const pt=document.getElementById('np-payment-terms');
+    if(pt&&companySettings.default_payment_terms) pt.value=companySettings.default_payment_terms;
+  }
 }
 function npShowStep(n){
   document.getElementById('np-step1').classList.toggle('hidden',n!==1);
@@ -1486,8 +1508,8 @@ function processSOVFile(file){
   const err=document.getElementById('np-err2');
   err.classList.add('hidden');
   const name=file.name.toLowerCase();
-  if(!name.endsWith('.xlsx')&&!name.endsWith('.xls')&&!name.endsWith('.csv')){
-    err.textContent='Please upload an Excel (.xlsx/.xls) or CSV file.';
+  if(!name.endsWith('.xlsx')&&!name.endsWith('.xls')&&!name.endsWith('.csv')&&!name.endsWith('.pdf')&&!name.endsWith('.docx')&&!name.endsWith('.doc')){
+    err.textContent='Please upload an Excel (.xlsx/.xls), CSV, PDF, or Word (.docx) file.';
     err.classList.remove('hidden');return;
   }
   document.getElementById('sov-parse-status').innerHTML=
@@ -2187,9 +2209,15 @@ async function loadSettings() {
   try {
     companySettings = await api('GET', '/settings') || {};
     const cn = document.getElementById('set-company-name');
+    const ct = document.getElementById('set-contact-name');
+    const cp = document.getElementById('set-contact-phone');
+    const ce = document.getElementById('set-contact-email');
     const pt = document.getElementById('set-payment-terms');
     const dr = document.getElementById('set-default-ret');
     if (cn) cn.value = companySettings.company_name || '';
+    if (ct) ct.value = companySettings.contact_name || '';
+    if (cp) cp.value = companySettings.contact_phone || '';
+    if (ce) ce.value = companySettings.contact_email || '';
     if (pt) pt.value = companySettings.default_payment_terms || 'Due on receipt';
     if (dr) dr.value = companySettings.default_retainage || 10;
     if (companySettings.logo_filename) loadLogoPreview();
@@ -2201,6 +2229,9 @@ async function saveSettings() {
   try {
     companySettings = await api('POST', '/settings', {
       company_name: document.getElementById('set-company-name').value,
+      contact_name: document.getElementById('set-contact-name').value,
+      contact_phone: document.getElementById('set-contact-phone').value,
+      contact_email: document.getElementById('set-contact-email').value,
       default_payment_terms: document.getElementById('set-payment-terms').value,
       default_retainage: parseFloat(document.getElementById('set-default-ret').value) || 10
     });

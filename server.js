@@ -510,6 +510,55 @@ app.delete('/api/attachments/:id', auth, async (req,res) => {
 });
 
 // SOV PARSE - server side Excel parsing
+
+// Contractor-proposal format parser: col A = item code (4-6 digit), col B = description, col I = total
+function parseProposalRows(json, sheetName, startRow) {
+  // Find the best amount column: prefer col I (index 8), else column with most values after col B
+  const scores = {};
+  for (const row of json.slice(startRow)) {
+    row.forEach((cell, ci) => {
+      if (ci <= 1) return;
+      const v = parseFloat(String(cell).replace(/[$,\s]/g,''));
+      if (!isNaN(v) && v > 50) scores[ci] = (scores[ci]||0) + 1;
+    });
+  }
+  let amtIdx = 8; // default col I (index 8)
+  if (!scores[8] || scores[8] === 0) {
+    const sorted = Object.entries(scores).sort((a,b) => b[1]-a[1]);
+    if (sorted.length) amtIdx = parseInt(sorted[0][0]);
+  }
+
+  const stopDesc = /^(subtotal|total|note[:\s]|excludes|grand\s*total|total\s+project|total\s+bid)/i;
+  const allRows = [];
+  const seen = new Set();
+
+  for (const row of json.slice(startRow)) {
+    const colA = String(row[0]||'').trim();
+    const colB = String(row[1]||'').trim();
+
+    if (!colB || colB.length < 2) continue;
+    if (stopDesc.test(colB)) continue; // skip subtotal/total lines but keep going (fee may follow)
+    if (/^(total|subtotal|grand\s*total)$/i.test(colA)) continue; // skip rows where col A IS "TOTAL" etc.
+
+    const rawAmt = String(row[amtIdx]||'').replace(/[$,\s]/g,'');
+    const amt = Math.round(parseFloat(rawAmt));
+
+    if (isNaN(amt) || amt <= 0) continue; // skip "By Others", blank cells
+    const key = colB.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    allRows.push({ item_id: colA, description: colB, scheduled_value: amt, is_parent: true });
+  }
+  return {
+    headers: ['Item #', 'Description', 'Scheduled Value'],
+    sheetName,
+    allRows,
+    parentRows: allRows, // all rows are top-level in proposal format
+    iItem: 0, iDesc: 1, iAmt: amtIdx
+  };
+}
+
 function parseSOVFile(filePath) {
   const XLSX = require('xlsx');
   const workbook = XLSX.readFile(filePath);
@@ -523,7 +572,21 @@ function parseSOVFile(filePath) {
   const worksheet = workbook.Sheets[sheetName];
   const json = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
 
-  // Find header row
+  // ── Proposal format detection ───────────────────────────────────────────────
+  // Contractor proposals have 4-6 digit item codes in col A (e.g. 11300, 17750)
+  let firstCodeRow = -1, codeCount = 0;
+  for (let i = 0; i < Math.min(json.length, 50); i++) {
+    const colA = String(json[i][0]||'').trim();
+    if (/^\d{4,6}$/.test(colA)) {
+      codeCount++;
+      if (firstCodeRow < 0) firstCodeRow = i;
+    }
+  }
+  if (codeCount >= 3 && firstCodeRow >= 0) {
+    return parseProposalRows(json, sheetName, firstCodeRow);
+  }
+
+  // ── Standard format: header-row detection ──────────────────────────────────
   let headerRowIdx = 0;
   for (let i = 0; i < Math.min(json.length, 25); i++) {
     const rowStr = json[i].map(c => String(c)).join(' ').toUpperCase();
@@ -565,7 +628,8 @@ function parseSOVFile(filePath) {
     if (sorted.length) iAmt = parseInt(sorted[0][0]);
   }
 
-  const skipDesc = /^(sect|description|details|project|location|architect|drawing|contact|est\.|special note|int\. design|drawg|subtotal|total project|excludes|contractor.s contingency)/i;
+  // Fixed skipDesc: removed overly broad terms (project, location, architect, contact)
+  const skipDesc = /^(sect|description|drawing|est\.|special note|int\. design|drawg|subtotal|total project|excludes|contractor.s contingency|grand\s*total|total\s+bid)/i;
   const allRows = [], parentRows = [];
 
   for (const row of json.slice(headerRowIdx + 1)) {
@@ -578,7 +642,7 @@ function parseSOVFile(filePath) {
     if (skipDesc.test(desc)) continue;
     if (isNaN(amt) || amt <= 0) continue;
 
-    // Parent = ends in 000, OR short alpha code (GC, GL, CF etc), OR no item id but has value
+    // Parent = ends in 000, OR short alpha code (GC, GL, CF etc), OR no item id
     const isParent = /000$/.test(itemId) || /^[A-Z]{1,5}$/.test(itemId) || itemId === '';
     const rowObj = { item_id: itemId, description: desc, scheduled_value: amt, is_parent: isParent };
     allRows.push(rowObj);
@@ -752,17 +816,20 @@ app.get('/api/settings', auth, async (req,res) => {
 });
 
 app.post('/api/settings', auth, async (req,res) => {
-  const {company_name,default_payment_terms,default_retainage} = req.body;
+  const {company_name,default_payment_terms,default_retainage,contact_name,contact_phone,contact_email} = req.body;
   const r = await pool.query(
-    `INSERT INTO company_settings(user_id,company_name,default_payment_terms,default_retainage)
-     VALUES($1,$2,$3,$4)
+    `INSERT INTO company_settings(user_id,company_name,default_payment_terms,default_retainage,contact_name,contact_phone,contact_email)
+     VALUES($1,$2,$3,$4,$5,$6,$7)
      ON CONFLICT(user_id) DO UPDATE SET
        company_name=EXCLUDED.company_name,
        default_payment_terms=EXCLUDED.default_payment_terms,
        default_retainage=EXCLUDED.default_retainage,
+       contact_name=EXCLUDED.contact_name,
+       contact_phone=EXCLUDED.contact_phone,
+       contact_email=EXCLUDED.contact_email,
        updated_at=NOW()
      RETURNING *`,
-    [req.user.id,company_name,default_payment_terms||'Due on receipt',default_retainage||10]
+    [req.user.id,company_name,default_payment_terms||'Due on receipt',default_retainage||10,contact_name||null,contact_phone||null,contact_email||null]
   );
   res.json(r.rows[0]);
 });

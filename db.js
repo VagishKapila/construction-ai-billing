@@ -112,6 +112,9 @@ async function initDB() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked            BOOLEAN DEFAULT FALSE;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_reason     TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash_col  VARCHAR(200);
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS contact_name  VARCHAR(200);
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(100);
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS contact_email VARCHAR(200);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL;
     CREATE TABLE IF NOT EXISTS analytics_events (
       id         BIGSERIAL PRIMARY KEY,
