@@ -509,9 +509,12 @@ app.delete('/api/attachments/:id', auth, async (req,res) => {
   res.json({ok:true});
 });
 
-// SOV PARSE - Universal column detection for any spreadsheet format
-// Works by finding the column with the most text descriptions and the column
-// with the most dollar amounts — regardless of template format.
+// SOV PARSE — Human-first logic:
+//   1. Find column whose HEADER says "Total" / "Amount" / "Scheduled Value" → amount column
+//   2. Find column whose HEADER says "Description" / "Scope" / "Work" → desc column
+//   3. If headers don't match, fall back to scoring (most numeric / most text cells)
+//   4. Parse every data row that has both a description AND an amount > $0
+//   5. Skip grand-total / subtotal summary rows (don't include them as line items)
 function parseSOVFile(filePath) {
   const XLSX = require('xlsx');
   const workbook = XLSX.readFile(filePath);
@@ -526,8 +529,30 @@ function parseSOVFile(filePath) {
   const json = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
   const nCols = json.reduce((m, r) => Math.max(m, r.length), 0);
 
-  // ── Universal column detection ──────────────────────────────────────────────
-  // Score each column: descScore = text cells, amtScore = numeric cells > $50
+  // ── Step 1: Scan first 30 rows for a header row with "Total" / "Description" ─
+  let headerRowIdx = -1, iAmt = -1, iDesc = -1, iItem = -1;
+
+  for (let ri = 0; ri < Math.min(json.length, 30); ri++) {
+    const row = json[ri];
+    let fAmt = -1, fDesc = -1, fItem = -1;
+    for (let ci = 0; ci < row.length; ci++) {
+      const h = String(row[ci]||'').trim();
+      if (!h) continue;
+      // "Total" wins highest priority — it's the clearest signal
+      if (/^(total|scheduled\s*value|amount|cost|value|price|bid\s*total|contract\s*value)/i.test(h) && fAmt < 0) fAmt = ci;
+      if (/^(description|scope|work|item\s*desc|name|trade|section\s*desc)/i.test(h) && fDesc < 0) fDesc = ci;
+      if (/^(item\s*#?|sect(ion)?|no\.?|code|csi)/i.test(h) && fItem < 0) fItem = ci;
+    }
+    if (fAmt >= 0 || fDesc >= 0) {
+      headerRowIdx = ri;
+      if (fAmt  >= 0) iAmt  = fAmt;
+      if (fDesc >= 0) iDesc = fDesc;
+      if (fItem >= 0) iItem = fItem;
+      break;
+    }
+  }
+
+  // ── Step 2: Scoring fallback for any column still unresolved ────────────────
   const descScore = new Array(nCols).fill(0);
   const amtScore  = new Array(nCols).fill(0);
 
@@ -544,47 +569,56 @@ function parseSOVFile(filePath) {
     }
   }
 
-  // Description column = highest text score
-  const maxDescVal = descScore.length > 0 ? Math.max(...descScore) : 0;
-  let iDesc = maxDescVal > 0 ? descScore.indexOf(maxDescVal) : 1;
-
-  // Amount column = highest numeric score, rightmost on tie (total cols are usually rightmost)
-  let iAmt = -1, bestAmt = 0;
-  for (let ci = 0; ci < nCols; ci++) {
-    if (ci === iDesc) continue;
-    if (amtScore[ci] >= bestAmt) { bestAmt = amtScore[ci]; iAmt = ci; }
+  if (iDesc < 0) {
+    const maxD = Math.max(...descScore);
+    iDesc = maxD > 0 ? descScore.indexOf(maxD) : 1;
+  }
+  if (iAmt < 0) {
+    // Rightmost highest-count column wins — totals are almost always rightmost
+    let best = 0;
+    for (let ci = 0; ci < nCols; ci++) {
+      if (ci === iDesc) continue;
+      if (amtScore[ci] >= best) { best = amtScore[ci]; iAmt = ci; }
+    }
+  }
+  if (iItem < 0) {
+    iItem = iDesc > 0 ? iDesc - 1 : 0;
+    if (iItem === iAmt) iItem = 0;
   }
 
-  // Item ID column = just left of description (or col 0)
-  let iItem = iDesc > 0 ? iDesc - 1 : 0;
-  if (iItem === iAmt) iItem = 0;
-
-  if (iAmt < 0 || bestAmt < 2) {
+  if (iAmt < 0) {
     return { headers: ['Item #','Description','Scheduled Value'], sheetName, allRows: [], parentRows: [], iItem, iDesc, iAmt };
   }
 
-  // ── Row parsing ─────────────────────────────────────────────────────────────
-  const skipDesc = /^(subtotal|total|note[:\s]|excludes|grand\s*total|total\s+project|total\s+bid|total\s+cost|section|description)/i;
-  const skipItem = /^(total|subtotal|grand\s*total)$/i;
+  // ── Step 3: Parse data rows — skip summary/total rows, collect line items ───
+  const isSummary = (desc, itemId) =>
+    /^(total|subtotal|grand\s*total|total\s+project|total\s+bid|total\s+cost)/i.test(desc) ||
+    /^(total|subtotal|grand\s*total)$/i.test(itemId);
+
+  const isHeaderLabel = (desc) =>
+    /^(section|description|item|scope|no\.|#|trade|work\s*item|csi)/i.test(desc);
+
+  const startRow = headerRowIdx >= 0 ? headerRowIdx + 1 : 0;
   const allRows = [], parentRows = [];
   const seen = new Set();
 
-  for (const row of json) {
+  for (let ri = startRow; ri < json.length; ri++) {
+    const row    = json[ri];
     const desc   = String(row[iDesc]||'').trim();
     const itemId = String(row[iItem]||'').trim();
     const rawAmt = String(row[iAmt] ||'').replace(/[$,\s]/g,'');
     const amt    = Math.round(parseFloat(rawAmt));
 
-    if (!desc || desc.length < 3) continue;
-    if (skipDesc.test(desc)) continue;
-    if (skipItem.test(itemId)) continue;
-    if (isNaN(amt) || amt <= 0) continue;
+    if (!desc || desc.length < 2) continue;
+    if (isHeaderLabel(desc)) continue;
+    if (isSummary(desc, itemId)) continue;  // skip summary rows — continue (Fee may follow)
+    if (isNaN(amt) || amt <= 0) continue;   // skip "By Others", blank amounts
 
     const key = desc.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
 
-    // isParent: standard 000-ending codes, short alpha codes, blank item, or 4-6 digit proposal codes
+    // isParent: ends-in-000 codes, short alpha codes (GC/GL), blank code, or 4-6 digit proposal codes
     const isParent = /000$/.test(itemId) || /^[A-Z]{1,5}$/.test(itemId)
                    || itemId === '' || /^\d{4,6}$/.test(itemId);
     const rowObj = { item_id: itemId, description: desc, scheduled_value: amt, is_parent: isParent };
