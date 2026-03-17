@@ -28,3 +28,4 @@ build/
 ~$*.docx
 ~$*.xlsx
 ~$*.pptx
+package-lock.json
