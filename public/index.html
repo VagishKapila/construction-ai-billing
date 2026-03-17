@@ -1,0 +1,2159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Construction AI Billing</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#185FA5">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="CAI Billing">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- PostHog — behavioral analytics, session recording, funnels -->
+<script>
+!function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]);t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+" (stub)"},o="init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagPayload isFeatureFlagEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey identify alias group resetGroups setPersonProperties groupIdentify reset get_distinct_id getGroups get_session_id get_session_replay_url createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing debug".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+</script>
+<script>
+// PostHog key injected by server — see /api/config endpoint
+window.__phReady = false;
+fetch('/api/config').then(r=>r.json()).then(cfg=>{
+  if(cfg.posthogKey){
+    posthog.init(cfg.posthogKey,{
+      api_host:'https://us.i.posthog.com',
+      person_profiles:'identified_only',
+      session_recording:{maskAllInputs:false,maskInputOptions:{password:true}},
+      capture_pageview:true,capture_pageleave:true,
+    });
+    window.__phReady=true;
+  }
+}).catch(()=>{});
+
+function ph(event,props){
+  try{ if(window.__phReady) posthog.capture(event,props||{}); }catch(e){}
+}
+</script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--blue:#185FA5;--blue-dark:#0C447C;--blue-light:#E6F1FB;--green:#3B6D11;--green-light:#EAF3DE;--amber:#854F0B;--amber-light:#FAEEDA;--red:#A32D2D;--red-light:#FCEBEB;--border:rgba(0,0,0,0.12);--border2:rgba(0,0,0,0.22);--bg:#f5f4f0;--bg2:#fff;--bg3:#f0efeb;--text:#1a1a1a;--text2:#555;--text3:#999;--radius:8px;--radius-lg:12px}
+body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--text);background:var(--bg);min-height:100vh}
+.hidden{display:none!important}
+.auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.auth-card{background:var(--bg2);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:32px;width:100%;max-width:380px}
+.auth-logo{font-size:20px;font-weight:600;margin-bottom:4px}.auth-logo span{color:var(--blue)}
+.auth-sub{font-size:12px;color:var(--text2);margin-bottom:24px}
+.auth-tab{display:flex;border-bottom:0.5px solid var(--border);margin-bottom:20px}
+.auth-tab button{flex:1;padding:8px;background:none;border:none;border-bottom:2px solid transparent;font-size:13px;cursor:pointer;color:var(--text2)}
+.auth-tab button.on{color:var(--blue);border-bottom-color:var(--blue);font-weight:500}
+.field{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.field label{font-size:11px;color:var(--text2)}
+.field input,.field select,.field textarea{padding:8px 10px;border:0.5px solid var(--border2);border-radius:var(--radius);font-size:13px;width:100%;background:var(--bg2);color:var(--text)}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 2px rgba(24,95,165,0.12)}
+.btn{padding:8px 16px;border-radius:var(--radius);border:0.5px solid var(--border2);background:transparent;color:var(--text);font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{background:var(--bg3)}
+.btn-primary{background:var(--blue);color:#fff;border-color:var(--blue)}.btn-primary:hover{background:var(--blue-dark)}
+.btn-success{background:var(--green);color:#fff;border-color:var(--green)}
+.btn-danger{color:var(--red);border-color:var(--red)}
+.btn-sm{padding:5px 10px;font-size:11px}
+.btn-full{width:100%;justify-content:center}
+.err{background:var(--red-light);color:var(--red);border-radius:var(--radius);padding:8px 12px;font-size:12px;margin-bottom:12px}
+.shell{display:flex;flex-direction:column;height:100vh}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;background:var(--bg2);border-bottom:0.5px solid var(--border);flex-shrink:0}
+.logo{font-size:15px;font-weight:600}.logo span{color:var(--blue)}
+.topbar-right{display:flex;align-items:center;gap:12px}
+.user-name{font-size:12px;color:var(--text2)}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--blue-light);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--blue)}
+.main{display:flex;flex:1;overflow:hidden}
+.sidebar{width:210px;background:var(--bg2);border-right:0.5px solid var(--border);padding:12px 0;flex-shrink:0;overflow-y:auto}
+.sl{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;padding:0 16px;margin:14px 0 5px}
+.ni{padding:7px 12px;cursor:pointer;font-size:12px;color:var(--text2);border-radius:7px;margin:1px 6px}
+.ni:hover{background:var(--bg3)}
+.ni.active{background:var(--blue-light);color:var(--blue);font-weight:500}
+.content{flex:1;overflow-y:auto;padding:24px}
+.pg{display:none}.pg.on{display:block}
+.ptitle{font-size:19px;font-weight:600;margin-bottom:3px}
+.psub{font-size:12px;color:var(--text2);margin-bottom:20px}
+.card{background:var(--bg2);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:18px;margin-bottom:14px}
+.ct{font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px}
+.mg{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:18px}
+.mc{background:var(--bg3);border-radius:var(--radius);padding:12px 14px}
+.ml{font-size:10px;color:var(--text2);margin-bottom:4px}
+.mv{font-size:18px;font-weight:600}
+.mv.blue{color:var(--blue)}.mv.green{color:var(--green)}.mv.amber{color:var(--amber)}
+.tabs{display:flex;border-bottom:0.5px solid var(--border);margin-bottom:18px;overflow-x:auto}
+.tab{padding:9px 16px;font-size:12px;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.tab.on{color:var(--blue);border-bottom-color:var(--blue);font-weight:500}
+.tp{display:none}.tp.on{display:block}
+.tbl-wrap{overflow-x:auto;border-radius:var(--radius-lg);border:0.5px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{padding:8px 10px;background:var(--bg3);color:var(--text2);font-weight:500;font-size:10px;text-align:left;white-space:nowrap;border-bottom:0.5px solid var(--border)}
+td{padding:7px 10px;border-bottom:0.5px solid rgba(0,0,0,0.06);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--border2)}
+.r{text-align:right}.c{text-align:center}
+.num-in{width:62px;height:26px;padding:0 6px;border:0.5px solid var(--border2);border-radius:5px;background:var(--bg2);color:var(--text);font-size:11px;text-align:right}
+.num-in:focus{outline:none;border-color:var(--blue)}
+.num-in.changed{border-color:var(--green);background:var(--green-light)}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:500}
+.badge-green{background:var(--green-light);color:var(--green)}
+.badge-amber{background:var(--amber-light);color:var(--amber)}
+.badge-blue{background:var(--blue-light);color:var(--blue)}
+.bulk-bar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg3);border-radius:var(--radius);margin-bottom:12px;flex-wrap:wrap}
+.bulk-bar label{font-size:12px;color:var(--text2);white-space:nowrap}
+.bulk-in{width:70px;height:30px;padding:0 8px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg2);color:var(--text);font-size:13px;font-weight:600;text-align:right}
+.ib{background:var(--bg3);border-radius:var(--radius);padding:14px}
+.ir{display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:0.5px solid rgba(0,0,0,0.06)}
+.ir:last-child{border-bottom:none}
+.ir.tot{font-weight:600;font-size:13px;border-top:0.5px solid var(--border2);padding-top:7px;margin-top:3px;border-bottom:none}
+.share-opt{display:flex;align-items:center;gap:12px;padding:11px 14px;border:0.5px solid var(--border);border-radius:var(--radius);margin-bottom:8px;cursor:pointer}
+.share-opt:hover{border-color:var(--blue);background:var(--blue-light)}
+.share-icon{width:32px;height:32px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0}
+.br{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.proj-item{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border:0.5px solid var(--border);border-radius:var(--radius);margin-bottom:8px;cursor:pointer;background:var(--bg2)}
+.proj-item:hover{border-color:var(--blue)}
+.pa-item{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border:0.5px solid var(--border);border-radius:var(--radius);margin-bottom:8px;cursor:pointer;background:var(--bg2)}
+.pa-item:hover{border-color:var(--blue)}
+.upload-zone{border:1.5px dashed var(--border2);border-radius:var(--radius);padding:28px;text-align:center;color:var(--text2);font-size:13px;cursor:pointer;background:var(--bg3);transition:border-color 0.2s}
+.upload-zone:hover{border-color:var(--blue);background:var(--blue-light)}
+.upload-zone.dragover{border-color:var(--blue);background:var(--blue-light)}
+.fg{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.fg3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.loading{text-align:center;padding:30px;color:var(--text2);font-size:12px}
+.sov-edit{width:100%;padding:4px 7px;border:0.5px solid var(--border2);border-radius:5px;background:var(--bg2);color:var(--text);font-size:12px}
+.step-indicator{display:flex;align-items:center;margin-bottom:20px}
+.step-dot{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2)}
+.step-dot.on{color:var(--blue);font-weight:500}
+.step-dot.done{color:var(--green)}
+.step-num{width:22px;height:22px;border-radius:50%;border:1.5px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;flex-shrink:0}
+.step-line{flex:1;height:1px;background:var(--border);margin:0 8px}
+
+/* AIA G702 Preview styles */
+.aia-preview{background:#fff;border:1px solid #ccc;border-radius:4px;padding:20px;font-family:'Times New Roman',serif;font-size:9pt;color:#000;max-width:800px}
+.aia-header{display:grid;grid-template-columns:120px 1fr auto;gap:10px;align-items:start;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:8px}
+.aia-logo-box{width:110px;height:60px;border:1px dashed #ccc;display:flex;align-items:center;justify-content:center;font-size:9px;color:#999;cursor:pointer;border-radius:4px;overflow:hidden}
+.aia-logo-box img{width:100%;height:100%;object-fit:contain}
+.aia-title{text-align:center}
+.aia-title h1{font-size:13pt;font-weight:bold;margin-bottom:2px}
+.aia-title h2{font-size:10pt;font-weight:normal}
+.aia-title p{font-size:8pt;color:#555}
+.aia-appnum{text-align:right;font-size:9pt}
+.aia-appnum strong{font-size:14pt;display:block}
+.aia-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid #000;margin-bottom:6px}
+.aia-cell{padding:4px 8px;border-right:1px solid #000;border-bottom:1px solid #000;font-size:8.5pt}
+.aia-cell:nth-child(even){border-right:none}
+.aia-cell-label{font-size:7pt;color:#555;display:block;margin-bottom:1px}
+.aia-cell-val{font-weight:bold}
+.aia-summary{border:1px solid #000;margin-bottom:6px}
+.aia-sum-row{display:grid;grid-template-columns:20px 1fr 120px;border-bottom:0.5px solid #999;padding:3px 8px;font-size:8.5pt}
+.aia-sum-row:last-child{border-bottom:none}
+.aia-sum-row.highlight{background:#f0f0f0;font-weight:bold;font-size:10pt}
+.aia-sum-letter{font-weight:bold;color:#333}
+.aia-sum-val{text-align:right;font-weight:bold}
+.aia-distribution{border:1px solid #000;padding:6px 10px;margin-bottom:6px;font-size:8pt}
+.aia-dist-title{font-weight:bold;font-size:8pt;margin-bottom:4px;text-transform:uppercase}
+.aia-dist-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.aia-dist-item{display:flex;align-items:center;gap:6px}
+.aia-checkbox{width:12px;height:12px;border:1px solid #000;display:inline-block;flex-shrink:0}
+.aia-sig-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+.aia-sig-box{border:1px solid #000;padding:8px;min-height:80px}
+.aia-sig-title{font-size:7pt;font-weight:bold;text-transform:uppercase;border-bottom:0.5px solid #ccc;margin-bottom:4px;padding-bottom:2px}
+.aia-sig-line{border-bottom:1px solid #000;margin-top:48px;margin-bottom:3px}
+.aia-sig-label{font-size:7pt;color:#555}
+.aia-sig-img{max-height:40px;max-width:100%;display:block;margin:4px 0}
+.aia-payment-terms{font-size:8pt;padding:4px 8px;background:#fffbe6;border:1px solid #e6d800;border-radius:3px;margin-bottom:6px}
+/* Logo upload mini */
+.logo-upload-mini{width:80px;height:50px;border:1px dashed var(--border2);border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;background:var(--bg3)}
+.logo-upload-mini img{width:100%;height:100%;object-fit:contain}
+.logo-upload-mini:hover{border-color:var(--blue)}
+.success-msg{background:var(--green-light);color:var(--green);border-radius:var(--radius);padding:8px 12px;font-size:12px;margin-bottom:12px}
+.verify-banner{background:var(--amber-light);border-bottom:1px solid var(--amber);padding:9px 20px;font-size:12px;color:var(--amber);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px}
+.verify-banner a{color:var(--amber);font-weight:600;cursor:pointer;text-decoration:underline}
+.settings-logo-box{width:160px;height:90px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--bg3);display:flex;align-items:center;justify-content:center}
+.aia-logo-area{width:120px;height:70px;border:1px dashed #ccc;display:flex;align-items:center;justify-content:center;font-size:9px;color:#999;cursor:pointer;border-radius:3px;overflow:hidden}
+.aia-logo-area img{width:100%;height:100%;object-fit:contain}
+.aia-appnum{text-align:right;font-size:9pt;white-space:nowrap}
+.aia-appnum strong{font-size:14pt;display:block}
+.aia-cell-H{background:#fffbe6}
+.aia-dist-grid{display:flex;gap:20px}
+.aia-dist-item{display:flex;align-items:center;gap:6px}
+.aia-checkbox{width:11px;height:11px;border:1px solid #000;display:inline-block;flex-shrink:0}
+.aia-checkbox.checked{background:#185FA5}
+.btn-amber{background:var(--amber);color:#fff;border-color:var(--amber)}.btn-amber:hover{background:#6b3d08}
+.ni-pa{padding:5px 12px 5px 26px;cursor:pointer;font-size:11px;color:var(--text2);border-radius:6px;margin:1px 6px;display:flex;align-items:center;gap:7px}
+.ni-pa:hover{background:var(--bg3)}
+.ni-pa.active{background:var(--blue-light);color:var(--blue);font-weight:500}
+.pa-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.pass-wrap{position:relative;display:flex;align-items:center}
+.pass-wrap input{padding-right:34px;flex:1}
+.eye-btn{position:absolute;right:8px;background:none;border:none;cursor:pointer;color:var(--text3);padding:0;line-height:1;display:flex;align-items:center;flex-shrink:0}
+.eye-btn:hover{color:var(--text)}
+
+/* ===== PRINT / PDF STYLES ===== */
+@media print{
+  /* Force ALL background colors, borders, images to print */
+  *,*::before,*::after{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
+  @page{size:letter portrait;margin:0.45in;}
+
+  /* Hide every piece of app chrome */
+  .topbar,.sidebar,#pa-header,#pa-tabs,
+  .tp:not(.on),
+  #tp4>div:first-child,
+  .aia-sig-box>div:last-child,
+  .aia-logo-box>span,
+  input[type=file],
+  [onclick*="logo-file-input-pa"],
+  .eye-btn,.no-print{display:none!important;}
+
+  /* Reset flexbox layout to block flow */
+  body{background:#fff!important;margin:0;padding:0;}
+  .shell,.main,.content{display:block!important;height:auto!important;overflow:visible!important;padding:0!important;}
+  .pg{display:none!important;}
+  .pg.on{display:block!important;}
+  .tp{display:none!important;}
+  .tp.on{display:block!important;}
+
+  /* AIA preview fills the page — no chrome */
+  .aia-preview{border:none!important;border-radius:0!important;max-width:100%!important;padding:0!important;box-shadow:none!important;}
+
+  /* Keep the yellow highlight row */
+  .aia-cell-H{background:#fffbe6!important;}
+  .aia-sum-row.highlight{background:#f0f0f0!important;}
+  .aia-payment-terms{background:#fffbe6!important;border:1px solid #e6d800!important;}
+  .aia-checkbox.checked{background:#185FA5!important;}
+
+  /* Logo box — no dashed border when printing */
+  .aia-logo-box{border:none!important;}
+
+  /* Keep editable date underline, kill outline */
+  [contenteditable]{outline:none!important;}
+
+  /* G703 continuation sheet starts on a new page */
+  .aia-g703-section{page-break-before:always!important;margin-top:0!important;padding-top:12px!important;}
+}
+</style>
+</head>
+<body>
+
+<div id="auth-screen" class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-logo">Construction <span>AI</span> Billing</div>
+    <div class="auth-sub">G702 / G703 Pay Application System</div>
+    <div id="auth-err" class="err hidden"></div>
+    <div class="auth-tab">
+      <button class="on" onclick="authTab('login')">Sign in</button>
+      <button onclick="authTab('register')">Create account</button>
+    </div>
+    <div id="login-form">
+      <div class="field"><label>Email</label><input type="email" id="login-email" placeholder="you@company.com"/></div>
+      <div class="field"><label>Password</label>
+        <div class="pass-wrap">
+          <input type="password" id="login-pass" placeholder="Password"/>
+          <button type="button" class="eye-btn" onclick="togglePass('login-pass',this)" tabindex="-1" aria-label="Show password"></button>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-full" onclick="doLogin()">Sign in</button>
+      <div style="display:flex;align-items:center;gap:10px;margin:14px 0 0">
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+        <span style="font-size:11px;color:var(--text3)">or</span>
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+      </div>
+      <button id="google-login-btn" class="btn btn-full" onclick="signInWithGoogle()"
+        style="margin-top:10px;display:flex;align-items:center;justify-content:center;gap:10px;border:1px solid var(--border)">
+        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.35-8.16 2.35-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Continue with Google
+      </button>
+    </div>
+    <div id="register-form" class="hidden">
+      <div class="field"><label>Full name</label><input type="text" id="reg-name" placeholder="Jane Smith"/></div>
+      <div class="field"><label>Email</label><input type="email" id="reg-email" placeholder="you@company.com"/></div>
+      <div class="field"><label>Password</label>
+        <div class="pass-wrap">
+          <input type="password" id="reg-pass" placeholder="Min 8 characters"/>
+          <button type="button" class="eye-btn" onclick="togglePass('reg-pass',this)" tabindex="-1" aria-label="Show password"></button>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-full" onclick="doRegister()">Create account</button>
+      <div style="display:flex;align-items:center;gap:10px;margin:14px 0 0">
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+        <span style="font-size:11px;color:var(--text3)">or</span>
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+      </div>
+      <button class="btn btn-full" onclick="signInWithGoogle()"
+        style="margin-top:10px;display:flex;align-items:center;justify-content:center;gap:10px;border:1px solid var(--border)">
+        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.35-8.16 2.35-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Sign up with Google
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="app-screen" class="shell hidden">
+  <div class="topbar">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="logo">Construction <span>AI</span> Billing</div>
+    </div>
+    <div class="topbar-right">
+      <span class="user-name" id="user-name-display"></span>
+      <div class="avatar" id="user-avatar">?</div>
+      <button class="btn btn-sm" onclick="showSettings()">&#9881; Settings</button>
+      <button class="btn btn-sm" onclick="logout()">Sign out</button>
+    </div>
+  </div>
+  <!-- Email verification nudge — shown when email_verified === false -->
+  <div id="verify-banner" class="verify-banner hidden">
+    <span>📧 Please verify your email to keep your account secure. Check your inbox for a verification link.</span>
+    <div style="display:flex;align-items:center;gap:14px;flex-shrink:0">
+      <a onclick="resendVerification()">Resend email</a>
+      <a onclick="dismissVerifyBanner()" style="text-decoration:none;color:var(--text3)">✕</a>
+    </div>
+  </div>
+  <div class="main">
+    <div class="sidebar">
+      <div class="sl">Menu</div>
+      <div class="ni active" id="nav-dash" onclick="showDash()">Dashboard</div>
+      <div class="ni" id="nav-new-proj" onclick="showNewProject()">+ New project</div>
+      <div class="ni hidden" id="nav-admin" onclick="showAdmin()" style="color:var(--amber)">⚡ Admin</div>
+      <div id="sidebar-projects"></div>
+    </div>
+    <div class="content">
+
+
+      <!-- SETTINGS PAGE -->
+      <div class="pg" id="pg-settings">
+        <div class="ptitle">Settings</div>
+        <div class="psub">Company profile, logo, signature and billing defaults</div>
+        <div id="settings-msg" class="success-msg hidden"></div>
+        <div class="card">
+          <div class="ct">Company information</div>
+          <div class="fg">
+            <div class="field"><label>Company name</label><input type="text" id="set-company-name" placeholder="Your company name"/></div>
+            <div class="field"><label>Default payment terms</label>
+              <select id="set-payment-terms">
+                <option>Due on receipt</option><option>Net 15</option><option>Net 30</option><option>Net 45</option><option>Net 60</option>
+              </select>
+            </div>
+            <div class="field"><label>Default retainage %</label><input type="number" id="set-default-ret" value="10" min="0" max="100" step="5"/></div>
+          </div>
+          <button class="btn btn-primary" onclick="saveSettings()">Save settings</button>
+        </div>
+        <div class="card">
+          <div class="ct">Company logo</div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:12px">Appears on all invoices. PNG or JPG recommended.</p>
+          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+            <div class="settings-logo-box">
+              <img class="logo-preview-img" style="display:none;width:100%;height:100%;object-fit:contain"/>
+              <span style="font-size:11px;color:var(--text3)">No logo yet</span>
+            </div>
+            <label class="btn btn-primary" style="cursor:pointer">Upload logo
+              <input type="file" accept="image/*" style="display:none" onchange="uploadLogo(this)"/>
+            </label>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ct">Contractor signature</div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:12px">Auto-fills on pay applications. PNG with transparent background works best.</p>
+          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+            <div style="width:200px;height:60px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg3);display:flex;align-items:center;justify-content:center;overflow:hidden">
+              <img class="sig-preview-img" style="display:none;max-height:56px;max-width:196px;object-fit:contain"/>
+              <span style="font-size:11px;color:var(--text3)">No signature yet</span>
+            </div>
+            <label class="btn btn-primary" style="cursor:pointer">Upload signature
+              <input type="file" accept="image/*" style="display:none" onchange="uploadSignature(this)"/>
+            </label>
+          </div>
+        </div>
+        <div class="br"><button class="btn" onclick="showDash()">← Back to dashboard</button></div>
+      </div>
+
+      <!-- EDIT PROJECT PAGE -->
+      <div class="pg" id="pg-edit-project">
+        <div class="ptitle">Edit project</div>
+        <div class="psub">Update project details and contract amount</div>
+        <div id="ep-err" class="err hidden"></div>
+        <div id="ep-success" class="success-msg hidden">Saved! Returning to project...</div>
+        <div class="card">
+          <div class="ct">Project information</div>
+          <div class="fg">
+            <div class="field"><label>Project name *</label><input type="text" id="ep-name"/></div>
+            <div class="field"><label>Project number</label><input type="text" id="ep-number"/></div>
+            <div class="field"><label>Owner / Client</label><input type="text" id="ep-owner"/></div>
+            <div class="field"><label>General contractor</label><input type="text" id="ep-contractor"/></div>
+            <div class="field"><label>Architect</label><input type="text" id="ep-architect"/></div>
+            <div class="field"><label>Building area (SF)</label><input type="text" id="ep-area"/></div>
+            <div class="field"><label>Original contract amount ($) *</label><input type="text" id="ep-contract"/></div>
+            <div class="field"><label>Contract date</label><input type="date" id="ep-contract-date"/></div>
+            <div class="field"><label>Est. start date</label><input type="date" id="ep-est-date"/></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ct">Contact information</div>
+          <div class="fg3">
+            <div class="field"><label>Contact name</label><input type="text" id="ep-contact-name"/></div>
+            <div class="field"><label>Contact phone</label><input type="tel" id="ep-contact-phone"/></div>
+            <div class="field"><label>Contact email</label><input type="email" id="ep-contact-email"/></div>
+          </div>
+        </div>
+        <div class="br">
+          <button class="btn" onclick="loadProject(editingProjectId)">Cancel</button>
+          <button class="btn btn-primary" onclick="saveEditProject()">Save changes</button>
+        </div>
+      </div>
+
+      <!-- DASHBOARD -->
+      <div class="pg on" id="pg-dash">
+        <div class="ptitle">Dashboard</div>
+        <div class="psub">All your projects and billing activity</div>
+        <div class="mg">
+          <div class="mc"><div class="ml">Total projects</div><div class="mv" id="dash-proj-count">0</div></div>
+          <div class="mc"><div class="ml">Total billed</div><div class="mv blue" id="dash-total-billed">$0.00</div></div>
+          <div class="mc"><div class="ml">Retainage held</div><div class="mv amber" id="dash-total-ret">$0.00</div></div>
+          <div class="mc"><div class="ml">Pay apps</div><div class="mv" id="dash-pa-count">0</div></div>
+        </div>
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div class="ct" style="margin:0">Projects</div>
+            <button class="btn btn-primary btn-sm" onclick="showNewProject()">+ New project</button>
+          </div>
+          <div id="dash-proj-list"><div class="loading">Loading...</div></div>
+        </div>
+      </div>
+
+      <!-- NEW PROJECT -->
+      <div class="pg" id="pg-new-project">
+        <div class="ptitle">New project</div>
+        <div class="psub">Fill in project details and upload your schedule of values</div>
+        <div class="step-indicator">
+          <div class="step-dot on" id="si1"><div class="step-num">1</div>&nbsp;Project info</div>
+          <div class="step-line"></div>
+          <div class="step-dot" id="si2"><div class="step-num">2</div>&nbsp;Upload SOV</div>
+          <div class="step-line"></div>
+          <div class="step-dot" id="si3"><div class="step-num">3</div>&nbsp;Review &amp; save</div>
+        </div>
+
+        <div id="np-step1">
+          <div class="card">
+            <div class="ct">Project information</div>
+            <div class="fg">
+              <div class="field"><label>Project name *</label><input type="text" id="np-name" placeholder="e.g. Law Office TI Renovation"/></div>
+              <div class="field"><label>Project number</label><input type="text" id="np-number" placeholder="e.g. 3011"/></div>
+              <div class="field"><label>Owner / Client</label><input type="text" id="np-owner" placeholder="Owner name"/></div>
+              <div class="field"><label>General contractor</label><input type="text" id="np-contractor" placeholder="Contractor name"/></div>
+              <div class="field"><label>Architect</label><input type="text" id="np-architect" placeholder="Architect name"/></div>
+              <div class="field"><label>Building area (SF)</label><input type="text" id="np-area" placeholder="e.g. 8720"/></div>
+              <div class="field"><label>Original contract amount ($) *</label><input type="text" id="np-contract" placeholder="e.g. 1247743"/></div>
+              <div class="field"><label>Contract date</label><input type="date" id="np-contract-date"/></div>
+              <div class="field"><label>Est. start date</label><input type="date" id="np-est-date"/></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="ct">Contact information</div>
+            <div class="fg3">
+              <div class="field"><label>Contact name</label><input type="text" id="np-contact-name" placeholder="Full name"/></div>
+              <div class="field"><label>Contact phone</label><input type="tel" id="np-contact-phone" placeholder="408-410-6151"/></div>
+              <div class="field"><label>Contact email</label><input type="email" id="np-contact-email" placeholder="email@company.com"/></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="ct">Company logo &amp; payment terms</div>
+            <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
+              <div>
+                <div style="font-size:11px;color:var(--text2);margin-bottom:6px">Company logo (appears on invoice)</div>
+                <label class="logo-upload-mini" id="logo-preview-box" onclick="document.getElementById('logo-file-input').click()">
+                  <span style="font-size:10px;color:var(--text3)">Click to upload</span>
+                </label>
+                <input type="file" id="logo-file-input" accept="image/*" style="display:none" onchange="previewLogo(this)"/>
+              </div>
+              <div style="flex:1;min-width:200px">
+                <div class="field"><label>Payment terms</label>
+                  <select id="np-payment-terms">
+                    <option value="Due on receipt">Due on receipt</option>
+                    <option value="Net 15">Net 15</option>
+                    <option value="Net 30">Net 30</option>
+                    <option value="Net 45">Net 45</option>
+                    <option value="Net 60">Net 60</option>
+                  </select>
+                </div>
+                <div class="field"><label>Distribution — send copies to</label>
+                  <div style="display:flex;gap:16px;padding:8px 0">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="dist-owner" onchange="saveDistChecks()" checked/> Owner</label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="dist-architect" onchange="saveDistChecks()" checked/> Architect</label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="dist-contractor" onchange="saveDistChecks()"/> Contractor file</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="np-err1" class="err hidden"></div>
+          <div class="br">
+            <button class="btn" onclick="showDash()">Cancel</button>
+            <button class="btn btn-primary" onclick="npStep1Next()">Next: Upload SOV →</button>
+          </div>
+        </div>
+
+        <div id="np-step2" class="hidden">
+          <div class="card">
+            <div class="ct">Upload schedule of values</div>
+            <p style="font-size:12px;color:var(--text2);margin-bottom:14px">Upload a contractor estimate or SOV in any format — our AI will extract the line items automatically.</p>
+            <div class="upload-zone" id="sov-drop-zone"
+              onclick="document.getElementById('sov-file-input').click()"
+              ondragover="event.preventDefault();this.classList.add('dragover')"
+              ondragleave="this.classList.remove('dragover')"
+              ondrop="handleSOVDrop(event)">
+              <div style="font-size:32px;margin-bottom:8px">📄</div>
+              <div style="font-weight:500;margin-bottom:4px">Click to upload or drag and drop</div>
+              <div style="font-size:11px;color:var(--text3)">Excel (.xlsx, .xls), CSV, PDF, or Word (.docx)</div>
+            </div>
+            <input type="file" id="sov-file-input" accept=".xlsx,.xls,.csv,.pdf,.docx,.doc" style="display:none" onchange="handleSOVFile(this)"/>
+            <div id="sov-parse-status" style="margin-top:10px"></div>
+            <!-- Accepted format cards -->
+            <div style="margin-top:14px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+              <div style="padding:10px 12px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border)">
+                <div style="font-size:18px;margin-bottom:4px">📊</div>
+                <div style="font-size:12px;font-weight:600;color:var(--text1)">Excel / CSV</div>
+                <div style="font-size:11px;color:var(--text2);margin-top:2px">Structured SOV with cost codes and amounts</div>
+              </div>
+              <div style="padding:10px 12px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border)">
+                <div style="font-size:18px;margin-bottom:4px">📄</div>
+                <div style="font-size:12px;font-weight:600;color:var(--text1)">PDF Estimate</div>
+                <div style="font-size:11px;color:var(--text2);margin-top:2px">Contractor proposal or bid with line totals</div>
+              </div>
+              <div style="padding:10px 12px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border)">
+                <div style="font-size:18px;margin-bottom:4px">📝</div>
+                <div style="font-size:12px;font-weight:600;color:var(--text1)">Word Document</div>
+                <div style="font-size:11px;color:var(--text2);margin-top:2px">Scope-of-work doc with tables or itemized list</div>
+              </div>
+            </div>
+            <div style="margin-top:12px;display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg3);border-radius:var(--radius);font-size:12px">
+              <span style="color:var(--text2)">Need a template?</span>
+              <button class="btn btn-sm" onclick="downloadTemplate()">Download sample SOV Excel</button>
+            </div>
+          </div>
+          <div id="np-err2" class="err hidden"></div>
+          <div class="br"><button class="btn" onclick="npBackTo1()">← Back</button></div>
+        </div>
+
+        <div id="np-step3" class="hidden">
+          <div class="card" style="margin-bottom:14px">
+            <div class="ct" style="margin-bottom:10px">Default retainage</div>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <div style="flex:0 0 auto">
+                <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Retainage %</label>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <input type="number" id="np-retainage" value="10" min="0" max="100" step="0.5"
+                    style="width:80px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;text-align:center"/>
+                  <span style="font-size:14px;color:var(--text2)">%</span>
+                </div>
+              </div>
+              <div style="font-size:12px;color:var(--text2);max-width:380px">
+                Applied to all pay app line items by default. Use <strong>0%</strong> for lump-sum contracts with no retainage. You can override per line item later.
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+              <div>
+                <div class="ct" style="margin:0">Review and edit SOV</div>
+                <div style="font-size:11px;color:var(--text2);margin-top:3px">Edit items, descriptions, amounts. Delete unwanted rows.</div>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <span id="sov-row-count" style="font-size:12px;color:var(--text2)"></span>
+                <button class="btn btn-sm btn-primary" onclick="addSOVRow()">+ Add row</button>
+              </div>
+            </div>
+            <div id="np-err3" class="err hidden"></div>
+            <div class="tbl-wrap">
+              <table>
+                <thead><tr>
+                  <th style="width:80px">Item #</th>
+                  <th>Description</th>
+                  <th class="r" style="width:130px">Scheduled value ($)</th>
+                  <th style="width:50px;text-align:center">Del</th>
+                </tr></thead>
+                <tbody id="sov-preview-body"></tbody>
+                <tfoot><tr>
+                  <td colspan="2" style="text-align:right;font-weight:600;padding:8px 10px;font-size:12px">Total SOV</td>
+                  <td class="r" id="sov-total" style="padding:8px 10px;font-size:12px;font-weight:600">$0.00</td>
+                  <td></td>
+                </tr></tfoot>
+              </table>
+            </div>
+          </div>
+          <div id="np-err-final" class="err hidden"></div>
+          <div class="br">
+            <button class="btn" onclick="npBackTo2()">← Back</button>
+            <button class="btn btn-success" onclick="createProject()">Save project and SOV →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ADMIN DASHBOARD -->
+      <div class="pg" id="pg-admin">
+        <div class="ptitle">⚡ Admin Dashboard</div>
+        <div class="psub">Usage, performance &amp; error monitoring</div>
+        <div id="admin-loading" style="padding:32px;color:var(--text2);text-align:center">Loading analytics...</div>
+        <div id="admin-content" class="hidden">
+          <!-- KPI row -->
+          <div class="mg" id="admin-kpis"></div>
+          <!-- Feature usage + errors -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+            <div class="card">
+              <div class="ct">Feature usage — last 30 days</div>
+              <div id="admin-feature-usage"></div>
+            </div>
+            <div class="card">
+              <div class="ct">Recent errors &amp; failures</div>
+              <div id="admin-errors" style="font-size:12px;max-height:260px;overflow-y:auto"></div>
+            </div>
+          </div>
+          <!-- Signups chart -->
+          <div class="card" style="margin-bottom:16px">
+            <div class="ct">Daily signups — last 30 days</div>
+            <div id="admin-signups-chart" style="overflow-x:auto"></div>
+          </div>
+          <!-- Slow requests -->
+          <div class="card" style="margin-bottom:16px">
+            <div class="ct">Slow API endpoints (&gt;2s) — last 7 days</div>
+            <div id="admin-slow-reqs" style="font-size:12px"></div>
+          </div>
+          <!-- AI Insights chat panel -->
+          <div class="card" style="margin-bottom:16px">
+            <div class="ct">AI Insights — ask about your data</div>
+            <div id="admin-ai-history" style="min-height:60px;max-height:320px;overflow-y:auto;margin-bottom:12px;font-size:12px"></div>
+            <div style="display:flex;gap:8px">
+              <input type="text" id="admin-ai-input" placeholder="e.g. Which features are most used? What's the signup trend?" style="flex:1;padding:8px 10px;border:0.5px solid var(--border2);border-radius:var(--radius);font-size:12px" onkeydown="if(event.key==='Enter')adminAsk()"/>
+              <button class="btn btn-primary btn-sm" onclick="adminAsk()" id="admin-ai-btn">Ask AI</button>
+            </div>
+            <div style="font-size:11px;color:var(--text3);margin-top:6px">Powered by Claude — has live access to your analytics database</div>
+          </div>
+
+          <!-- Users table -->
+          <div class="card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <div class="ct" style="margin:0">All users</div>
+              <input type="text" id="admin-user-search" placeholder="Search by name or email..." style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;width:220px" oninput="filterAdminUsers(this.value)"/>
+            </div>
+            <div class="tbl-wrap"><table id="admin-users-table">
+              <thead><tr>
+                <th>Name</th><th>Email</th><th>Signed up</th>
+                <th class="r">Projects</th><th class="r">Pay Apps</th><th class="r">Submitted</th><th>Last active</th>
+                <th>Status</th><th>Actions</th>
+              </tr></thead>
+              <tbody id="admin-users-body"></tbody>
+            </table></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PROJECT VIEW -->
+      <div class="pg" id="pg-project">
+        <div id="proj-header"></div>
+        <div class="mg" id="proj-metrics"></div>
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div class="ct" style="margin:0">Pay applications</div>
+            <button class="btn btn-sm" onclick="showEditProject(currentProjectId)">Edit project</button>
+            <button class="btn btn-primary btn-sm" id="new-pa-btn" onclick="newPayApp()">+ New pay app</button>
+          </div>
+          <div id="proj-pa-list"><div class="loading">Loading...</div></div>
+        </div>
+      </div>
+
+      <!-- PAY APP VIEW -->
+      <div class="pg" id="pg-payapp">
+        <div id="pa-header"></div>
+        <div class="tabs" id="pa-tabs">
+          <div class="tab" onclick="paTab(0)">G702 — Application</div>
+          <div class="tab on" onclick="paTab(1)">G703 — Continuation</div>
+          <div class="tab" onclick="paTab(2)">Change orders</div>
+          <div class="tab" onclick="paTab(3)">Attachments</div>
+          <div class="tab" onclick="paTab(4)">Preview &amp; Export</div>
+        </div>
+
+        <!-- G702 -->
+        <div class="tp" id="tp0">
+          <div class="card">
+            <div class="ct">Billing period &amp; architect certificate</div>
+            <div class="fg">
+              <div class="field"><label>Period label</label><input type="text" id="pa-period-label" placeholder="e.g. January 2022" onchange="savePAMeta()"/></div>
+              <div class="field"><label>Period start</label><input type="date" id="pa-period-start" onchange="savePAMeta()"/></div>
+              <div class="field"><label>Period end</label><input type="date" id="pa-period-end" onchange="savePAMeta()"/></div>
+              <div class="field"><label>Amount certified ($)</label><input type="text" id="arch-cert-amt" placeholder="Enter certified amount" onchange="saveArchCert()"/></div>
+              <div class="field"><label>Certificate date</label><input type="date" id="arch-cert-date" onchange="saveArchCert()"/></div>
+              <div class="field"><label>Architect name</label><input type="text" id="arch-cert-name" placeholder="Architect of record" onchange="saveArchCert()"/></div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+            <div class="ib" id="g702-proj-info"></div>
+            <div class="ib" id="g702-summary"></div>
+          </div>
+        </div>
+
+        <!-- G703 -->
+        <div class="tp on" id="tp1">
+          <div class="bulk-bar">
+            <label>Apply % to all lines:</label>
+            <input class="bulk-in" type="number" id="bulk-pct" value="20" min="0" max="100" step="1"/>
+            <button class="btn btn-primary btn-sm" onclick="applyBulk()">Apply to all</button>
+            <button class="btn btn-sm" onclick="clearAll()">Clear all</button>
+            <span style="font-size:11px;color:var(--text2)">Retainage % editable per line</span>
+            <button class="btn btn-success btn-sm" onclick="saveLines()" style="margin-left:auto">Save &amp; recalculate</button>
+          </div>
+          <div class="tbl-wrap">
+            <table style="min-width:950px">
+              <thead><tr>
+                <th style="width:65px">Item</th>
+                <th style="min-width:180px">Description</th>
+                <th class="r" style="width:105px">Sched. value</th>
+                <th class="r" style="width:95px">Prev. billed</th>
+                <th class="c" style="width:60px">% prev.</th>
+                <th class="c" style="width:90px">% this period</th>
+                <th class="r" style="width:100px">This period $</th>
+                <th class="c" style="width:58px">Ret. %</th>
+                <th class="r" style="width:90px">Retainage $</th>
+                <th class="r" style="width:110px">Total complete</th>
+                <th class="r" style="width:88px">Balance</th>
+              </tr></thead>
+              <tbody id="g703-body"></tbody>
+              <tfoot id="g703-foot"></tfoot>
+            </table>
+          </div>
+          <div class="br" style="margin-top:12px">
+            <button class="btn btn-success" onclick="saveLines()">Save and recalculate</button>
+            <span id="save-status" style="font-size:11px;color:var(--text2)"></span>
+          </div>
+        </div>
+
+        <!-- CHANGE ORDERS -->
+        <div class="tp" id="tp2">
+          <div class="card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+              <div class="ct" style="margin:0">Change order log</div>
+              <button class="btn btn-primary btn-sm" onclick="addCO()">+ Add C/O</button>
+            </div>
+            <div id="co-list"></div>
+            <div style="display:flex;justify-content:flex-end;padding-top:10px;border-top:0.5px solid var(--border2);font-size:13px;font-weight:600;margin-top:10px">
+              Total change orders: <span id="co-total" style="margin-left:12px;color:var(--blue)">$0.00</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ATTACHMENTS -->
+        <div class="tp" id="tp3">
+          <div class="card">
+            <div class="ct">Attachments</div>
+            <label class="upload-zone" style="display:block;margin-bottom:14px">
+              <input type="file" id="file-upload" multiple style="display:none" onchange="uploadFiles(this)"/>
+              Click to attach photos, signed docs, lien waivers, change order backups<br>
+              <span style="font-size:11px;color:var(--text3)">PDF, JPG, PNG, DOCX supported</span>
+            </label>
+            <div id="attach-list"></div>
+          </div>
+        </div>
+
+        <!-- PREVIEW & EXPORT -->
+        <div class="tp" id="tp4">
+          <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+            <button class="btn btn-primary" onclick="downloadPDF()">⬇ Download PDF</button>
+            <button class="btn" onclick="copyShareLink()">Copy shareable link</button>
+            <span style="font-size:11px;color:var(--text2)">Browser will open a print dialog — choose <strong>Save as PDF</strong></span>
+          </div>
+
+          <!-- AIA G702 PREVIEW -->
+          <div class="aia-preview" id="aia-preview">
+            <div class="aia-header">
+              <div class="aia-logo-box" id="preview-logo-box" onclick="document.getElementById('logo-file-input-pa').click()">
+                <span>Click to add logo</span>
+              </div>
+              <input type="file" id="logo-file-input-pa" accept="image/*" style="display:none" onchange="previewLogoPa(this)"/>
+              <div class="aia-title">
+                <h1>Application and Certificate for Payment</h1>
+                <h2>AIA Document G702</h2>
+                <p>TO OWNER: <span id="prev-owner"></span> &nbsp;&nbsp; PROJECT: <span id="prev-project"></span></p>
+                <p>FROM CONTRACTOR: <span id="prev-contractor"></span> &nbsp;&nbsp; ARCHITECT: <span id="prev-architect"></span></p>
+              </div>
+              <div class="aia-appnum">
+                Application #<strong id="prev-appnum"></strong>
+                <div style="font-size:8pt;margin-top:4px">Period: <span id="prev-period"></span></div>
+                <div style="font-size:8pt">Contract date: <span id="prev-contract-date"></span></div>
+              </div>
+            </div>
+
+            <div id="prev-payment-terms" class="aia-payment-terms" style="margin-bottom:6px"></div>
+
+            <div class="aia-grid">
+              <div class="aia-cell"><span class="aia-cell-label">A. Original Contract Sum</span><span class="aia-cell-val" id="prev-A"></span></div>
+              <div class="aia-cell"><span class="aia-cell-label">F. Total Earned Less Retainage (D-E)</span><span class="aia-cell-val" id="prev-F"></span></div>
+              <div class="aia-cell"><span class="aia-cell-label">B. Net Change by Change Orders</span><span class="aia-cell-val" id="prev-B"></span></div>
+              <div class="aia-cell"><span class="aia-cell-label">G. Less Previous Certificates for Payment</span><span class="aia-cell-val" id="prev-G"></span></div>
+              <div class="aia-cell"><span class="aia-cell-label">C. Contract Sum to Date (A+B)</span><span class="aia-cell-val" id="prev-C"></span></div>
+              <div class="aia-cell" style="background:#fffbe6"><span class="aia-cell-label">H. CURRENT PAYMENT DUE</span><span class="aia-cell-val" id="prev-H" style="font-size:13pt;color:#185FA5"></span></div>
+              <div class="aia-cell"><span class="aia-cell-label">D. Total Completed &amp; Stored to Date</span><span class="aia-cell-val" id="prev-D"></span></div>
+              <div class="aia-cell"><span class="aia-cell-label">I. Balance to Finish, Plus Retainage</span><span class="aia-cell-val" id="prev-I"></span></div>
+              <div class="aia-cell"><span class="aia-cell-label">E. Retainage to Date</span><span class="aia-cell-val" id="prev-E"></span></div>
+              <div class="aia-cell"></div>
+            </div>
+
+            <div class="aia-distribution">
+              <div class="aia-dist-title">Distribution to:</div>
+              <div class="aia-dist-grid">
+                <div class="aia-dist-item"><div class="aia-checkbox" id="dist-box-owner" style="background:#185FA5;cursor:pointer" onclick="toggleDist('dist_owner',this)" title="Click to toggle"></div><span>Owner</span></div>
+                <div class="aia-dist-item"><div class="aia-checkbox" id="dist-box-architect" style="background:#185FA5;cursor:pointer" onclick="toggleDist('dist_architect',this)" title="Click to toggle"></div><span>Architect</span></div>
+                <div class="aia-dist-item"><div class="aia-checkbox" id="dist-box-contractor" style="cursor:pointer" onclick="toggleDist('dist_contractor',this)" title="Click to toggle"></div><span>Contractor file</span></div>
+              </div>
+            </div>
+
+            <div class="aia-sig-grid">
+              <div class="aia-sig-box">
+                <div class="aia-sig-title">Contractor's Signed Certification</div>
+                <p style="font-size:7.5pt;color:#555;margin-bottom:8px">The undersigned Contractor certifies that to the best of the Contractor's knowledge, information and belief the Work covered by this Application for Payment has been completed in accordance with the Contract Documents.</p>
+                <div id="sig-contractor-img"></div>
+                <div class="aia-sig-line"></div>
+                <div class="aia-sig-label">Authorized Signature &nbsp;&nbsp;&nbsp; Date: <span id="pa-sign-date" contenteditable="true" title="Click to edit date" style="border-bottom:1px solid #999;min-width:80px;display:inline-block;outline:none;cursor:text;padding:0 2px"></span></div>
+                <div style="margin-top:6px">
+                  <label style="font-size:10px;color:#888;cursor:pointer" onclick="document.getElementById('sig-contractor-input').click()">+ Upload signature</label>
+                  <input type="file" id="sig-contractor-input" accept="image/*" style="display:none" onchange="uploadSig(this,'contractor')"/>
+                </div>
+              </div>
+              <div class="aia-sig-box">
+                <div class="aia-sig-title">Architect's Certificate for Payment</div>
+                <p style="font-size:7.5pt;color:#555;margin-bottom:4px">In accordance with the Contract Documents, the Architect certifies to the Owner that the Work has progressed to the point indicated and the quality of the Work is in accordance with the Contract Documents.</p>
+                <div style="font-size:8pt;margin-bottom:4px">Amount Certified: <strong id="prev-arch-cert"></strong></div>
+                <div id="sig-architect-img"></div>
+                <div class="aia-sig-line"></div>
+                <div class="aia-sig-label">Architect Signature &nbsp;&nbsp;&nbsp; Date: <span id="prev-arch-date"></span></div>
+                <div style="margin-top:6px">
+                  <label style="font-size:10px;color:#888;cursor:pointer" onclick="document.getElementById('sig-architect-input').click()">+ Upload signature</label>
+                  <input type="file" id="sig-architect-input" accept="image/*" style="display:none" onchange="uploadSig(this,'architect')"/>
+                </div>
+              </div>
+            </div>
+
+            <!-- G703 PREVIEW -->
+            <div class="aia-g703-section" style="margin-top:14px;border-top:2px solid #000;padding-top:8px">
+              <div style="font-size:11pt;font-weight:bold;text-align:center;margin-bottom:4px">Continuation Sheet — AIA Document G703</div>
+              <div style="overflow-x:auto">
+              <table style="width:100%;border-collapse:collapse;font-size:7.5pt;font-family:'Times New Roman',serif">
+                <thead>
+                  <tr style="background:#f0f0f0">
+                    <th style="border:1px solid #999;padding:3px 4px;text-align:left;width:55px">Item</th>
+                    <th style="border:1px solid #999;padding:3px 4px;text-align:left">Description of Work</th>
+                    <th style="border:1px solid #999;padding:3px 4px;text-align:right;width:80px">Scheduled Value</th>
+                    <th style="border:1px solid #999;padding:3px 4px;text-align:right;width:75px">Work Prev. Billed</th>
+                    <th style="border:1px solid #999;padding:3px 4px;text-align:right;width:65px">Work This Period</th>
+                    <th style="border:1px solid #999;padding:3px 4px;text-align:right;width:65px">Total Completed</th>
+                    <th style="border:1px solid #999;padding:3px 4px;text-align:right;width:45px">% Comp.</th>
+                    <th style="border:1px solid #999;padding:3px 4px;text-align:right;width:45px">Ret.%</th>
+                    <th style="border:1px solid #999;padding:3px 4px;text-align:right;width:70px">Retainage $</th>
+                    <th style="border:1px solid #999;padding:3px 4px;text-align:right;width:70px">Balance to Finish</th>
+                  </tr>
+                </thead>
+                <tbody id="g703-preview-body"></tbody>
+                <tfoot id="g703-preview-foot"></tfoot>
+              </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- EMAIL -->
+          <div class="card no-print" style="margin-top:16px">
+            <div class="ct">Email to client</div>
+            <div class="fg" style="margin-bottom:10px">
+              <div class="field"><label>To</label><input type="email" id="email-to" placeholder="client@email.com"/></div>
+              <div class="field"><label>CC</label><input type="email" id="email-cc" placeholder="architect@firm.com"/></div>
+            </div>
+            <div class="field"><label>Subject</label><input type="text" id="email-subj"/></div>
+            <div class="field" style="margin-top:8px"><label>Message</label>
+              <textarea id="email-body" rows="4" style="resize:vertical;padding:8px 10px;border:0.5px solid var(--border2);border-radius:var(--radius);font-size:12px;background:var(--bg2);color:var(--text)"></textarea>
+            </div>
+            <div class="br">
+              <button class="btn btn-primary" onclick="sendEmail()">Send email</button>
+              <span style="font-size:11px;color:var(--text2)">PDF attached automatically</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const API='/api';
+let token=localStorage.getItem('caib_token');
+let currentUser=JSON.parse(localStorage.getItem('caib_user')||'null');
+let currentProjectId=null;
+let currentPAId=null;
+let currentPAData=null;
+let coCounter=0;
+let sovRows=[];
+let logoDataURL=null;
+let sigContractor=null;
+let sigArchitect=null;
+let currentProjects=[];
+let sidebarPACache={};       // projectId -> payapps[] — populated on navigate
+let collapsedProjects=new Set(); // IDs manually collapsed; absent = expanded by default
+
+const fmt=n=>'$'+parseFloat(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+// Password eye toggle
+const _eyeShow='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+const _eyeHide='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+function togglePass(id,btn){
+  const inp=document.getElementById(id);
+  const showing=inp.type==='password';
+  inp.type=showing?'text':'password';
+  btn.innerHTML=showing?_eyeHide:_eyeShow;
+  btn.setAttribute('aria-label',showing?'Hide password':'Show password');
+}
+// Initialise eye icons once DOM is ready
+document.addEventListener('DOMContentLoaded',()=>{
+  document.querySelectorAll('.eye-btn').forEach(b=>b.innerHTML=_eyeShow);
+});
+const fmtR=n=>'$'+Math.round(parseFloat(n||0)).toLocaleString('en-US');
+const pf=n=>parseFloat(n||0).toFixed(1)+'%';
+function setupCommaInput(el){
+  if(!el) return;
+  el.addEventListener('focus',function(){this.value=this.value.replace(/,/g,'');});
+  el.addEventListener('blur',function(){
+    const n=parseFloat(this.value.replace(/,/g,''));
+    if(!isNaN(n)&&this.value.trim()!=='') this.value=n.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:2});
+  });
+}
+
+async function api(method,path,body){
+  const opts={method,headers:{'Content-Type':'application/json'}};
+  if(token) opts.headers['Authorization']='Bearer '+token;
+  if(body) opts.body=JSON.stringify(body);
+  const r=await fetch(API+path,opts);
+  const data=await r.json();
+  if(!r.ok) throw new Error(data.error||'Request failed');
+  return data;
+}
+
+function authTab(t){
+  document.getElementById('login-form').classList.toggle('hidden',t!=='login');
+  document.getElementById('register-form').classList.toggle('hidden',t!=='register');
+  document.querySelectorAll('.auth-tab button').forEach((b,i)=>b.classList.toggle('on',(i===0&&t==='login')||(i===1&&t==='register')));
+  document.getElementById('auth-err').classList.add('hidden');
+}
+async function doLogin(){
+  const email=document.getElementById('login-email').value;
+  const password=document.getElementById('login-pass').value;
+  try{const data=await api('POST','/auth/login',{email,password});setAuth(data);}
+  catch(e){showAuthErr(e.message);}
+}
+async function doRegister(){
+  const name=document.getElementById('reg-name').value;
+  const email=document.getElementById('reg-email').value;
+  const password=document.getElementById('reg-pass').value;
+  try{const data=await api('POST','/auth/register',{name,email,password});setAuth(data);}
+  catch(e){showAuthErr(e.message);}
+}
+function signInWithGoogle(){
+  // Redirect to server-side Google OAuth — server will redirect back with ?google_token=JWT
+  window.location.href='/api/auth/google';
+}
+// ── Handle URL params on page load (Google OAuth return, email verification) ──
+(function handleURLParams(){
+  const p=new URLSearchParams(window.location.search);
+  const gTok=p.get('google_token');
+  const verified=p.get('verified');
+  const authErr=p.get('auth_error');
+  // Strip params from URL without a page reload
+  if(gTok||verified||authErr){
+    const clean=window.location.pathname;
+    window.history.replaceState({},'',clean);
+  }
+  if(gTok){
+    // Google OAuth success — decode user from JWT payload (base64 middle segment)
+    try{
+      const payload=JSON.parse(atob(gTok.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+      setAuth({token:gTok, user:{id:payload.id, email:payload.email, name:payload.name, email_verified:payload.email_verified||false}});
+    }catch(e){showAuthErr('Google sign-in failed. Please try again.');}
+  }
+  if(verified==='1'){
+    // Show a transient success message on the auth screen
+    const el=document.getElementById('auth-err');
+    el.style.background='var(--green-light)';el.style.color='var(--green)';
+    el.textContent='✓ Email verified! You can now sign in.';
+    el.classList.remove('hidden');
+  }
+  if(authErr){
+    const msgs={access_denied:'Google sign-in was cancelled.',no_email:'Google did not return an email address.',server_error:'Authentication error. Please try again.'};
+    showAuthErr(msgs[authErr]||'Authentication failed: '+authErr);
+  }
+})();
+function setAuth(data){
+  token=data.token;currentUser=data.user;
+  localStorage.setItem('caib_token',token);
+  // Identify user in PostHog so all future events are linked to them
+  try{ if(window.__phReady) posthog.identify(currentUser.id, { email: currentUser.email, name: currentUser.name }); }catch(e){}
+  localStorage.setItem('caib_user',JSON.stringify(currentUser));
+  document.getElementById('auth-screen').classList.add('hidden');
+  document.getElementById('app-screen').classList.remove('hidden');
+  document.getElementById('user-name-display').textContent=currentUser.name;
+  document.getElementById('user-avatar').textContent=currentUser.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+  loadSettings();
+  // Show admin nav item if user is an admin
+  checkAdminAccess();
+  // Show email verification banner if needed (soft nudge — account stays usable)
+  if(currentUser && currentUser.email_verified === false){
+    document.getElementById('verify-banner').classList.remove('hidden');
+  } else {
+    document.getElementById('verify-banner').classList.add('hidden');
+  }
+  showDash();
+  ['np-contract','ep-contract','arch-cert-amt'].forEach(id=>setupCommaInput(document.getElementById(id)));
+}
+function showAuthErr(msg){const el=document.getElementById('auth-err');el.textContent=msg;el.classList.remove('hidden');}
+function dismissVerifyBanner(){document.getElementById('verify-banner').classList.add('hidden');}
+async function resendVerification(){
+  try{
+    await api('POST','/auth/resend-verification',{});
+    const b=document.getElementById('verify-banner');
+    b.innerHTML='<span>✓ Verification email sent — check your inbox!</span>';
+    setTimeout(()=>b.classList.add('hidden'),5000);
+  }catch(e){alert('Could not resend verification email: '+e.message);}
+}
+function logout(){
+  token=null;currentUser=null;
+  localStorage.removeItem('caib_token');localStorage.removeItem('caib_user');
+  document.getElementById('auth-screen').classList.remove('hidden');
+  document.getElementById('app-screen').classList.add('hidden');
+}
+function showPage(id){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));document.getElementById('pg-'+id).classList.add('on');}
+function showDash(){
+  showPage('dash');
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
+  document.getElementById('nav-dash').classList.add('active');
+  loadDash();
+}
+function showNewProject(){
+  ph('new_project_wizard_opened');
+  showPage('new-project');
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
+  document.getElementById('nav-new-proj').classList.add('active');
+  npShowStep(1);sovRows=[];
+}
+function npShowStep(n){
+  document.getElementById('np-step1').classList.toggle('hidden',n!==1);
+  document.getElementById('np-step2').classList.toggle('hidden',n!==2);
+  document.getElementById('np-step3').classList.toggle('hidden',n!==3);
+  [1,2,3].forEach(i=>{
+    const el=document.getElementById('si'+i);
+    el.className='step-dot'+(i===n?' on':i<n?' done':'');
+  });
+}
+function npStep1Next(){
+  const name=document.getElementById('np-name').value.trim();
+  const contract=document.getElementById('np-contract').value.replace(/,/g,'');
+  if(!name){document.getElementById('np-err1').textContent='Project name is required';document.getElementById('np-err1').classList.remove('hidden');return;}
+  if(!contract||isNaN(parseFloat(contract))){document.getElementById('np-err1').textContent='Valid contract amount is required';document.getElementById('np-err1').classList.remove('hidden');return;}
+  document.getElementById('np-err1').classList.add('hidden');
+  ph('new_project_step2_reached');
+  npShowStep(2);
+}
+function npBackTo1(){npShowStep(1);}
+function npBackTo2(){
+  npShowStep(2);
+  document.getElementById('sov-parse-status').innerHTML='';
+  document.getElementById('sov-file-input').value='';
+}
+
+function previewLogo(input){
+  const file=input.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    logoDataURL=e.target.result;
+    const box=document.getElementById('logo-preview-box');
+    box.innerHTML=`<img src="${logoDataURL}" style="width:100%;height:100%;object-fit:contain"/>`;
+  };
+  reader.readAsDataURL(file);
+}
+function previewLogoPa(input){
+  const file=input.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    logoDataURL=e.target.result;
+    const box=document.getElementById('preview-logo-box');
+    box.innerHTML=`<img src="${logoDataURL}"/>`;
+  };
+  reader.readAsDataURL(file);
+}
+function uploadSig(input,type){
+  const file=input.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const src=e.target.result;
+    if(type==='contractor'){sigContractor=src;document.getElementById('sig-contractor-img').innerHTML=`<img src="${src}" class="aia-sig-img"/>`;}
+    else{sigArchitect=src;document.getElementById('sig-architect-img').innerHTML=`<img src="${src}" class="aia-sig-img"/>`;}
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleSOVDrop(e){
+  e.preventDefault();
+  document.getElementById('sov-drop-zone').classList.remove('dragover');
+  const file=e.dataTransfer.files[0];
+  if(file) processSOVFile(file);
+}
+function handleSOVFile(input){
+  const file=input.files[0];
+  if(file) processSOVFile(file);
+}
+function processSOVFile(file){
+  const err=document.getElementById('np-err2');
+  err.classList.add('hidden');
+  const name=file.name.toLowerCase();
+  if(!name.endsWith('.xlsx')&&!name.endsWith('.xls')&&!name.endsWith('.csv')){
+    err.textContent='Please upload an Excel (.xlsx/.xls) or CSV file.';
+    err.classList.remove('hidden');return;
+  }
+  document.getElementById('sov-parse-status').innerHTML=
+    '<div style="font-size:13px;color:var(--text2);padding:8px 0">Parsing '+file.name+'...</div>';
+  const fd=new FormData();fd.append('file',file);
+  fetch('/api/sov/parse',{method:'POST',headers:{'Authorization':'Bearer '+token},body:fd})
+  .then(r=>r.json())
+  .then(data=>{
+    if(data.error) throw new Error(data.error);
+    sovRows=data.rows||[];
+    let html=`<div style="padding:8px 12px;background:var(--green-light);border-radius:var(--radius);margin-bottom:10px">
+      <div style="font-weight:500;color:var(--green)">Parsed: ${data.filename}</div>
+      <div style="font-size:11px;color:var(--green);margin-top:2px">Sheet: ${data.sheet_used} &nbsp;·&nbsp; ${data.row_count} parent lines &nbsp;·&nbsp; ${data.total_rows} total lines</div>
+    </div>`;
+    if(data.all_rows&&data.all_rows.length>data.rows.length){
+      html+=`<div style="display:flex;gap:8px;margin-bottom:4px">
+        <button class="btn btn-primary btn-sm" onclick="switchSOVView(true)">Parent lines only (${data.rows.length})</button>
+        <button class="btn btn-sm" onclick="switchSOVView(false)">All lines (${data.all_rows.length})</button>
+      </div>`;
+      window._sovAllRows=data.all_rows;window._sovParentRows=data.rows;
+    }
+    document.getElementById('sov-parse-status').innerHTML=html;
+    npShowStep(3);renderSOVPreview();
+  })
+  .catch(e=>{
+    document.getElementById('sov-parse-status').innerHTML=
+      '<div style="color:var(--red);font-size:12px;padding:8px 0">Error: '+e.message+'</div>';
+  });
+}
+function switchSOVView(parentOnly){
+  sovRows=parentOnly?(window._sovParentRows||[]):(window._sovAllRows||[]);
+  renderSOVPreview();
+}
+function renderSOVPreview(){
+  document.getElementById('sov-preview-body').innerHTML=sovRows.map((r,i)=>`
+    <tr>
+      <td><input class="sov-edit" style="width:75px" value="${r.item_id||''}" onchange="sovRows[${i}].item_id=this.value"/></td>
+      <td><input class="sov-edit" value="${r.description||''}" onchange="sovRows[${i}].description=this.value"/></td>
+      <td><input class="sov-edit" style="width:110px;text-align:right" value="${r.scheduled_value||0}" onchange="sovRows[${i}].scheduled_value=parseFloat(this.value.replace(/[$,]/g,''))||0;updateSOVTotal()"/></td>
+      <td style="text-align:center"><button onclick="deleteSOVRow(${i})" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:16px;line-height:1">×</button></td>
+    </tr>`).join('');
+  document.getElementById('sov-row-count').textContent=sovRows.length+' lines';
+  updateSOVTotal();
+}
+function deleteSOVRow(i){sovRows.splice(i,1);renderSOVPreview();}
+function addSOVRow(){
+  sovRows.push({item_id:'',description:'New line item',scheduled_value:0});
+  renderSOVPreview();
+  const rows=document.querySelectorAll('#sov-preview-body tr');
+  if(rows.length) rows[rows.length-1].querySelector('input').focus();
+}
+function updateSOVTotal(){
+  document.getElementById('sov-total').textContent=fmt(sovRows.reduce((s,r)=>s+(parseFloat(r.scheduled_value)||0),0));
+}
+function downloadTemplate(){
+  const wb=XLSX.utils.book_new();
+  const data=[
+    ['Item #','Description','Scheduled Value'],
+    ['01000','Temporary Construction',410],['02000','Site Work & Demolition',117617],
+    ['03000','Concrete',73149],['05000','Steel / Masonry / Structural',60180],
+    ['55000','Carpentry',10710],['06000','Wood & Plastics',41085],
+    ['07000','Thermal / Moisture Protection',15721],['08000','Doors & Glass',89423.70],
+    ['09000','Finishes - Walls / Ceiling / Paint',185839.90],['10000','Specialties',18089],
+    ['11000','Equipment',1600],['12000','Furnishings & Trash Removal',16077.60],
+    ['15000','Mechanical / HVAC',131913],['153000','Plumbing',67788.50],
+    ['16000','Electrical',267820.80],['17000','Fire Life Safety',6268],
+    ['GC','General Conditions',48030],['GL','General Liability Insurance',40837],['CF','Contractor Fee',55185]
+  ];
+  const ws=XLSX.utils.aoa_to_sheet(data);
+  ws['!cols']=[{wch:12},{wch:40},{wch:18}];
+  XLSX.utils.book_append_sheet(wb,ws,'SOV');
+  XLSX.writeFile(wb,'Construction_AI_SOV_Template.xlsx');
+}
+
+async function loadDash(){
+  try{
+    const projects=await api('GET','/projects');
+    currentProjects=projects;
+    document.getElementById('dash-proj-count').textContent=projects.length;
+    const list=document.getElementById('dash-proj-list');
+    if(!projects.length){
+      list.innerHTML='<div style="font-size:12px;color:var(--text2);padding:8px 0">No projects yet. Click + New project to get started.</div>';
+      buildSidebarProjects(projects);
+      return;
+    }
+    list.innerHTML=projects.map(p=>`
+      <div class="proj-item" onclick="loadProject(${p.id})">
+        <div>
+          <div style="font-size:14px;font-weight:600">${p.name}</div>
+          <div style="font-size:11px;color:var(--text2)">#${p.number||'—'} · ${p.contractor||'—'} · ${fmt(p.original_contract)}</div>
+        </div>
+        <span class="badge badge-green">Active</span>
+      </div>`).join('');
+    // Parallel-fetch all pay app lists + billing stats
+    const [lists,stats]=await Promise.all([
+      Promise.all(projects.map(p=>api('GET','/projects/'+p.id+'/payapps').catch(()=>[]))),
+      api('GET','/stats').catch(()=>({total_billed:0,total_retainage:0}))
+    ]);
+    projects.forEach((p,i)=>{sidebarPACache[p.id]=lists[i];});
+    // Update dashboard counters
+    const totalPAs=lists.reduce((s,l)=>s+l.length,0);
+    document.getElementById('dash-pa-count').textContent=totalPAs;
+    document.getElementById('dash-total-billed').textContent=fmt(parseFloat(stats.total_billed)||0);
+    document.getElementById('dash-total-ret').textContent=fmt(parseFloat(stats.total_retainage)||0);
+    buildSidebarProjects(projects);
+  }catch(e){console.error(e);}
+}
+function buildSidebarProjects(projects, activeId){
+  // Smart sort: most-recently-active first (highest PA id), then alphabetical
+  const sorted=[...projects].sort((a,b)=>{
+    const aMax=(sidebarPACache[a.id]||[]).reduce((m,p)=>Math.max(m,p.id),0);
+    const bMax=(sidebarPACache[b.id]||[]).reduce((m,p)=>Math.max(m,p.id),0);
+    if(aMax!==bMax) return bMax-aMax;
+    return a.name.localeCompare(b.name);
+  });
+  const el=document.getElementById('sidebar-projects');
+  if(!sorted.length){el.innerHTML='';return;}
+  el.innerHTML='<div class="sl">Projects</div>'+
+    sorted.map(p=>{
+      const isActive=p.id===activeId;
+      const pPAs=sidebarPACache[p.id]||[];
+      const isCollapsed=collapsedProjects.has(p.id);
+      const toggleBtn=pPAs.length
+        ?`<span onclick="event.stopPropagation();toggleSidebarProj(${p.id})" title="${isCollapsed?'Expand':'Collapse'}" style="padding:0 5px;font-size:15px;font-weight:300;color:var(--text3);cursor:pointer;line-height:1;flex-shrink:0">${isCollapsed?'+':'−'}</span>`
+        :'';
+      let html=`<div class="ni${isActive?' active':''}" style="display:flex;align-items:center;justify-content:space-between;padding-right:4px" onclick="loadProject(${p.id})"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name.length>20?p.name.slice(0,20)+'…':p.name}</span>${toggleBtn}</div>`;
+      if(!isCollapsed&&pPAs.length){
+        html+=pPAs.map(pa=>{
+          const dot=pa.status==='submitted'?'var(--green)':'var(--amber)';
+          const lbl='Pay App #'+pa.app_number+(pa.period_label?' · '+pa.period_label.slice(0,10):'');
+          return`<div class="ni-pa${currentPAId===pa.id?' active':''}" onclick="loadPayApp(${pa.id})"><span class="pa-dot" style="background:${dot}"></span>${lbl}</div>`;
+        }).join('');
+      }
+      return html;
+    }).join('');
+}
+function toggleSidebarProj(id){
+  if(collapsedProjects.has(id)) collapsedProjects.delete(id);
+  else collapsedProjects.add(id);
+  buildSidebarProjects(currentProjects, currentProjectId);
+}
+async function loadProject(id){
+  currentProjectId=id;showPage('project');
+  try{
+    const[payapps,projects]=await Promise.all([api('GET','/projects/'+id+'/payapps'),api('GET','/projects')]);
+    const p=projects.find(x=>x.id===id)||{};
+    document.getElementById('proj-header').innerHTML=`<div class="ptitle">${p.name||'Project'}</div><div class="psub">${p.building_area?p.building_area+' SF · ':''}${p.contractor||''} · Contract: ${fmt(p.original_contract)}</div>`;
+    // Only submitted pay apps count as "billed" — drafts are work in progress
+    let totComp=0,totRet=0;
+    for(const pa of payapps){
+      if(pa.status!=='submitted') continue;
+      const paData=await api('GET','/payapps/'+pa.id);
+      paData.lines.forEach(l=>{
+        const sv=parseFloat(l.scheduled_value);
+        const comp=sv*parseFloat(l.this_pct)/100;
+        totComp+=comp;totRet+=comp*parseFloat(l.retainage_pct)/100;
+      });
+    }
+    document.getElementById('proj-metrics').innerHTML=`
+      <div class="mc"><div class="ml">Contract sum</div><div class="mv">${fmt(p.original_contract)}</div></div>
+      <div class="mc"><div class="ml">Submitted &amp; billed</div><div class="mv blue">${fmt(totComp)}</div></div>
+      <div class="mc"><div class="ml">Retainage held</div><div class="mv amber">${fmt(totRet)}</div></div>
+      <div class="mc"><div class="ml">Balance to finish</div><div class="mv">${fmt(parseFloat(p.original_contract)-totComp+totRet)}</div></div>`;
+    const paList=document.getElementById('proj-pa-list');
+    const btn=document.getElementById('new-pa-btn');
+    if(btn) btn.textContent=payapps.length===0?'Create first pay app':'+ Pay App #'+(payapps.length+1);
+    if(!payapps.length){
+      paList.innerHTML='<div style="font-size:12px;color:var(--text2)">No pay apps yet. Click "Create first pay app" to begin billing.</div>';
+    }else{
+      paList.innerHTML=payapps.map(pa=>{
+        const submitted=pa.status==='submitted';
+        const actions=submitted
+          ?`<button class="btn btn-sm" onclick="event.stopPropagation();loadPayApp(${pa.id},4)" title="Preview &amp; Export">⬡ Preview</button>
+             <span class="badge badge-green" style="margin-left:4px">submitted</span>`
+          :`<button class="btn btn-amber btn-sm" onclick="event.stopPropagation();quickMarkSubmitted(${pa.id},${pa.app_number})" title="Mark as submitted">✓ Submit</button>
+             <button class="btn btn-sm" onclick="event.stopPropagation();loadPayApp(${pa.id},4)" title="Preview &amp; Export">⬡ Preview</button>
+             <span class="badge badge-amber" style="margin-left:4px">draft</span>`;
+        return`<div class="pa-item" onclick="loadPayApp(${pa.id})">
+          <div>
+            <div style="font-size:13px;font-weight:600">Pay App #${pa.app_number} — ${pa.period_label||'No period set'}</div>
+            <div style="font-size:11px;color:var(--text2)">Created ${new Date(pa.created_at).toLocaleDateString()}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">${actions}</div>
+        </div>`;
+      }).join('');
+    }
+    currentProjects=projects;
+    sidebarPACache[id]=payapps;
+    buildSidebarProjects(projects, id);
+  }catch(e){console.error(e);}
+}
+async function quickMarkSubmitted(paId, appNum){
+  if(!confirm('Mark Pay App #'+appNum+' as submitted?\n\nThis cannot be undone.')) return;
+  try{
+    await api('PUT','/payapps/'+paId,{status:'submitted'});
+    // Refresh project page and sidebar
+    if(currentProjectId) loadProject(currentProjectId);
+  }catch(e){alert('Error: '+e.message);}
+}
+let _creatingPA=false;
+async function newPayApp(){
+  if(!currentProjectId||_creatingPA) return;
+  _creatingPA=true;
+  try{
+    const payapps=await api('GET','/projects/'+currentProjectId+'/payapps');
+    const num=payapps.length+1;
+    const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const now=new Date();
+    const pa=await api('POST','/projects/'+currentProjectId+'/payapps',{app_number:num,period_label:months[now.getMonth()]+' '+now.getFullYear(),period_start:null,period_end:null});
+    loadPayApp(pa.id);
+  }catch(e){alert('Error: '+e.message);}
+  finally{_creatingPA=false;}
+}
+async function loadPayApp(id,tab=1){
+  currentPAId=id;showPage('payapp');paTab(tab);
+  try{
+    const pa=await api('GET','/payapps/'+id);
+    currentPAData=pa;coCounter=pa.change_orders.length;
+    renderPAHeader(pa);renderG702(pa);renderG703(pa);renderCOs(pa);renderAttachments(pa);
+    renderAIAPreview(pa);
+    // Refresh sidebar: highlight active pay app under its project
+    if(currentProjects.length){
+      try{const allPAs=await api('GET','/projects/'+pa.project_id+'/payapps');sidebarPACache[pa.project_id]=allPAs;buildSidebarProjects(currentProjects,pa.project_id);}catch(e){}
+    }
+    document.getElementById('email-subj').value='Pay Application #'+pa.app_number+' — '+pa.project_name;
+    document.getElementById('email-body').value='Please find attached Pay Application #'+pa.app_number+' for the '+pa.project_name+' project ('+(pa.period_label||'')+').\n\nKindly review and certify at your earliest convenience.\n\nThank you.';
+    if(pa.architect_certified) document.getElementById('arch-cert-amt').value=pa.architect_certified;
+    if(pa.architect_name) document.getElementById('arch-cert-name').value=pa.architect_name;
+    if(pa.architect_date) document.getElementById('arch-cert-date').value=(pa.architect_date||'').split('T')[0];
+    if(pa.period_label) document.getElementById('pa-period-label').value=pa.period_label;
+    if(pa.period_start) document.getElementById('pa-period-start').value=(pa.period_start||'').split('T')[0];
+    if(pa.period_end) document.getElementById('pa-period-end').value=(pa.period_end||'').split('T')[0];
+    // Distribution checkboxes (null = use DB default: owner+arch true, contractor false)
+    document.getElementById('dist-owner').checked    = pa.dist_owner    !== false;
+    document.getElementById('dist-architect').checked = pa.dist_architect !== false;
+    document.getElementById('dist-contractor').checked = pa.dist_contractor === true;
+  }catch(e){console.error(e);}
+}
+function renderPAHeader(pa){
+  const submitted=pa.status==='submitted';
+  document.getElementById('pa-header').innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:18px;font-weight:600">Pay App #${pa.app_number} <span class="badge ${submitted?'badge-green':'badge-amber'}" style="font-size:11px;vertical-align:middle;cursor:pointer" onclick="paTab(4)" title="Click to view preview">${pa.status||'draft'}</span></div>
+        <div style="font-size:12px;color:var(--text2)">${pa.period_label||'No period set'} · ${pa.project_name} · ${pa.app_number>1?'Carries forward from Pay App #'+(pa.app_number-1):'First application'}</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="loadProject(${pa.project_id})">Back to project</button>
+        ${submitted
+          ?'<button class="btn btn-sm" disabled style="opacity:0.5;cursor:default">✓ Submitted</button>'
+          :'<button class="btn btn-amber btn-sm" onclick="markSubmitted()">✓ Mark submitted</button>'}
+        <button class="btn btn-primary btn-sm" onclick="paTab(4)">Preview &amp; Export</button>
+      </div>
+    </div>`;
+}
+function calcTotals(pa){
+  let tComp=0,tRet=0,tThis=0,tPrev=0;
+  (pa.lines||[]).forEach(r=>{
+    const sv=parseFloat(r.scheduled_value);
+    const prev=sv*parseFloat(r.prev_pct)/100;
+    const thisPer=sv*parseFloat(r.this_pct)/100;
+    const comp=prev+thisPer+parseFloat(r.stored_materials||0);
+    tPrev+=prev;tThis+=thisPer;tComp+=comp;tRet+=comp*parseFloat(r.retainage_pct)/100;
+  });
+  const tCO=(pa.change_orders||[]).reduce((s,c)=>s+parseFloat(c.amount||0),0);
+  const contract=parseFloat(pa.original_contract)+tCO;
+  const earned=tComp-tRet;
+  const due=Math.max(0,earned-tPrev);
+  return{tComp,tRet,tThis,tPrev,tCO,contract,earned,due};
+}
+function renderG702(pa){
+  const t=calcTotals(pa);
+  document.getElementById('g702-proj-info').innerHTML=`
+    <div style="font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Project</div>
+    <div class="ir"><span style="color:var(--text2)">Project</span><span>${pa.project_name}</span></div>
+    <div class="ir"><span style="color:var(--text2)">Owner</span><span>${pa.owner||'—'}</span></div>
+    <div class="ir"><span style="color:var(--text2)">Contractor</span><span>${pa.contractor||'—'}</span></div>
+    <div class="ir"><span style="color:var(--text2)">Architect</span><span>${pa.architect||'—'}</span></div>
+    <div class="ir"><span style="color:var(--text2)">App number</span><span>${pa.app_number}</span></div>
+    <div class="ir"><span style="color:var(--text2)">Period</span><span>${pa.period_label||'—'}</span></div>`;
+  document.getElementById('g702-summary').innerHTML=`
+    <div style="font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">AIA G702 Summary</div>
+    <div class="ir"><span style="color:var(--text2)">A. Original contract sum</span><span>${fmt(pa.original_contract)}</span></div>
+    <div class="ir"><span style="color:var(--text2)">B. Net change orders</span><span>${fmt(t.tCO)}</span></div>
+    <div class="ir"><span style="color:var(--text2)">C. Contract sum to date</span><span>${fmt(t.contract)}</span></div>
+    <div class="ir"><span style="color:var(--text2)">D. Total completed to date</span><span>${fmt(t.tComp)}</span></div>
+    <div class="ir"><span style="color:var(--text2)">E. Retainage to date</span><span>${fmt(t.tRet)}</span></div>
+    <div class="ir"><span style="color:var(--text2)">F. Earned less retainage</span><span>${fmt(t.earned)}</span></div>
+    <div class="ir"><span style="color:var(--text2)">G. Less previous certificates</span><span>${fmt(t.tPrev)}</span></div>
+    <div class="ir tot"><span style="color:var(--text2)">H. Current payment due</span><span style="color:var(--blue);font-size:15px">${fmt(t.due)}</span></div>
+    <div class="ir"><span style="color:var(--text2)">I. Balance to finish + retainage</span><span>${fmt(t.contract-t.tComp+t.tRet)}</span></div>`;
+}
+
+function renderAIAPreview(pa){
+  const t=calcTotals(pa);
+  const setText=(id,val)=>{const el=document.getElementById(id);if(el)el.textContent=val;};
+  setText('prev-owner',pa.owner||'—');
+  setText('prev-project',pa.project_name);
+  setText('prev-contractor',pa.contractor||'—');
+  setText('prev-architect',pa.architect||'—');
+  setText('prev-appnum',pa.app_number);
+  setText('prev-period',pa.period_label||'—');
+  setText('prev-contract-date',pa.contract_date?new Date(pa.contract_date).toLocaleDateString():'—');
+  setText('prev-A',fmt(pa.original_contract));
+  setText('prev-B',fmt(t.tCO));
+  setText('prev-C',fmt(t.contract));
+  setText('prev-D',fmt(t.tComp));
+  setText('prev-E',fmt(t.tRet));
+  setText('prev-F',fmt(t.earned));
+  setText('prev-G',fmt(t.tPrev));
+  setText('prev-H',fmt(t.due));
+  setText('prev-I',fmt(t.contract-t.tComp+t.tRet));
+  setText('prev-arch-cert',pa.architect_certified?fmt(pa.architect_certified):'Pending');
+  setText('prev-arch-date',pa.architect_date?(new Date(pa.architect_date).toLocaleDateString()):'');
+  // Contractor sign date — default to today, preserve any edits the user has made
+  const signDateEl=document.getElementById('pa-sign-date');
+  if(signDateEl&&!signDateEl.textContent.trim()){
+    signDateEl.textContent=new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
+  }
+  // Sync distribution checkboxes in the AIA preview
+  const _setChk=(id,val)=>{const el=document.getElementById(id);if(el){el.style.background=val?'#185FA5':'';el.classList.toggle('checked',val);}};
+  _setChk('dist-box-owner',    pa.dist_owner    !== false);
+  _setChk('dist-box-architect', pa.dist_architect !== false);
+  _setChk('dist-box-contractor', pa.dist_contractor === true);
+  const ptEl=document.getElementById('prev-payment-terms');
+  if(ptEl) ptEl.innerHTML='<strong>Payment Terms:</strong> Due on receipt';
+  if(logoDataURL){
+    const lb=document.getElementById('preview-logo-box');
+    if(lb) lb.innerHTML=`<img src="${logoDataURL}"/>`;
+  }
+  // G703 preview table
+  let tSV=0,tPrev=0,tThis=0,tComp=0,tRet2=0;
+  const tbody=document.getElementById('g703-preview-body');
+  if(tbody){
+    tbody.innerHTML=(pa.lines||[]).map(r=>{
+      const sv=parseFloat(r.scheduled_value);
+      const prev=sv*parseFloat(r.prev_pct)/100;
+      const thisPer=sv*parseFloat(r.this_pct)/100;
+      const comp=prev+thisPer;
+      const pctComp=sv>0?comp/sv*100:0;
+      const ret=comp*parseFloat(r.retainage_pct)/100;
+      const bal=sv-comp;
+      tSV+=sv;tPrev+=prev;tThis+=thisPer;tComp+=comp;tRet2+=ret;
+      return`<tr style="border-bottom:0.5px solid #ddd">
+        <td style="border:1px solid #ddd;padding:2px 4px">${r.item_id}</td>
+        <td style="border:1px solid #ddd;padding:2px 4px">${r.description}</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:right">${fmtR(sv)}</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:right">${fmtR(prev)}</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:right">${fmtR(thisPer)}</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:right">${fmtR(comp)}</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:right">${pctComp.toFixed(0)}%</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:right">${parseFloat(r.retainage_pct).toFixed(0)}%</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:right">${fmtR(ret)}</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:right">${fmtR(bal)}</td>
+      </tr>`;
+    }).join('');
+    const tfoot=document.getElementById('g703-preview-foot');
+    if(tfoot) tfoot.innerHTML=`<tr style="font-weight:bold;background:#f0f0f0">
+      <td style="border:1px solid #ddd;padding:3px 4px"></td>
+      <td style="border:1px solid #ddd;padding:3px 4px">GRAND TOTAL</td>
+      <td style="border:1px solid #ddd;padding:3px 4px;text-align:right">${fmtR(tSV)}</td>
+      <td style="border:1px solid #ddd;padding:3px 4px;text-align:right">${fmtR(tPrev)}</td>
+      <td style="border:1px solid #ddd;padding:3px 4px;text-align:right">${fmtR(tThis)}</td>
+      <td style="border:1px solid #ddd;padding:3px 4px;text-align:right">${fmtR(tComp)}</td>
+      <td style="border:1px solid #ddd;padding:3px 4px;text-align:right">${tSV>0?(tComp/tSV*100).toFixed(0)+'%':'0%'}</td>
+      <td style="border:1px solid #ddd;padding:3px 4px"></td>
+      <td style="border:1px solid #ddd;padding:3px 4px;text-align:right">${fmtR(tRet2)}</td>
+      <td style="border:1px solid #ddd;padding:3px 4px;text-align:right">${fmtR(tSV-tComp)}</td>
+    </tr>`;
+  }
+}
+
+function renderG703(pa){
+  let tSV=0,tPrev=0,tThis=0,tRet=0,tComp=0,tBal=0;
+  const rows=(pa.lines||[]).map(r=>{
+    const sv=parseFloat(r.scheduled_value);
+    const prev=sv*parseFloat(r.prev_pct)/100;
+    const thisPer=sv*parseFloat(r.this_pct)/100;
+    const comp=prev+thisPer+parseFloat(r.stored_materials||0);
+    const ret=comp*parseFloat(r.retainage_pct)/100;
+    const bal=sv-comp;
+    const totPct=sv>0?comp/sv*100:0;
+    tSV+=sv;tPrev+=prev;tThis+=thisPer;tRet+=ret;tComp+=comp;tBal+=bal;
+    const changed=parseFloat(r.this_pct)>0;
+    return`<tr>
+      <td style="font-size:10px;color:var(--text2)">${r.item_id}</td>
+      <td style="font-size:12px">${r.description}</td>
+      <td class="r">${fmtR(sv)}</td>
+      <td class="r">${fmtR(prev)}</td>
+      <td class="c" style="color:var(--text2);font-size:10px">${parseFloat(r.prev_pct).toFixed(0)}%</td>
+      <td class="c"><input class="num-in${changed?' changed':''}" type="number" value="${parseFloat(r.this_pct)}" min="0" max="${100-parseFloat(r.prev_pct)}" step="1" data-id="${r.id}" data-sv="${sv}" data-prev="${r.prev_pct}" onchange="chgPct(this)"/></td>
+      <td class="r this-d">${fmtR(thisPer)}</td>
+      <td class="c"><input class="num-in" style="width:50px" type="number" value="${parseFloat(r.retainage_pct)}" min="0" max="100" step="5" data-id="${r.id}" onchange="chgRet(this)"/></td>
+      <td class="r ret-d">${fmtR(ret)}</td>
+      <td class="r tot-comp">${fmtR(comp)}<span style="font-size:9px;color:var(--text2);margin-left:2px">${totPct.toFixed(0)}%</span></td>
+      <td class="r">${fmtR(bal)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('g703-body').innerHTML=rows;
+  document.getElementById('g703-foot').innerHTML=`<tr>
+    <td colspan="2" class="r">Grand total</td>
+    <td class="r">${fmtR(tSV)}</td><td class="r">${fmtR(tPrev)}</td>
+    <td class="c">—</td><td class="c">—</td>
+    <td class="r" id="ft-this">${fmtR(tThis)}</td>
+    <td class="c">—</td>
+    <td class="r" id="ft-ret">${fmtR(tRet)}</td>
+    <td class="r" id="ft-comp">${fmtR(tComp)}</td>
+    <td class="r" id="ft-bal">${fmtR(tBal)}</td>
+  </tr>`;
+}
+
+function chgPct(el){
+  const sv=parseFloat(el.dataset.sv);
+  const prevPct=parseFloat(el.dataset.prev);
+  let val=Math.min(Math.max(parseFloat(el.value)||0,0),100-prevPct);
+  el.value=val;
+  el.className='num-in'+(val>0?' changed':'');
+  const row=el.closest('tr');
+  const retIn=row.querySelectorAll('.num-in')[1];
+  const thisPer=sv*val/100;
+  const comp=sv*prevPct/100+thisPer;
+  const totPct=sv>0?comp/sv*100:0;
+  row.querySelector('.this-d').textContent=fmtR(thisPer);
+  row.querySelector('.ret-d').textContent=fmtR(comp*(parseFloat(retIn.value)||0)/100);
+  row.querySelector('.tot-comp').innerHTML=fmtR(comp)+'<span style="font-size:9px;color:var(--text2);margin-left:2px">'+totPct.toFixed(0)+'%</span>';
+  updateG703Totals();updateG702Live();
+}
+function chgRet(el){
+  const row=el.closest('tr');
+  const pctIn=row.querySelectorAll('.num-in')[0];
+  const sv=parseFloat(pctIn.dataset.sv);
+  const prevPct=parseFloat(pctIn.dataset.prev);
+  const comp=sv*(prevPct+(parseFloat(pctIn.value)||0))/100;
+  row.querySelector('.ret-d').textContent=fmtR(comp*(parseFloat(el.value)||0)/100);
+  updateG703Totals();updateG702Live();
+}
+function updateG703Totals(){
+  let tThis=0,tRet=0,tComp=0,tBal=0;
+  document.querySelectorAll('#g703-body tr').forEach(row=>{
+    const pins=row.querySelectorAll('.num-in');
+    if(!pins[0]) return;
+    const sv=parseFloat(pins[0].dataset.sv)||0;
+    const prevPct=parseFloat(pins[0].dataset.prev)||0;
+    const thisPct=parseFloat(pins[0].value)||0;
+    const retPct=parseFloat(pins[1]&&pins[1].value)||0;
+    const comp=sv*(prevPct+thisPct)/100;
+    tThis+=sv*thisPct/100;tRet+=comp*retPct/100;tComp+=comp;tBal+=sv-comp;
+  });
+  const s=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=fmtR(v);};
+  s('ft-this',tThis);s('ft-ret',tRet);s('ft-comp',tComp);s('ft-bal',tBal);
+}
+function updateG702Live(){
+  if(!currentPAData) return;
+  let tComp=0,tRet=0,tThis=0,tPrev=0;
+  document.querySelectorAll('#g703-body tr').forEach(row=>{
+    const pins=row.querySelectorAll('.num-in');
+    if(!pins[0]) return;
+    const sv=parseFloat(pins[0].dataset.sv)||0;
+    const prevPct=parseFloat(pins[0].dataset.prev)||0;
+    const thisPct=parseFloat(pins[0].value)||0;
+    const retPct=parseFloat(pins[1]&&pins[1].value)||0;
+    const comp=sv*(prevPct+thisPct)/100;
+    tThis+=sv*thisPct/100;tPrev+=sv*prevPct/100;tRet+=comp*retPct/100;tComp+=comp;
+  });
+  const tCO=(currentPAData.change_orders||[]).reduce((s,c)=>s+parseFloat(c.amount||0),0);
+  const contract=parseFloat(currentPAData.original_contract)+tCO;
+  const earned=tComp-tRet;
+  const due=Math.max(0,earned-tPrev);
+  const el=document.getElementById('g702-summary');
+  if(el) el.innerHTML=`
+    <div style="font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">AIA G702 Summary</div>
+    <div class="ir"><span style="color:var(--text2)">A. Original contract sum</span><span>${fmt(currentPAData.original_contract)}</span></div>
+    <div class="ir"><span style="color:var(--text2)">B. Net change orders</span><span>${fmt(tCO)}</span></div>
+    <div class="ir"><span style="color:var(--text2)">C. Contract sum to date</span><span>${fmt(contract)}</span></div>
+    <div class="ir"><span style="color:var(--text2)">D. Total completed to date</span><span>${fmt(tComp)}</span></div>
+    <div class="ir"><span style="color:var(--text2)">E. Retainage to date</span><span>${fmt(tRet)}</span></div>
+    <div class="ir"><span style="color:var(--text2)">F. Earned less retainage</span><span>${fmt(earned)}</span></div>
+    <div class="ir"><span style="color:var(--text2)">G. Less previous certificates</span><span>${fmt(tPrev)}</span></div>
+    <div class="ir tot"><span style="color:var(--text2)">H. Current payment due</span><span style="color:var(--blue);font-size:15px">${fmt(due)}</span></div>
+    <div class="ir"><span style="color:var(--text2)">I. Balance to finish + retainage</span><span>${fmt(contract-tComp+tRet)}</span></div>`;
+}
+function applyBulk(){
+  const pct=parseFloat(document.getElementById('bulk-pct').value)||0;
+  document.querySelectorAll('#g703-body tr').forEach(row=>{
+    const inp=row.querySelectorAll('.num-in')[0];
+    if(!inp) return;
+    inp.value=Math.min(pct,100-parseFloat(inp.dataset.prev||0));
+    inp.dispatchEvent(new Event('change'));
+  });
+}
+function clearAll(){
+  document.querySelectorAll('#g703-body tr').forEach(row=>{
+    const inp=row.querySelectorAll('.num-in')[0];
+    if(!inp) return;
+    inp.value=0;inp.dispatchEvent(new Event('change'));
+  });
+}
+async function saveLines(){
+  const lines=[];
+  document.querySelectorAll('#g703-body tr').forEach(row=>{
+    const inputs=row.querySelectorAll('.num-in');
+    if(!inputs[0]) return;
+    lines.push({id:parseInt(inputs[0].dataset.id),this_pct:parseFloat(inputs[0].value)||0,retainage_pct:parseFloat(inputs[1]&&inputs[1].value)||10,stored_materials:0});
+  });
+  try{
+    await api('PUT','/payapps/'+currentPAId+'/lines',{lines});
+    const st=document.getElementById('save-status');
+    st.textContent='Saved!';st.style.color='var(--green)';
+    setTimeout(()=>{st.textContent='';},2000);
+    currentPAData=await api('GET','/payapps/'+currentPAId);
+    renderG702(currentPAData);
+    renderAIAPreview(currentPAData);
+  }catch(e){alert('Save error: '+e.message);}
+}
+function renderCOs(pa){
+  const cos=pa.change_orders||[];
+  const list=document.getElementById('co-list');
+  if(!cos.length){list.innerHTML='<div style="font-size:12px;color:var(--text2);padding:8px 0">No change orders yet.</div>';document.getElementById('co-total').textContent='$0.00';return;}
+  list.innerHTML=`<div style="display:grid;grid-template-columns:60px 1fr 120px 110px 80px;gap:8px;font-size:10px;font-weight:600;color:var(--text2);padding-bottom:6px;border-bottom:0.5px solid var(--border)">
+    <div>CO#</div><div>Description</div><div>Amount</div><div>Status</div><div>Action</div></div>`+
+  cos.map(c=>`
+    <div style="display:grid;grid-template-columns:60px 1fr 120px 110px 80px;gap:8px;align-items:center;padding:8px 0;border-bottom:0.5px solid rgba(0,0,0,0.06)">
+      <div style="font-size:13px;font-weight:600;color:var(--blue)">CO-${c.co_number}</div>
+      <input id="co-desc-${c.id}" style="padding:5px 8px;border:0.5px solid var(--border2);border-radius:5px;font-size:11px;background:var(--bg2);color:var(--text);width:100%" value="${c.description||''}" onchange="updateCO(${c.id})"/>
+      <input id="co-amt-${c.id}" style="padding:5px 8px;border:0.5px solid var(--border2);border-radius:5px;font-size:11px;text-align:right;background:var(--bg2);color:var(--text);width:100%" value="${c.amount||0}" onchange="updateCO(${c.id});updateCOTotal()"/>
+      <select id="co-stat-${c.id}" style="padding:5px 8px;border:0.5px solid var(--border2);border-radius:5px;font-size:11px;background:var(--bg2);color:var(--text)" onchange="updateCO(${c.id})">
+        <option ${c.status==='pending'?'selected':''}>pending</option>
+        <option ${c.status==='approved'?'selected':''}>approved</option>
+        <option ${c.status==='rejected'?'selected':''}>rejected</option>
+      </select>
+      <button class="btn btn-danger btn-sm" onclick="deleteCO(${c.id})">Delete</button>
+    </div>`).join('');
+  updateCOTotal();
+  document.querySelectorAll('[id^="co-amt-"]').forEach(el=>{
+    setupCommaInput(el);
+    const n=parseFloat(el.value);
+    if(!isNaN(n)&&n!==0) el.value=n.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:2});
+  });
+}
+function updateCOTotal(){
+  let tot=0;document.querySelectorAll('[id^="co-amt-"]').forEach(i=>tot+=parseFloat(i.value.replace(/,/g,''))||0);
+  document.getElementById('co-total').textContent=fmt(tot);
+}
+async function addCO(){
+  coCounter++;
+  try{
+    await api('POST','/payapps/'+currentPAId+'/changeorders',{co_number:coCounter,description:'New change order',amount:0,status:'pending'});
+    currentPAData=await api('GET','/payapps/'+currentPAId);
+    renderCOs(currentPAData);
+  }catch(e){alert('Error: '+e.message);}
+}
+async function updateCO(id){
+  try{
+    await api('PUT','/changeorders/'+id,{
+      description:document.getElementById('co-desc-'+id).value,
+      amount:parseFloat((document.getElementById('co-amt-'+id).value||'').replace(/,/g,''))||0,
+      status:document.getElementById('co-stat-'+id).value
+    });
+  }catch(e){console.error(e);}
+}
+async function deleteCO(id){
+  if(!confirm('Delete this change order?')) return;
+  try{
+    await api('DELETE','/changeorders/'+id);
+    currentPAData=await api('GET','/payapps/'+currentPAId);
+    renderCOs(currentPAData);renderG702(currentPAData);
+  }catch(e){alert('Error: '+e.message);}
+}
+function renderAttachments(pa){
+  const atts=pa.attachments||[];
+  const list=document.getElementById('attach-list');
+  if(!atts.length){list.innerHTML='<div style="font-size:12px;color:var(--text2)">No attachments yet.</div>';return;}
+  list.innerHTML=atts.map(a=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg3);border-radius:6px;margin-bottom:6px;font-size:12px">
+      <div style="width:28px;height:28px;border-radius:5px;background:var(--blue-light);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--blue);flex-shrink:0">${(a.original_name||'').split('.').pop().toUpperCase().slice(0,4)}</div>
+      <span style="flex:1">${a.original_name}</span>
+      <span style="color:var(--text3)">${a.file_size?Math.round(a.file_size/1024)+' KB':''}</span>
+      <button class="btn btn-danger btn-sm" onclick="deleteAttachment(${a.id})">Remove</button>
+    </div>`).join('');
+}
+async function uploadFiles(input){
+  for(const file of input.files){
+    const fd=new FormData();fd.append('file',file);
+    try{
+      await fetch(API+'/payapps/'+currentPAId+'/attachments',{method:'POST',headers:{'Authorization':'Bearer '+token},body:fd});
+      currentPAData=await api('GET','/payapps/'+currentPAId);
+      renderAttachments(currentPAData);
+    }catch(e){alert('Upload error: '+e.message);}
+  }
+}
+async function deleteAttachment(id){
+  try{
+    await api('DELETE','/attachments/'+id);
+    currentPAData=await api('GET','/payapps/'+currentPAId);
+    renderAttachments(currentPAData);
+  }catch(e){alert('Error: '+e.message);}
+}
+async function saveArchCert(){
+  try{await api('PUT','/payapps/'+currentPAId,{architect_certified:parseFloat((document.getElementById('arch-cert-amt').value||'').replace(/,/g,''))||null,architect_name:document.getElementById('arch-cert-name').value,architect_date:document.getElementById('arch-cert-date').value||null});}
+  catch(e){console.error(e);}
+}
+async function savePAMeta(){
+  try{await api('PUT','/payapps/'+currentPAId,{period_label:document.getElementById('pa-period-label').value,period_start:document.getElementById('pa-period-start').value||null,period_end:document.getElementById('pa-period-end').value||null});}
+  catch(e){console.error(e);}
+}
+async function saveDistChecks(){
+  if(!currentPAId) return;
+  const o=document.getElementById('dist-owner').checked;
+  const a=document.getElementById('dist-architect').checked;
+  const c=document.getElementById('dist-contractor').checked;
+  try{
+    await api('PUT','/payapps/'+currentPAId,{dist_owner:o,dist_architect:a,dist_contractor:c});
+    if(currentPAData){currentPAData.dist_owner=o;currentPAData.dist_architect=a;currentPAData.dist_contractor=c;}
+    // Keep preview in sync
+    const _setChk=(id,val)=>{const el=document.getElementById(id);if(el){el.style.background=val?'#185FA5':'';el.classList.toggle('checked',val);}};
+    _setChk('dist-box-owner',o);_setChk('dist-box-architect',a);_setChk('dist-box-contractor',c);
+  }catch(e){console.error(e);}
+}
+async function toggleDist(field,el){
+  if(!currentPAData||!currentPAId) return;
+  const cur=currentPAData[field];
+  const defaultVal=field==='dist_contractor'?false:true;
+  const newVal=!(cur!==undefined&&cur!==null?cur:defaultVal);
+  try{
+    await api('PUT','/payapps/'+currentPAId,{[field]:newVal});
+    currentPAData[field]=newVal;
+    el.style.background=newVal?'#185FA5':'';
+    el.classList.toggle('checked',newVal);
+    // Keep G702 tab checkboxes in sync
+    const mapField={dist_owner:'dist-owner',dist_architect:'dist-architect',dist_contractor:'dist-contractor'};
+    const chk=document.getElementById(mapField[field]);
+    if(chk) chk.checked=newVal;
+  }catch(e){console.error(e);}
+}
+async function markSubmitted(){
+  if(!currentPAData) return;
+  if(!confirm('Mark Pay App #'+currentPAData.app_number+' as submitted?\n\nThis cannot be undone.')) return;
+  try{
+    await api('PUT','/payapps/'+currentPAId,{status:'submitted'});
+    currentPAData=await api('GET','/payapps/'+currentPAId);
+    renderPAHeader(currentPAData);
+    // Refresh sidebar to show green dot
+    if(currentProjects.length){
+      try{const allPAs=await api('GET','/projects/'+currentPAData.project_id+'/payapps');sidebarPACache[currentPAData.project_id]=allPAs;buildSidebarProjects(currentProjects,currentPAData.project_id);}catch(e){}
+    }
+  }
+  catch(e){alert('Error: '+e.message);}
+}
+function downloadPDF(){
+  ph('pdf_downloaded',{pay_app_id:currentPAId,project_id:currentPAData?.project_id});
+  if(currentPAData) renderAIAPreview(currentPAData);
+  setTimeout(()=>window.print(),150);
+}
+function copyShareLink(){const url=window.location.origin+'/share/'+currentPAId;navigator.clipboard.writeText(url).then(()=>alert('Link copied!\n'+url)).catch(()=>alert('Share link: '+url));}
+async function sendEmail(){alert('Email: In production this sends via SMTP/SendGrid.\n\nTo: '+document.getElementById('email-to').value);}
+
+async function createProject(){
+  if(!sovRows.length){document.getElementById('np-err-final').textContent='Please upload an SOV file first';document.getElementById('np-err-final').classList.remove('hidden');return;}
+  const validRows=sovRows.filter(r=>r.description&&r.scheduled_value>0);
+  if(!validRows.length){document.getElementById('np-err-final').textContent='SOV lines need a description and amount greater than zero';document.getElementById('np-err-final').classList.remove('hidden');return;}
+  const contactName=document.getElementById('np-contact-name').value;
+  const contactPhone=document.getElementById('np-contact-phone').value;
+  const contactEmail=document.getElementById('np-contact-email').value;
+  const contact=[contactName,contactPhone,contactEmail].filter(Boolean).join(' · ');
+  try{
+    const proj=await api('POST','/projects',{
+      name:document.getElementById('np-name').value.trim(),
+      number:document.getElementById('np-number').value,
+      owner:document.getElementById('np-owner').value,
+      contractor:document.getElementById('np-contractor').value,
+      architect:document.getElementById('np-architect').value,
+      contact,contact_name:contactName,contact_phone:contactPhone,contact_email:contactEmail,
+      building_area:document.getElementById('np-area').value,
+      original_contract:parseFloat(document.getElementById('np-contract').value.replace(/,/g,'')),
+      contract_date:document.getElementById('np-contract-date').value||null,
+      est_date:document.getElementById('np-est-date').value||null,
+      default_retainage:parseFloat(document.getElementById('np-retainage').value)||0
+    });
+    await api('POST','/projects/'+proj.id+'/sov',{lines:validRows});
+    ph('project_created',{sov_line_count:validRows.length,contract_value:parseFloat(document.getElementById('np-contract').value.replace(/,/g,''))});
+    loadProject(proj.id);
+  }catch(e){document.getElementById('np-err-final').textContent=e.message;document.getElementById('np-err-final').classList.remove('hidden');}
+}
+
+function paTab(n){
+  document.querySelectorAll('#pa-tabs .tab').forEach((t,i)=>t.classList.toggle('on',i===n));
+  document.querySelectorAll('.tp').forEach((p,i)=>p.classList.toggle('on',i===n));
+  if(n===4&&currentPAData) renderAIAPreview(currentPAData);
+}
+
+
+// ===== SETTINGS =====
+let companySettings = {};
+function showSettings() { showPage('settings'); loadSettings(); }
+
+async function loadSettings() {
+  try {
+    companySettings = await api('GET', '/settings') || {};
+    const cn = document.getElementById('set-company-name');
+    const pt = document.getElementById('set-payment-terms');
+    const dr = document.getElementById('set-default-ret');
+    if (cn) cn.value = companySettings.company_name || '';
+    if (pt) pt.value = companySettings.default_payment_terms || 'Due on receipt';
+    if (dr) dr.value = companySettings.default_retainage || 10;
+    if (companySettings.logo_filename) loadLogoPreview();
+    if (companySettings.signature_filename) loadSigPreview();
+  } catch(e) { console.log('No settings yet'); }
+}
+
+async function saveSettings() {
+  try {
+    companySettings = await api('POST', '/settings', {
+      company_name: document.getElementById('set-company-name').value,
+      default_payment_terms: document.getElementById('set-payment-terms').value,
+      default_retainage: parseFloat(document.getElementById('set-default-ret').value) || 10
+    });
+    const msg = document.getElementById('settings-msg');
+    msg.textContent = 'Settings saved!'; msg.classList.remove('hidden');
+    setTimeout(() => msg.classList.add('hidden'), 3000);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function uploadLogo(input) {
+  const file = input.files[0]; if (!file) return;
+  const fd = new FormData(); fd.append('file', file);
+  try {
+    const r = await fetch('/api/settings/logo', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token }, body: fd });
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    companySettings.logo_filename = data.logo_filename;
+    loadLogoPreview();
+    const msg = document.getElementById('settings-msg');
+    msg.textContent = 'Logo saved!'; msg.classList.remove('hidden');
+    setTimeout(() => msg.classList.add('hidden'), 3000);
+  } catch(e) { alert('Logo error: ' + e.message); }
+}
+
+async function uploadSignature(input) {
+  const file = input.files[0]; if (!file) return;
+  const fd = new FormData(); fd.append('file', file);
+  try {
+    const r = await fetch('/api/settings/signature', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token }, body: fd });
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    companySettings.signature_filename = data.signature_filename;
+    loadSigPreview();
+    const msg = document.getElementById('settings-msg');
+    msg.textContent = 'Signature saved!'; msg.classList.remove('hidden');
+    setTimeout(() => msg.classList.add('hidden'), 3000);
+  } catch(e) { alert('Signature error: ' + e.message); }
+}
+
+function loadLogoPreview() {
+  const url = '/api/settings/logo?token=' + token + '&t=' + Date.now();
+  document.querySelectorAll('.logo-preview-img').forEach(el => { el.src = url; el.style.display = 'block'; if(el.previousSibling) el.previousSibling.remove(); });
+  const lb = document.getElementById('preview-logo-box');
+  if (lb) lb.innerHTML = '<img src="' + url + '" style="width:100%;height:100%;object-fit:contain"/>';
+}
+
+function loadSigPreview() {
+  const url = '/api/settings/signature?token=' + token + '&t=' + Date.now();
+  document.querySelectorAll('.sig-preview-img').forEach(el => { el.src = url; el.style.display = 'block'; });
+  const area = document.getElementById('sig-contractor-img');
+  if (area) area.innerHTML = '<img src="' + url + '" style="max-height:40px;max-width:160px;display:block;margin:4px 0"/>';
+}
+
+// ===== EDIT PROJECT =====
+var editingProjectId = null;
+
+function showEditProject(id) {
+  editingProjectId = id;
+  showPage('edit-project');
+  loadEditProjectForm(id);
+}
+
+async function loadEditProjectForm(id) {
+  try {
+    const projects = await api('GET', '/projects');
+    const p = projects.find(x => x.id === id) || {};
+    document.getElementById('ep-name').value = p.name || '';
+    document.getElementById('ep-number').value = p.number || '';
+    document.getElementById('ep-owner').value = p.owner || '';
+    document.getElementById('ep-contractor').value = p.contractor || '';
+    document.getElementById('ep-architect').value = p.architect || '';
+    document.getElementById('ep-contact-name').value = p.contact_name || '';
+    document.getElementById('ep-contact-phone').value = p.contact_phone || '';
+    document.getElementById('ep-contact-email').value = p.contact_email || '';
+    document.getElementById('ep-area').value = p.building_area || '';
+    document.getElementById('ep-contract').value = p.original_contract || '';
+    document.getElementById('ep-contract-date').value = p.contract_date ? p.contract_date.split('T')[0] : '';
+    document.getElementById('ep-est-date').value = p.est_date ? p.est_date.split('T')[0] : '';
+    document.getElementById('ep-err').classList.add('hidden');
+    document.getElementById('ep-success').classList.add('hidden');
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function saveEditProject() {
+  if (!editingProjectId) return;
+  const name = document.getElementById('ep-name').value.trim();
+  const contract = document.getElementById('ep-contract').value.replace(/,/g, '');
+  if (!name) { document.getElementById('ep-err').textContent='Name required'; document.getElementById('ep-err').classList.remove('hidden'); return; }
+  if (!contract || isNaN(parseFloat(contract))) { document.getElementById('ep-err').textContent='Valid contract amount required'; document.getElementById('ep-err').classList.remove('hidden'); return; }
+  const cn=document.getElementById('ep-contact-name').value, cp=document.getElementById('ep-contact-phone').value, ce=document.getElementById('ep-contact-email').value;
+  try {
+    await api('PUT', '/projects/' + editingProjectId + '/full', {
+      name, number: document.getElementById('ep-number').value,
+      owner: document.getElementById('ep-owner').value,
+      contractor: document.getElementById('ep-contractor').value,
+      architect: document.getElementById('ep-architect').value,
+      contact: [cn,cp,ce].filter(Boolean).join(' - '),
+      contact_name: cn, contact_phone: cp, contact_email: ce,
+      building_area: document.getElementById('ep-area').value,
+      original_contract: parseFloat(contract),
+      contract_date: document.getElementById('ep-contract-date').value || null,
+      est_date: document.getElementById('ep-est-date').value || null
+    });
+    document.getElementById('ep-err').classList.add('hidden');
+    document.getElementById('ep-success').classList.remove('hidden');
+    setTimeout(() => loadProject(editingProjectId), 1200);
+  } catch(e) { document.getElementById('ep-err').textContent=e.message; document.getElementById('ep-err').classList.remove('hidden'); }
+}
+
+if(token&&currentUser){setAuth({token,user:currentUser});}
+
+// ── ADMIN DASHBOARD ──────────────────────────────────────────────────────────
+const ADMIN_EMAILS_CLIENT = (window._adminEmails || '').split(',').map(e=>e.trim().toLowerCase());
+
+async function checkAdminAccess(){
+  // Ask the server — if /api/admin/stats returns 200, show the nav link
+  try {
+    const r = await fetch('/api/admin/stats', { headers:{ Authorization:'Bearer '+token } });
+    if(r.ok) document.getElementById('nav-admin').classList.remove('hidden');
+  } catch(e){}
+}
+
+function showAdmin(){
+  showPage('admin');
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
+  document.getElementById('nav-admin').classList.add('active');
+  loadAdminDash();
+}
+
+let adminUsersAll=[];
+
+async function loadAdminDash(){
+  document.getElementById('admin-loading').classList.remove('hidden');
+  document.getElementById('admin-content').classList.add('hidden');
+  try {
+    const [stats, users] = await Promise.all([
+      api('GET','/admin/stats'),
+      api('GET','/admin/users'),
+    ]);
+    adminUsersAll = users;
+    renderAdminKPIs(stats);
+    renderFeatureUsage(stats.featureUsage);
+    renderAdminErrors(stats.recentErrors?.rows || []);
+    renderSignupsChart(stats.dailySignups);
+    renderSlowReqs(stats.slowRequests);
+    renderAdminUsers(users);
+    renderAiHistory();
+    document.getElementById('admin-loading').classList.add('hidden');
+    document.getElementById('admin-content').classList.remove('hidden');
+  } catch(e){
+    document.getElementById('admin-loading').textContent = 'Error loading admin data: '+e.message;
+  }
+}
+
+function renderAdminKPIs(s){
+  const u=s.users, p=s.projects, pa=s.payapps, ev=s.events;
+  document.getElementById('admin-kpis').innerHTML=`
+    <div class="mc"><div class="mv">${u.total}</div><div class="ml">Total users</div><div class="ms">+${u.last7} this week</div></div>
+    <div class="mc"><div class="mv">${p.total}</div><div class="ml">Projects</div><div class="ms">+${p.last7} this week</div></div>
+    <div class="mc"><div class="mv">${pa.submitted}</div><div class="ml">Submitted pay apps</div><div class="ms">${pa.total} total created</div></div>
+    <div class="mc"><div class="mv">${ev.last24h}</div><div class="ml">Events today</div><div class="ms">${ev.total} all time</div></div>
+  `;
+}
+
+const EVENT_LABELS={
+  user_registered:'👤 Signups',user_login:'🔑 Logins',project_created:'📁 Projects created',
+  payapp_created:'📋 Pay apps created',payapp_submitted:'✅ Pay apps submitted',
+  pdf_downloaded:'📥 PDFs downloaded',payapp_lines_saved:'✏️ Lines saved',
+  login_failed:'⚠️ Failed logins',server_error:'💥 Server errors',slow_request:'🐢 Slow requests'
+};
+function renderFeatureUsage(rows){
+  if(!rows||!rows.length){document.getElementById('admin-feature-usage').innerHTML='<div style="color:var(--text2);font-size:12px;padding:8px 0">No events yet</div>';return;}
+  const max=Math.max(...rows.map(r=>parseInt(r.count)));
+  document.getElementById('admin-feature-usage').innerHTML=rows.map(r=>`
+    <div style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+        <span>${EVENT_LABELS[r.event]||r.event}</span>
+        <span style="font-weight:600">${r.count}</span>
+      </div>
+      <div style="height:6px;background:var(--bg3);border-radius:3px">
+        <div style="height:6px;background:var(--primary);border-radius:3px;width:${Math.round(parseInt(r.count)/max*100)}%"></div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderAdminErrors(rows){
+  if(!rows.length){document.getElementById('admin-errors').innerHTML='<div style="color:var(--text2);padding:8px 0">No errors 🎉</div>';return;}
+  document.getElementById('admin-errors').innerHTML=rows.map(r=>{
+    const m=typeof r.meta==='string'?JSON.parse(r.meta):r.meta;
+    const color=r.event==='server_error'?'#c00':'#e07020';
+    return `<div style="padding:5px 0;border-bottom:1px solid var(--border)">
+      <span style="color:${color};font-weight:600">${r.event}</span>
+      <span style="color:var(--text2);margin-left:6px">${m.path||m.email||''}</span>
+      <span style="float:right;color:var(--text3)">${new Date(r.created_at).toLocaleString()}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderSignupsChart(rows){
+  if(!rows||!rows.length){document.getElementById('admin-signups-chart').innerHTML='<div style="color:var(--text2);font-size:12px;padding:8px 0">No signups yet</div>';return;}
+  const max=Math.max(...rows.map(r=>parseInt(r.signups)),1);
+  const bars=rows.map(r=>{
+    const h=Math.max(4,Math.round(parseInt(r.signups)/max*80));
+    const day=new Date(r.day).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    return `<div style="display:inline-flex;flex-direction:column;align-items:center;margin-right:6px;min-width:32px" title="${day}: ${r.signups}">
+      <span style="font-size:10px;color:var(--text2)">${r.signups}</span>
+      <div style="width:24px;height:${h}px;background:var(--primary);border-radius:3px 3px 0 0"></div>
+      <span style="font-size:9px;color:var(--text3);writing-mode:vertical-lr;transform:rotate(180deg);height:40px">${day}</span>
+    </div>`;
+  }).join('');
+  document.getElementById('admin-signups-chart').innerHTML=`<div style="display:flex;align-items:flex-end;padding:8px 0 0">${bars}</div>`;
+}
+
+function renderSlowReqs(rows){
+  if(!rows||!rows.length){document.getElementById('admin-slow-reqs').innerHTML='<div style="color:var(--text2);padding:8px 0">No slow requests in the last 7 days ✅</div>';return;}
+  document.getElementById('admin-slow-reqs').innerHTML=`<table style="width:100%;font-size:12px"><thead><tr>
+    <th style="text-align:left;padding:4px 8px;color:var(--text2)">Endpoint</th>
+    <th class="r" style="padding:4px 8px;color:var(--text2)">Avg (ms)</th>
+    <th class="r" style="padding:4px 8px;color:var(--text2)">Occurrences</th>
+  </tr></thead><tbody>`+rows.map(r=>`<tr>
+    <td style="padding:4px 8px;font-family:monospace">${r.path}</td>
+    <td class="r" style="padding:4px 8px;color:${r.avg_ms>5000?'#c00':'#e07020'};font-weight:600">${Math.round(r.avg_ms)}ms</td>
+    <td class="r" style="padding:4px 8px">${r.hits}</td>
+  </tr>`).join('')+'</tbody></table>';
+}
+
+function renderAdminUsers(users){
+  document.getElementById('admin-users-body').innerHTML=users.map(u=>{
+    // Status badges
+    const blockedBadge=u.blocked?`<span class="badge" style="background:var(--red-light);color:var(--red);margin-right:3px">blocked</span>`:'';
+    const verifiedBadge=u.email_verified
+      ?`<span class="badge badge-green">verified</span>`
+      :`<span class="badge" style="background:var(--amber-light);color:var(--amber)">unverified</span>`;
+    const googleBadge=u.google_id?`<span class="badge badge-blue" style="margin-left:3px">G</span>`:'';
+    // Action buttons
+    const blockBtn=u.blocked
+      ?`<button class="btn btn-sm" onclick="adminUnblockUser(${u.id})" style="color:var(--green);border-color:var(--green)">Unblock</button>`
+      :`<button class="btn btn-sm btn-danger" onclick="adminBlockUser(${u.id})">Block</button>`;
+    const verifyBtn=u.email_verified?''
+      :`<button class="btn btn-sm" onclick="adminVerifyUser(${u.id})" style="color:var(--blue);border-color:var(--blue)">Verify</button>`;
+    const deleteBtn=`<button class="btn btn-sm btn-danger" onclick="adminDeleteUser(${u.id},'${u.name.replace(/'/g,"\\'")}')">Delete</button>`;
+    return `<tr>
+      <td style="padding:6px 8px">${u.name}</td>
+      <td style="padding:6px 8px;color:var(--text2)">${u.email}</td>
+      <td style="padding:6px 8px;color:var(--text2);font-size:11px">${new Date(u.created_at).toLocaleDateString()}</td>
+      <td class="r" style="padding:6px 8px">${u.project_count}</td>
+      <td class="r" style="padding:6px 8px">${u.payapp_count}</td>
+      <td class="r" style="padding:6px 8px;color:${u.submitted_count>0?'var(--green)':'var(--text2)'}">${u.submitted_count}</td>
+      <td style="padding:6px 8px;color:var(--text2);font-size:11px">${u.last_active?new Date(u.last_active).toLocaleDateString():'—'}</td>
+      <td style="padding:6px 8px;white-space:nowrap">${blockedBadge}${verifiedBadge}${googleBadge}</td>
+      <td style="padding:6px 8px;white-space:nowrap;display:flex;gap:5px">${blockBtn}${verifyBtn}${deleteBtn}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function adminBlockUser(id){
+  const reason=prompt('Reason for blocking (optional):');
+  if(reason===null)return; // cancelled
+  try{
+    await api('POST','/admin/users/'+id+'/block',{reason});
+    loadAdminDash();
+  }catch(e){alert('Error: '+e.message);}
+}
+async function adminUnblockUser(id){
+  try{await api('POST','/admin/users/'+id+'/unblock',{});loadAdminDash();}
+  catch(e){alert('Error: '+e.message);}
+}
+async function adminVerifyUser(id){
+  try{await api('POST','/admin/users/'+id+'/verify-email',{});loadAdminDash();}
+  catch(e){alert('Error: '+e.message);}
+}
+async function adminDeleteUser(id,name){
+  if(!confirm(`Permanently delete user "${name}" and ALL their data? This cannot be undone.`))return;
+  try{await api('DELETE','/admin/users/'+id,null);loadAdminDash();}
+  catch(e){alert('Error: '+e.message);}
+}
+
+function filterAdminUsers(q){
+  const filtered=adminUsersAll.filter(u=>
+    u.name.toLowerCase().includes(q.toLowerCase())||
+    u.email.toLowerCase().includes(q.toLowerCase())
+  );
+  renderAdminUsers(filtered);
+}
+
+let adminAiHistory=[];
+
+async function adminAsk(){
+  const inp=document.getElementById('admin-ai-input');
+  const question=inp.value.trim();
+  if(!question)return;
+  inp.value='';
+  const btn=document.getElementById('admin-ai-btn');
+  btn.disabled=true;btn.textContent='Thinking…';
+  // Append user message to history display
+  adminAiHistory.push({role:'user',content:question});
+  renderAiHistory();
+  try{
+    const res=await api('POST','/admin/ask',{question,history:adminAiHistory.slice(-10)});
+    adminAiHistory.push({role:'assistant',content:res.answer});
+    renderAiHistory();
+  }catch(e){
+    adminAiHistory.push({role:'assistant',content:'⚠️ Error: '+e.message});
+    renderAiHistory();
+  }finally{
+    btn.disabled=false;btn.textContent='Ask AI';
+    // Scroll chat to bottom
+    const h=document.getElementById('admin-ai-history');
+    h.scrollTop=h.scrollHeight;
+  }
+}
+
+function renderAiHistory(){
+  const el=document.getElementById('admin-ai-history');
+  if(!adminAiHistory.length){
+    el.innerHTML='<div style="color:var(--text3);padding:8px 0">Ask anything about signups, usage, errors, retention, or feature adoption.</div>';
+    return;
+  }
+  el.innerHTML=adminAiHistory.map(m=>{
+    const isUser=m.role==='user';
+    return `<div style="margin-bottom:10px">
+      <div style="font-size:10px;font-weight:600;color:${isUser?'var(--blue)':'var(--text2)'};margin-bottom:2px">${isUser?'You':'Claude'}</div>
+      <div style="background:${isUser?'var(--blue-light)':'var(--bg3)'};border-radius:var(--radius);padding:8px 10px;white-space:pre-wrap;line-height:1.5">${m.content}</div>
+    </div>`;
+  }).join('');
+  el.scrollTop=el.scrollHeight;
+}
+
+// PWA service worker registration
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('/sw.js').catch(e=>console.log('SW registration failed:',e));
+  });
+}
+</script>
+</body>
+</html>
