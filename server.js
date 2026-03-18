@@ -635,6 +635,89 @@ function parseSOVFile(filePath) {
   return { headers: ['Item #','Description','Scheduled Value'], sheetName, allRows, parentRows, iItem, iDesc, iAmt };
 }
 
+// ── Node.js PDF/DOCX SOV parser (replaces Python parse_sov.py) ─────────────────
+// Parses contractor estimate PDFs and Word docs into line items.
+// Uses pdf-parse (PDF) and mammoth (DOCX) — pure JS, no Python needed.
+
+const SKIP_RE = /^(\*|•|·|–|—|-{2,})|^(subtotal|total|tax|overhead|company overhead|balance due|amount paid|terms|signature|page \d|note[:\s]|excludes|it is an honor|we thank|sincerely|dear |http|www\.)/i;
+
+function extractAmounts(text) {
+  const matches = text.match(/\$[\d,]+(?:\.\d{1,2})?/g) || [];
+  return matches.map(m => parseFloat(m.replace(/[$,]/g, '')));
+}
+
+function cleanDesc(s) {
+  return s.replace(/^[\*\•\-–—·]+\s*/, '').replace(/\s+/g, ' ').trim();
+}
+
+function rowsFromLines(lines) {
+  const rows = [];
+  const seen = new Set();
+  let counter = 1000;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line.length < 5) continue;
+    if (SKIP_RE.test(line)) continue;
+    const amounts = extractAmounts(line);
+    if (!amounts.length) continue;
+    const total = amounts[amounts.length - 1];
+    if (total <= 0) continue;
+    // Description = everything before the first dollar sign
+    let desc = cleanDesc(line.replace(/\s*\$[\d,]+(?:\.\d{1,2})?.*$/, '').trim());
+    if (desc.length < 4 || /^[\d\s.\-]+$/.test(desc)) continue;
+    if (SKIP_RE.test(desc)) continue;
+    const key = desc.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({ item_id: String(counter), description: desc, scheduled_value: Math.round(total * 100) / 100 });
+    counter += 1000;
+  }
+  return rows;
+}
+
+async function parseSOVFromText(filePath, ext) {
+  if (ext === '.pdf') {
+    const pdfParse = require('pdf-parse');
+    const buf = fs.readFileSync(filePath);
+    const data = await pdfParse(buf);
+    return rowsFromLines((data.text || '').split('\n'));
+  } else if (ext === '.docx' || ext === '.doc') {
+    const mammoth = require('mammoth');
+    // Try tables first (most structured)
+    const rawResult = await mammoth.extractRawText({ path: filePath });
+    const lines = (rawResult.value || '').split('\n');
+    // Also try HTML to capture table cell content
+    const htmlResult = await mammoth.convertToHtml({ path: filePath });
+    const html = htmlResult.value || '';
+    // Extract table cells: each <td> on its own line for better row detection
+    const tableCells = [];
+    const trMatches = html.match(/<tr[^>]*>([\s\S]*?)<\/tr>/gi) || [];
+    for (const tr of trMatches) {
+      const cells = (tr.match(/<td[^>]*>([\s\S]*?)<\/td>/gi) || [])
+        .map(td => td.replace(/<[^>]+>/g, ' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' ').replace(/\s+/g,' ').trim())
+        .filter(Boolean);
+      if (cells.length >= 2) {
+        // Find rightmost cell with a dollar amount as the value
+        let amtIdx = -1;
+        for (let i = cells.length - 1; i >= 0; i--) {
+          if (extractAmounts(cells[i]).length) { amtIdx = i; break; }
+        }
+        if (amtIdx < 0) continue;
+        const descCandidates = cells.slice(0, amtIdx).filter(c => c.length > 3 && !extractAmounts(c).length);
+        if (!descCandidates.length) continue;
+        const desc = descCandidates.reduce((a, b) => a.length >= b.length ? a : b);
+        const amt = extractAmounts(cells[amtIdx]).slice(-1)[0];
+        tableCells.push(`${desc} $${amt}`);
+      }
+    }
+    const tableRows = rowsFromLines(tableCells);
+    if (tableRows.length > 0) return tableRows;
+    // Fallback: plain text lines
+    return rowsFromLines(lines);
+  }
+  return [];
+}
+
 app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const cleanup = () => { try { if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); } catch(_){} };
@@ -643,13 +726,15 @@ app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
     let result;
 
     if (ext === '.pdf' || ext === '.docx' || ext === '.doc') {
-      // Python parser handles contractor estimate PDFs and Word docs
-      const { execSync } = require('child_process');
-      const scriptPath = path.join(__dirname, 'parse_sov.py');
-      const raw = execSync(`python3 "${scriptPath}" "${req.file.path}"`, { encoding: 'utf8', timeout: 30000 });
-      result = JSON.parse(raw.trim());
-      if (result.error) throw new Error(result.error);
-      result.filename = req.file.originalname;
+      // Node.js parser for PDFs and Word docs (no Python dependency)
+      const rows = await parseSOVFromText(req.file.path, ext);
+      if (!rows || rows.length === 0) throw new Error('No line items with dollar amounts found in this file.');
+      result = {
+        rows, all_rows: rows,
+        row_count: rows.length, total_rows: rows.length,
+        filename: req.file.originalname,
+        sheet_used: ext.replace('.','').toUpperCase()
+      };
     } else {
       // Existing Node/XLSX parser for .xlsx/.xls/.csv
       const parsed = parseSOVFile(req.file.path);
