@@ -1,7 +1,7 @@
 // Construction AI Billing — Service Worker
 // Caches static shell for fast load; API calls always go to network.
-const CACHE_NAME = 'caib-v1';
-const STATIC_ASSETS = ['/', '/index.html'];
+const CACHE_NAME = 'caib-v2';
+const STATIC_ASSETS = ['/', '/index.html', '/varshyl-logo.png', '/manifest.json'];
 
 self.addEventListener('install', e => {
   e.waitUntil(

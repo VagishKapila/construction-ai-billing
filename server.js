@@ -931,10 +931,10 @@ app.get('/api/settings', auth, async (req,res) => {
 });
 
 app.post('/api/settings', auth, async (req,res) => {
-  const {company_name,default_payment_terms,default_retainage,contact_name,contact_phone,contact_email} = req.body;
+  const {company_name,default_payment_terms,default_retainage,contact_name,contact_phone,contact_email,job_number_format} = req.body;
   const r = await pool.query(
-    `INSERT INTO company_settings(user_id,company_name,default_payment_terms,default_retainage,contact_name,contact_phone,contact_email)
-     VALUES($1,$2,$3,$4,$5,$6,$7)
+    `INSERT INTO company_settings(user_id,company_name,default_payment_terms,default_retainage,contact_name,contact_phone,contact_email,job_number_format)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8)
      ON CONFLICT(user_id) DO UPDATE SET
        company_name=EXCLUDED.company_name,
        default_payment_terms=EXCLUDED.default_payment_terms,
@@ -942,9 +942,10 @@ app.post('/api/settings', auth, async (req,res) => {
        contact_name=EXCLUDED.contact_name,
        contact_phone=EXCLUDED.contact_phone,
        contact_email=EXCLUDED.contact_email,
+       job_number_format=EXCLUDED.job_number_format,
        updated_at=NOW()
      RETURNING *`,
-    [req.user.id,company_name,default_payment_terms||'Due on receipt',default_retainage||10,contact_name||null,contact_phone||null,contact_email||null]
+    [req.user.id,company_name,default_payment_terms||'Due on receipt',default_retainage||10,contact_name||null,contact_phone||null,contact_email||null,job_number_format||null]
   );
   res.json(r.rows[0]);
 });
@@ -1189,6 +1190,600 @@ app.get('/api/admin/weekly-insight', adminAuth, async (req, res) => {
   req.body = { question: 'Give me a complete weekly business summary. What is growing, what is slowing, what needs my attention, and what is one thing I should do this week to improve the product or grow the user base? Format as clear sections.' };
   return require('./server').handleAdminAsk ? require('./server').handleAdminAsk(req, res) : res.redirect('/api/admin/ask');
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PHASE 1 ROUTES
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── TEAM MEMBERS ───────────────────────────────────────────────────────────
+app.get('/api/team', auth, async (req, res) => {
+  const r = await pool.query('SELECT * FROM team_members WHERE owner_user_id=$1 ORDER BY created_at', [req.user.id]);
+  res.json(r.rows);
+});
+
+app.post('/api/team', auth, async (req, res) => {
+  const { email, name, role } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email required' });
+  const validRoles = ['admin','accountant','executive','pm','field'];
+  if (role && !validRoles.includes(role)) return res.status(400).json({ error: 'Invalid role' });
+  try {
+    const inviteToken = generateToken();
+    const r = await pool.query(
+      'INSERT INTO team_members(owner_user_id,email,name,role,invite_token) VALUES($1,$2,$3,$4,$5) RETURNING *',
+      [req.user.id, email, name||null, role||'field', inviteToken]
+    );
+    // Send invite email (non-blocking)
+    const inviter = (await pool.query('SELECT name,email FROM users WHERE id=$1',[req.user.id])).rows[0];
+    sendTeamInviteEmail(email, name||email, inviter, inviteToken).catch(e => console.error('Invite email error:', e.message));
+    await logEvent(req.user.id, 'team_member_invited', { email, role: role||'field' });
+    res.json(r.rows[0]);
+  } catch(e) {
+    if (e.code === '23505') return res.status(400).json({ error: 'This email is already on your team' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/team/:id', auth, async (req, res) => {
+  const { name, role } = req.body;
+  const r = await pool.query(
+    'UPDATE team_members SET name=COALESCE($1,name), role=COALESCE($2,role) WHERE id=$3 AND owner_user_id=$4 RETURNING *',
+    [name||null, role||null, req.params.id, req.user.id]
+  );
+  if (!r.rows[0]) return res.status(404).json({ error: 'Not found' });
+  res.json(r.rows[0]);
+});
+
+app.delete('/api/team/:id', auth, async (req, res) => {
+  const r = await pool.query('DELETE FROM team_members WHERE id=$1 AND owner_user_id=$2 RETURNING *', [req.params.id, req.user.id]);
+  if (!r.rows[0]) return res.status(404).json({ error: 'Not found' });
+  await logEvent(req.user.id, 'team_member_removed', { email: r.rows[0].email });
+  res.json({ ok: true });
+});
+
+// Accept team invite — sets invite_accepted=true on the team_members row
+app.get('/api/auth/accept-invite/:token', async (req, res) => {
+  try {
+    const r = await pool.query(
+      'UPDATE team_members SET invite_accepted=TRUE WHERE invite_token=$1 RETURNING *',
+      [req.params.token]
+    );
+    if (!r.rows[0]) return res.redirect('/?invite_error=invalid');
+    res.redirect('/?invite_accepted=1');
+  } catch(e) { res.redirect('/?invite_error=server'); }
+});
+
+async function sendTeamInviteEmail(toEmail, toName, inviter, token) {
+  const apiKey = process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY;
+  const fromEmail = process.env.FROM_EMAIL || 'noreply@constructai.app';
+  const appUrl = process.env.APP_URL || 'http://localhost:3000';
+  if (!apiKey) {
+    console.log(`[DEV] Team invite for ${toEmail}: ${appUrl}/api/auth/accept-invite/${token}`);
+    return;
+  }
+  const html = `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">
+    <h2 style="color:#185FA5">You've been invited to Construction AI Billing</h2>
+    <p>Hi ${toName},</p>
+    <p>${inviter.name} (${inviter.email}) has added you to their team on Construction AI Billing.</p>
+    <a href="${appUrl}/api/auth/accept-invite/${token}" style="display:inline-block;background:#185FA5;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;margin:16px 0">Accept Invitation →</a>
+    <p style="color:#888;font-size:12px">If you didn't expect this invitation, you can ignore this email.</p>
+  </div>`;
+  const isResend = !!process.env.RESEND_API_KEY;
+  const payload = isResend
+    ? { from: fromEmail, to: [toEmail], subject: `${inviter.name} invited you to Construction AI Billing`, html }
+    : { personalizations:[{to:[{email:toEmail}]}], from:{email:fromEmail},
+        subject:`${inviter.name} invited you to Construction AI Billing`,
+        content:[{type:'text/html',value:html}] };
+  await fetch(isResend ? 'https://api.resend.com/emails' : 'https://api.sendgrid.com/v3/mail/send', {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json', Authorization:`Bearer ${apiKey}` },
+    body: JSON.stringify(payload),
+  });
+}
+
+// ── JOB NUMBER AUTO-GENERATION ─────────────────────────────────────────────
+// Format: CITY-STATE-SEQNUM  e.g. OAK-CA-0042
+// City/state derived from project location or company settings
+app.get('/api/settings/job-number/next', auth, async (req, res) => {
+  try {
+    const { city, state } = req.query;
+    // Increment the company's job_number_seq atomically
+    const r = await pool.query(
+      `UPDATE company_settings
+         SET job_number_seq = COALESCE(job_number_seq, 0) + 1
+         WHERE user_id = $1
+         RETURNING job_number_seq, job_number_format`,
+      [req.user.id]
+    );
+    if (!r.rows[0]) {
+      // No settings row yet — insert it
+      const ins = await pool.query(
+        `INSERT INTO company_settings(user_id, job_number_seq) VALUES($1, 1) RETURNING job_number_seq, job_number_format`,
+        [req.user.id]
+      );
+      r.rows[0] = ins.rows[0];
+    }
+    const seq = r.rows[0].job_number_seq || 1;
+    const fmt = r.rows[0].job_number_format;
+
+    let jobNumber;
+    if (fmt) {
+      // Custom format: replace {CITY}, {STATE}, {SEQ}, {YEAR} tokens
+      const year = new Date().getFullYear();
+      jobNumber = fmt
+        .replace(/{CITY}/gi, (city||'XX').toUpperCase().slice(0,4))
+        .replace(/{STATE}/gi, (state||'XX').toUpperCase().slice(0,2))
+        .replace(/{SEQ}/gi, String(seq).padStart(4,'0'))
+        .replace(/{YEAR}/gi, String(year));
+    } else {
+      // Default: CITY-STATE-0042
+      const cityCode  = (city  ||'XX').replace(/[^A-Za-z]/g,'').toUpperCase().slice(0,4);
+      const stateCode = (state ||'XX').replace(/[^A-Za-z]/g,'').toUpperCase().slice(0,2);
+      jobNumber = `${cityCode}-${stateCode}-${String(seq).padStart(4,'0')}`;
+    }
+    res.json({ job_number: jobNumber, seq });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── CONTRACT UPLOAD + SMART EXTRACTION ────────────────────────────────────
+// Accepts PDF or DOCX; extracts key billing fields via text heuristics (no AI API cost)
+app.post('/api/projects/:id/contract', auth, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  // Verify project ownership
+  const proj = await pool.query('SELECT id FROM projects WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+  if (!proj.rows[0]) { fs.unlinkSync(req.file.path); return res.status(403).json({ error: 'Forbidden' }); }
+
+  try {
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    let text = '';
+
+    if (ext === '.pdf') {
+      const pdfParse = require('pdf-parse');
+      const buf = fs.readFileSync(req.file.path);
+      const data = await pdfParse(buf);
+      text = data.text || '';
+    } else if (ext === '.docx' || ext === '.doc') {
+      const mammoth = require('mammoth');
+      const result = await mammoth.extractRawText({ path: req.file.path });
+      text = result.value || '';
+    } else {
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: 'Only PDF and Word documents are supported for contract upload.' });
+    }
+
+    const extracted = extractContractFields(text);
+    const contractType = detectContractType(text);
+
+    // Delete any previous contract for this project (replace with new upload)
+    const old = await pool.query('SELECT filename FROM contracts WHERE project_id=$1', [req.params.id]);
+    for (const row of old.rows) {
+      const fp = path.join(__dirname, 'uploads', row.filename);
+      if (fs.existsSync(fp)) fs.unlinkSync(fp);
+    }
+    await pool.query('DELETE FROM contracts WHERE project_id=$1', [req.params.id]);
+
+    const r = await pool.query(
+      'INSERT INTO contracts(project_id,filename,original_name,file_size,contract_type,extracted) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',
+      [req.params.id, req.file.filename, req.file.originalname, req.file.size, contractType, JSON.stringify(extracted)]
+    );
+    await logEvent(req.user.id, 'contract_uploaded', { project_id: parseInt(req.params.id), contract_type: contractType });
+    res.json({ ...r.rows[0], extracted });
+  } catch(e) {
+    try { fs.unlinkSync(req.file.path); } catch(_) {}
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/projects/:id/contract', auth, async (req, res) => {
+  const proj = await pool.query('SELECT id FROM projects WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+  if (!proj.rows[0]) return res.status(403).json({ error: 'Forbidden' });
+  const r = await pool.query('SELECT * FROM contracts WHERE project_id=$1 ORDER BY uploaded_at DESC LIMIT 1', [req.params.id]);
+  res.json(r.rows[0] || null);
+});
+
+function detectContractType(text) {
+  const t = text.toLowerCase();
+  if (/a201|a101|a102|a133|aia\s+document/i.test(t)) return 'aia';
+  if (/standard\s+form\s+of\s+agreement/i.test(t)) return 'aia';
+  if (/wawf|wide\s+area\s+work\s+flow|dfars|defense\s+contract/i.test(t)) return 'federal_dod';
+  if (/sf-?1034|sf-?1035|ipp|invoice\s+processing\s+platform|far\s+part/i.test(t)) return 'federal_civilian';
+  if (/department\s+of\s+defense|army\s+corps|navfac|afcec/i.test(t)) return 'federal_dod';
+  if (/state\s+of\s+(california|virginia|washington\s+dc)/i.test(t)) return 'state';
+  if (/subcontract/i.test(t)) return 'subcontract';
+  return 'unknown';
+}
+
+function extractContractFields(text) {
+  const fields = {};
+
+  // Contract sum / original contract amount
+  const sumPatterns = [
+    /contract\s+sum[^$\d]*\$?([\d,]+(?:\.\d{2})?)/i,
+    /total\s+contract\s+(?:price|amount|value)[^$\d]*\$?([\d,]+(?:\.\d{2})?)/i,
+    /contract\s+(?:price|amount)[^$\d]*\$?([\d,]+(?:\.\d{2})?)/i,
+    /original\s+contract[^$\d]*\$?([\d,]+(?:\.\d{2})?)/i,
+    /total\s+(?:bid|price)[^$\d]*\$?([\d,]+(?:\.\d{2})?)/i,
+    /\btotal\b[^$\d\n]*\$\s*([\d,]+(?:\.\d{2})?)/i,
+  ];
+  for (const p of sumPatterns) {
+    const m = text.match(p);
+    if (m) { fields.contract_sum = parseFloat(m[1].replace(/,/g,'')); break; }
+  }
+
+  // Retainage percentage
+  const retPatterns = [
+    /retainage\s+(?:of\s+)?(\d+(?:\.\d+)?)\s*%/i,
+    /(\d+(?:\.\d+)?)\s*%\s+retainage/i,
+    /retain\s+(\d+(?:\.\d+)?)\s*%/i,
+    /withhold\s+(\d+(?:\.\d+)?)\s*%/i,
+  ];
+  for (const p of retPatterns) {
+    const m = text.match(p);
+    if (m) { fields.retainage_pct = parseFloat(m[1]); break; }
+  }
+
+  // Owner name
+  const ownerM = text.match(/(?:^|\n)\s*owner[:\s]+([A-Z][^\n,]{3,60})(?:\n|,)/im);
+  if (ownerM) fields.owner = ownerM[1].trim();
+
+  // Contractor name
+  const contrM = text.match(/(?:^|\n)\s*(?:general\s+)?contractor[:\s]+([A-Z][^\n,]{3,60})(?:\n|,)/im);
+  if (contrM) fields.contractor = contrM[1].trim();
+
+  // Contract date
+  const datePatterns = [
+    /(?:contract\s+date|dated)[:\s]+([A-Za-z]+ \d{1,2},? \d{4})/i,
+    /(?:contract\s+date|dated)[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+    /as\s+of\s+([A-Za-z]+ \d{1,2},? \d{4})/i,
+  ];
+  for (const p of datePatterns) {
+    const m = text.match(p);
+    if (m) { fields.contract_date = m[1].trim(); break; }
+  }
+
+  // Substantial completion / project end date
+  const compM = text.match(/substantial\s+completion[:\s]+([A-Za-z]+ \d{1,2},? \d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i);
+  if (compM) fields.completion_date = compM[1].trim();
+
+  // Payment terms
+  const termsM = text.match(/payment\s+(?:due|terms)[:\s]+([^\n.]{5,60})/i);
+  if (termsM) fields.payment_terms = termsM[1].trim();
+
+  // Federal: Contract/Order Number (PIID)
+  const piidM = text.match(/(?:contract|order)\s+(?:number|no\.?)[:\s]+([A-Z0-9\-]{8,20})/i);
+  if (piidM) fields.contract_number = piidM[1].trim();
+
+  // Federal: CAGE code
+  const cageM = text.match(/cage\s+(?:code)?[:\s]+([A-Z0-9]{5})\b/i);
+  if (cageM) fields.cage_code = cageM[1].trim();
+
+  // Federal: Period of Performance
+  const popM = text.match(/period\s+of\s+performance[:\s]+([^\n.]{10,60})/i);
+  if (popM) fields.period_of_performance = popM[1].trim();
+
+  return fields;
+}
+
+// ── LIEN DOCUMENTS (California + Virginia + DC) ────────────────────────────
+app.get('/api/projects/:id/lien-docs', auth, async (req, res) => {
+  const proj = await pool.query('SELECT id FROM projects WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+  if (!proj.rows[0]) return res.status(403).json({ error: 'Forbidden' });
+  const r = await pool.query('SELECT * FROM lien_documents WHERE project_id=$1 ORDER BY created_at DESC', [req.params.id]);
+  res.json(r.rows);
+});
+
+// POST /api/projects/:id/lien-docs  — generate a lien document PDF
+// Body: { doc_type, through_date, amount, maker_of_check, check_payable_to,
+//         signatory_name, signatory_title, jurisdiction }
+app.post('/api/projects/:id/lien-docs', auth, async (req, res) => {
+  const proj = await pool.query(
+    'SELECT p.*, cs.company_name, cs.logo_filename FROM projects p LEFT JOIN company_settings cs ON cs.user_id=p.user_id WHERE p.id=$1 AND p.user_id=$2',
+    [req.params.id, req.user.id]
+  );
+  if (!proj.rows[0]) return res.status(403).json({ error: 'Forbidden' });
+  const project = proj.rows[0];
+
+  const {
+    doc_type, through_date, amount, maker_of_check, check_payable_to,
+    signatory_name, signatory_title, pay_app_id,
+    jurisdiction = project.jurisdiction || 'california'
+  } = req.body;
+
+  if (!doc_type) return res.status(400).json({ error: 'doc_type required' });
+  if (!signatory_name) return res.status(400).json({ error: 'signatory_name required' });
+
+  const signedAt = new Date();
+  const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+
+  // Generate PDF to a temp file
+  const fname = `lien_${doc_type}_${req.params.id}_${Date.now()}.pdf`;
+  const fpath = path.join(__dirname, 'uploads', fname);
+
+  try {
+    await generateLienDocPDF({
+      fpath, doc_type, project, through_date, amount, maker_of_check,
+      check_payable_to, signatory_name, signatory_title, signedAt, ip, jurisdiction
+    });
+
+    const r = await pool.query(
+      `INSERT INTO lien_documents(project_id, pay_app_id, doc_type, filename, jurisdiction,
+         through_date, amount, maker_of_check, check_payable_to,
+         signatory_name, signatory_title, signed_at, signatory_ip)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+      [req.params.id, pay_app_id||null, doc_type, fname, jurisdiction,
+       through_date||null, amount||null, maker_of_check||null, check_payable_to||null,
+       signatory_name, signatory_title||null, signedAt, ip]
+    );
+    await logEvent(req.user.id, 'lien_doc_generated', { project_id: parseInt(req.params.id), doc_type, jurisdiction });
+    res.json(r.rows[0]);
+  } catch(e) {
+    try { if (fs.existsSync(fpath)) fs.unlinkSync(fpath); } catch(_) {}
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Serve lien document PDF
+app.get('/api/lien-docs/:id/pdf', async (req, res) => {
+  const token = req.query.token || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
+  let decoded;
+  try { decoded = jwt.verify(token, JWT_SECRET); } catch(e) { return res.status(401).json({ error: 'Invalid token' }); }
+
+  const r = await pool.query(
+    'SELECT ld.* FROM lien_documents ld JOIN projects p ON p.id=ld.project_id WHERE ld.id=$1 AND p.user_id=$2',
+    [req.params.id, decoded.id]
+  );
+  if (!r.rows[0]) return res.status(404).json({ error: 'Not found' });
+  const fp = path.join(__dirname, 'uploads', r.rows[0].filename);
+  if (!fs.existsSync(fp)) return res.status(404).json({ error: 'File not found' });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${r.rows[0].doc_type}_${r.rows[0].id}.pdf"`);
+  res.sendFile(fp);
+});
+
+async function generateLienDocPDF({ fpath, doc_type, project, through_date, amount,
+  maker_of_check, check_payable_to, signatory_name, signatory_title, signedAt, ip, jurisdiction }) {
+
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'LETTER', margin: 60 });
+    const stream = fs.createWriteStream(fpath);
+    doc.pipe(stream);
+    stream.on('finish', resolve);
+    stream.on('error', reject);
+
+    const fmtAmt = n => n ? '$' + parseFloat(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '[AMOUNT]';
+    const fmtDate = d => d ? new Date(d).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : '[DATE]';
+    const projectName = project.name || '[Project Name]';
+    const ownerName = project.owner || '[Owner]';
+    const contractorName = project.contractor || project.company_name || '[Contractor]';
+    const loc = [project.contact, project.city, project.state].filter(Boolean).join(', ') || '[Project Location]';
+
+    // ── Company logo (top-right) ────────────────────────────────────────────
+    if (project.logo_filename) {
+      const logoPath = path.join(__dirname, 'uploads', project.logo_filename);
+      if (fs.existsSync(logoPath)) {
+        try { doc.image(logoPath, 400, 50, { width: 120, height: 60, fit: [120,60] }); } catch(_) {}
+      }
+    }
+
+    // ── Document title ──────────────────────────────────────────────────────
+    let title = '';
+    if (doc_type === 'preliminary_notice') {
+      title = jurisdiction === 'california'
+        ? 'PRELIMINARY NOTICE (California Civil Code §8200–8216)'
+        : jurisdiction === 'virginia'
+          ? 'NOTICE TO OWNER (Virginia Code §43-4)'
+          : 'NOTICE TO OWNER / NOTICE OF CONTRACT';
+    } else if (doc_type === 'conditional_waiver') {
+      title = jurisdiction === 'california'
+        ? 'CONDITIONAL WAIVER AND RELEASE ON PROGRESS PAYMENT\n(Civil Code Section 8132)'
+        : 'CONDITIONAL WAIVER AND RELEASE ON PROGRESS PAYMENT';
+    } else if (doc_type === 'unconditional_waiver') {
+      title = jurisdiction === 'california'
+        ? 'UNCONDITIONAL WAIVER AND RELEASE ON PROGRESS PAYMENT\n(Civil Code Section 8134)'
+        : 'UNCONDITIONAL WAIVER AND RELEASE ON PROGRESS PAYMENT';
+    } else if (doc_type === 'conditional_final_waiver') {
+      title = 'CONDITIONAL WAIVER AND RELEASE ON FINAL PAYMENT\n(Civil Code Section 8136)';
+    } else if (doc_type === 'unconditional_final_waiver') {
+      title = 'UNCONDITIONAL WAIVER AND RELEASE ON FINAL PAYMENT\n(Civil Code Section 8138)';
+    }
+
+    doc.fontSize(13).font('Helvetica-Bold').text(title, { align: 'center' });
+    doc.moveDown(0.5);
+    doc.moveTo(60, doc.y).lineTo(552, doc.y).lineWidth(0.75).stroke();
+    doc.moveDown(0.5);
+
+    // ── Project info block ──────────────────────────────────────────────────
+    doc.fontSize(9).font('Helvetica');
+    const infoRows = [
+      ['Project Name:', projectName],
+      ['Property Owner:', ownerName],
+      ['General Contractor:', contractorName],
+      ['Project Location:', loc],
+      ...(through_date ? [['Through Date:', fmtDate(through_date)]] : []),
+    ];
+    for (const [label, value] of infoRows) {
+      const y = doc.y;
+      doc.font('Helvetica-Bold').text(label, 60, y, { width: 140, continued: false });
+      doc.font('Helvetica').text(value, 205, y, { width: 340 });
+    }
+    doc.moveDown(0.8);
+
+    // ── Statutory body text ─────────────────────────────────────────────────
+    doc.fontSize(9).font('Helvetica');
+
+    if (doc_type === 'preliminary_notice' && jurisdiction === 'california') {
+      doc.font('Helvetica-Bold').text('NOTICE TO PROPERTY OWNER', { align: 'center' });
+      doc.moveDown(0.3);
+      doc.font('Helvetica').text(
+        'If bills are not paid in full for the labor, services, equipment, or materials furnished or to be furnished, ' +
+        'a mechanic\'s lien leading to the loss, through court foreclosure proceedings, of all or part of your property ' +
+        'being so improved may be placed against the property even though you have paid your contractor in full. You may ' +
+        'wish to protect yourself against this consequence by (1) requiring your contractor to furnish a signed release by ' +
+        'the person or firm giving you this notice before making payment to your contractor, or (2) any other method or ' +
+        'device that is appropriate under the circumstances.',
+        { align: 'justify' }
+      );
+      doc.moveDown(0.5);
+      doc.font('Helvetica-Bold').text('NOTICE IS HEREBY GIVEN THAT:');
+      doc.moveDown(0.2);
+      doc.font('Helvetica').list([
+        `The undersigned, ${contractorName}, has furnished or will furnish labor, services, equipment, or materials of the following type: General Construction Services`,
+        `To: ${ownerName} (Owner) and ${contractorName} (General Contractor)`,
+        `For the improvement of property located at: ${loc}`,
+        `Project: ${projectName}`,
+      ], { bulletRadius: 2, textIndent: 15, indent: 10 });
+    } else if (doc_type === 'conditional_waiver' && jurisdiction === 'california') {
+      // Civil Code 8132 exact statutory language
+      doc.text(
+        `NOTICE: This document waives and releases lien and payment bond rights and stop payment notice rights based on a contract. ` +
+        `Read it before signing.`,
+        { align: 'justify' }
+      );
+      doc.moveDown(0.5);
+      doc.text(
+        `Upon receipt by the undersigned of a check from ${maker_of_check || '[Maker of Check]'} in the sum of ${fmtAmt(amount)} ` +
+        `payable to ${check_payable_to || contractorName} and when the check has been properly endorsed and has been paid by the bank ` +
+        `upon which it is drawn, this document shall become effective to release any mechanic's lien, stop payment notice, or bond right ` +
+        `the undersigned has on the job of ${ownerName} located at ${loc} to the following extent. This release covers a progress ` +
+        `payment for all labor, services, equipment, or materials furnished to ${ownerName} through ${fmtDate(through_date)}, ` +
+        `and does not cover any retention or items, conditions, or obligations for which the claimant has separately secured payment ` +
+        `in full. Before any recipient of this document relies on it, the recipient should verify evidence of payment to the undersigned.`,
+        { align: 'justify' }
+      );
+    } else if (doc_type === 'unconditional_waiver' && jurisdiction === 'california') {
+      // Civil Code 8134 exact statutory language
+      doc.text(
+        `NOTICE: This document waives and releases lien and payment bond rights and stop payment notice rights unconditionally and states ` +
+        `that you have been paid for giving up those rights. This document is enforceable against you if you sign it, even if you have ` +
+        `not been paid. Read it before signing.`,
+        { align: 'justify' }
+      );
+      doc.moveDown(0.5);
+      doc.text(
+        `The undersigned has been paid and has received a progress payment in the sum of ${fmtAmt(amount)} for all labor, services, ` +
+        `equipment, or materials furnished to ${ownerName} through ${fmtDate(through_date)} and does hereby release any mechanic's ` +
+        `lien, stop payment notice, or bond right the undersigned has on the job of ${ownerName} located at ${loc}. A payment of ` +
+        `${fmtAmt(amount)} was received on ${fmtDate(through_date)}.`,
+        { align: 'justify' }
+      );
+    } else if (doc_type === 'conditional_final_waiver' && jurisdiction === 'california') {
+      // Civil Code 8136
+      doc.text(
+        `NOTICE: This document waives and releases lien and payment bond rights and stop payment notice rights based on a final payment. ` +
+        `Read it before signing.`,
+        { align: 'justify' }
+      );
+      doc.moveDown(0.5);
+      doc.text(
+        `Upon receipt by the undersigned of a check from ${maker_of_check || '[Maker of Check]'} in the sum of ${fmtAmt(amount)} ` +
+        `payable to ${check_payable_to || contractorName} and when the check has been properly endorsed and has been paid by the bank ` +
+        `upon which it is drawn, this document shall become effective to release any mechanic's lien, stop payment notice, or bond right ` +
+        `the undersigned has on the job of ${ownerName} located at ${loc}. This release covers the final payment for all labor, ` +
+        `services, equipment, or materials furnished on the job, except for disputed claims for additional work in the amount of ` +
+        `$______________. Before any recipient of this document relies on it, the recipient should verify evidence of payment to the undersigned.`,
+        { align: 'justify' }
+      );
+    } else if (doc_type === 'unconditional_final_waiver' && jurisdiction === 'california') {
+      // Civil Code 8138
+      doc.text(
+        `NOTICE: This document waives and releases lien and payment bond rights and stop payment notice rights unconditionally and states ` +
+        `that you have been paid for giving up those rights. This document is enforceable against you if you sign it, even if you have ` +
+        `not been paid. Read it before signing.`,
+        { align: 'justify' }
+      );
+      doc.moveDown(0.5);
+      doc.text(
+        `The undersigned has been paid and has received final payment in the sum of ${fmtAmt(amount)} for all labor, services, ` +
+        `equipment, or materials furnished to ${ownerName} on the job of ${ownerName} located at ${loc} and does hereby release ` +
+        `any mechanic's lien, stop payment notice, or bond right the undersigned has on the job. A payment of ${fmtAmt(amount)} ` +
+        `was received on ${fmtDate(through_date)}. The claimant releases and waives all rights under this title irrespective of payment.`,
+        { align: 'justify' }
+      );
+    } else if (doc_type === 'preliminary_notice' && jurisdiction === 'virginia') {
+      doc.font('Helvetica-Bold').text('NOTICE TO OWNER PURSUANT TO VIRGINIA CODE §43-4');
+      doc.moveDown(0.3);
+      doc.font('Helvetica').text(
+        `You are hereby notified that the undersigned, ${contractorName}, has performed or will perform labor, ` +
+        `services, or furnish materials, machinery, tools, or equipment for improvement of the property described below. ` +
+        `This notice is given pursuant to the Virginia Mechanics Lien Law, Title 43 of the Code of Virginia. ` +
+        `The owner is advised that the undersigned may, unless paid, have a right to file a memorandum of lien against ` +
+        `the property described below within 150 days after the last day materials were furnished or work was performed.`,
+        { align: 'justify' }
+      );
+    } else {
+      // Generic
+      doc.text(
+        `The undersigned hereby certifies and declares that all labor, services, equipment, and materials ` +
+        `furnished to ${projectName} (the "Project") located at ${loc} for the period through ${fmtDate(through_date)} ` +
+        `have been paid in full (or upon payment in the case of a conditional waiver), and hereby releases ` +
+        `any and all lien rights, stop notice rights, and payment bond rights for work performed through said date.`,
+        { align: 'justify' }
+      );
+    }
+
+    // ── Signature block ─────────────────────────────────────────────────────
+    doc.moveDown(1.5);
+    doc.moveTo(60, doc.y).lineTo(350, doc.y).lineWidth(0.5).stroke();
+    doc.moveDown(0.2);
+    doc.fontSize(9).font('Helvetica').text(signatory_name || '_____________________________', 60, doc.y);
+    if (signatory_title) doc.text(signatory_title, 60, doc.y);
+    doc.text(`${contractorName}`, 60, doc.y);
+    doc.moveDown(0.5);
+
+    // ── Digital signature certification block ──────────────────────────────
+    doc.fontSize(7.5).font('Helvetica').fillColor('#555555');
+    doc.text(
+      `ELECTRONIC SIGNATURE: This document was electronically signed by ${signatory_name} ` +
+      `on ${signedAt.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})} ` +
+      `at ${signedAt.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZoneName:'short'})}. ` +
+      `IP Address: ${ip}. ` +
+      `By typing their name above, the signatory expressly agrees this electronic signature is the legal equivalent ` +
+      `of a handwritten signature and intends to be legally bound by the contents of this document.`,
+      { align: 'left' }
+    );
+    doc.fillColor('#000000');
+
+    // ── Footer ──────────────────────────────────────────────────────────────
+    doc.fontSize(7).fillColor('#888888');
+    doc.text(
+      `Generated by Construction AI Billing — constructinv.varshyl.com | ${new Date().toISOString().slice(0,10)}`,
+      60, 730, { align: 'center', width: 492 }
+    );
+    doc.fillColor('#000000');
+
+    doc.end();
+  });
+}
+
+// ── FEEDBACK WIDGET ────────────────────────────────────────────────────────
+app.post('/api/feedback', auth, upload.single('screenshot'), async (req, res) => {
+  const { category, message, page_context } = req.body;
+  if (!message && !req.file) return res.status(400).json({ error: 'Message or screenshot required' });
+  try {
+    const screenshotFilename = req.file ? req.file.filename : null;
+    const r = await pool.query(
+      'INSERT INTO feedback(user_id,category,message,screenshot_filename,page_context) VALUES($1,$2,$3,$4,$5) RETURNING *',
+      [req.user.id, category||'other', message||null, screenshotFilename, page_context||null]
+    );
+    await logEvent(req.user.id, 'feedback_submitted', { category: category||'other' });
+    res.json({ ok: true, id: r.rows[0].id });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/feedback', adminAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT f.*, u.name as user_name, u.email as user_email
+      FROM feedback f
+      LEFT JOIN users u ON u.id = f.user_id
+      ORDER BY f.created_at DESC
+      LIMIT 200
+    `);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Feedback is viewed in the Admin dashboard — no automated email cron.
+// Admin can review all feedback via GET /api/admin/feedback at any time.
 
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 

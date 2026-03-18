@@ -177,6 +177,30 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
 .aia-dist-grid{display:flex;gap:20px}
 .aia-dist-item{display:flex;align-items:center;gap:6px}
 .aia-checkbox{width:11px;height:11px;border:1px solid #000;display:inline-block;flex-shrink:0}
+/* ── Phase 1: Feedback widget ─────────────────────────────────────── */
+.feedback-fab{position:fixed;bottom:24px;right:24px;z-index:900;background:var(--blue);color:#fff;border:none;border-radius:999px;padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 4px 16px rgba(24,95,165,0.35);display:flex;align-items:center;gap:7px;transition:background 0.15s}
+.feedback-fab:hover{background:var(--blue-dark)}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal-box{background:var(--bg2);border-radius:var(--radius-lg);padding:24px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,0.18)}
+.modal-box h3{font-size:16px;font-weight:600;margin-bottom:4px}
+.modal-box .modal-sub{font-size:12px;color:var(--text2);margin-bottom:16px}
+/* ── Phase 1: Lien docs ───────────────────────────────────────────── */
+.lien-item{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border:0.5px solid var(--border);border-radius:var(--radius);margin-bottom:8px;background:var(--bg2)}
+.lien-badge{padding:2px 8px;border-radius:999px;font-size:10px;font-weight:500;background:var(--blue-light);color:var(--blue)}
+/* ── Phase 1: Contract intel ──────────────────────────────────────── */
+.contract-field{display:flex;justify-content:space-between;padding:5px 0;border-bottom:0.5px solid var(--border);font-size:12px}
+.contract-field:last-child{border-bottom:none}
+.contract-field label{color:var(--text2);flex-shrink:0;margin-right:8px}
+.contract-field span{font-weight:500;text-align:right}
+/* ── Phase 1: Team members ────────────────────────────────────────── */
+.team-item{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border:0.5px solid var(--border);border-radius:var(--radius);margin-bottom:6px;background:var(--bg2)}
+.role-badge{padding:2px 8px;border-radius:999px;font-size:10px;font-weight:500}
+.role-admin{background:#fce8e8;color:#a32d2d}.role-field{background:var(--bg3);color:var(--text2)}
+.role-accountant{background:#eaf3de;color:#3b6d11}.role-pm{background:var(--blue-light);color:var(--blue)}
+.role-executive{background:#faeeda;color:#854f0b}
+/* ── Phase 1: Job number chip ─────────────────────────────────────── */
+.job-num-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;background:var(--blue-light);color:var(--blue);border-radius:999px;font-size:11px;font-weight:600;cursor:pointer;border:0.5px solid var(--blue)}
+.job-num-chip:hover{background:var(--blue);color:#fff}
 .aia-checkbox.checked{background:#185FA5}
 .btn-amber{background:var(--amber);color:#fff;border-color:var(--amber)}.btn-amber:hover{background:#6b3d08}
 .ni-pa{padding:5px 12px 5px 26px;cursor:pointer;font-size:11px;color:var(--text2);border-radius:6px;margin:1px 6px;display:flex;align-items:center;gap:7px}
@@ -406,7 +430,8 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
       <img src="/varshyl-logo.png" alt="Varshyl Inc." onerror="this.style.display='none'">
       <div class="lp-nav-brand">Construction <span>AI</span> Billing</div>
     </div>
-    <div class="lp-nav-right">
+    <div class="lp-nav-right" id="lp-nav-btns">
+      <!-- Filled dynamically: Sign in + Get Started, OR Go to Dashboard if already logged in -->
       <button class="lp-btn lp-btn-ghost" onclick="showAuthFromLanding('login')">Sign in</button>
       <button class="lp-btn lp-btn-primary" onclick="showAuthFromLanding('register')">Get started free</button>
     </div>
@@ -416,9 +441,9 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
   <section class="lp-hero">
     <h1>Stop Doing AIA Billing<br><em>by Hand.</em></h1>
     <p>Construction AI Billing automates your G702/G703 pay applications — from Schedule of Values to a signed, print-ready PDF — in minutes, not hours.</p>
-    <div class="lp-hero-cta">
-      <button class="lp-btn lp-btn-primary lp-btn-lg" onclick="showAuthFromLanding('register')">Get Started Free →</button>
-      <button class="lp-btn lp-btn-outline lp-btn-lg" style="color:#fff;border-color:rgba(255,255,255,0.5);background:rgba(255,255,255,0.08)" onclick="showAuthFromLanding('login')">Sign In</button>
+    <div class="lp-hero-cta" id="lp-hero-cta">
+      <button class="lp-btn lp-btn-primary lp-btn-lg" onclick="token&&currentUser?resumeSession():showAuthFromLanding('register')">Get Started Free →</button>
+      <button class="lp-btn lp-btn-outline lp-btn-lg" style="color:#fff;border-color:rgba(255,255,255,0.5);background:rgba(255,255,255,0.08)" onclick="token&&currentUser?resumeSession():showAuthFromLanding('login')">Sign In</button>
     </div>
     <div class="lp-hero-note">No credit card. No strings. Just scroll down first.</div>
   </section>
@@ -657,6 +682,7 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:12px">
       <div class="logo">Construction <span>AI</span> Billing</div>
+      <button class="btn btn-sm" onclick="showLanding()" title="Back to homepage" style="font-size:11px;color:var(--text2)">🏠 Home</button>
     </div>
     <div class="topbar-right">
       <span class="user-name" id="user-name-display"></span>
@@ -730,6 +756,36 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
             <label class="btn btn-primary" style="cursor:pointer">Upload signature
               <input type="file" accept="image/*" style="display:none" onchange="uploadSignature(this)"/>
             </label>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ct">Job number format</div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:12px">Auto-generates job numbers for new projects. Default format: CITY-STATE-0001. Use tokens: {CITY}, {STATE}, {SEQ}, {YEAR}.</p>
+          <div class="fg">
+            <div class="field"><label>Custom format (optional)</label><input type="text" id="set-job-format" placeholder="e.g. {CITY}-{STATE}-{SEQ} or leave blank for default"/></div>
+          </div>
+          <button class="btn btn-primary" onclick="saveSettings()">Save settings</button>
+        </div>
+        <div class="card">
+          <div class="ct">Team members</div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:12px">Invite team members to collaborate. Field users see no financial data — only content creation tools.</p>
+          <div id="team-list" style="margin-bottom:16px"></div>
+          <div id="team-invite-err" class="err hidden"></div>
+          <div class="fg" style="align-items:flex-end">
+            <div class="field"><label>Email *</label><input type="email" id="team-invite-email" placeholder="teammate@example.com"/></div>
+            <div class="field"><label>Name</label><input type="text" id="team-invite-name" placeholder="Full name"/></div>
+            <div class="field"><label>Role</label>
+              <select id="team-invite-role">
+                <option value="field">Field (content only)</option>
+                <option value="pm">Project Manager</option>
+                <option value="accountant">Accountant</option>
+                <option value="executive">Executive</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div class="field" style="align-self:flex-end">
+              <button class="btn btn-primary" id="team-invite-btn" onclick="inviteTeamMember()">+ Invite</button>
+            </div>
           </div>
         </div>
         <div class="br"><button class="btn" onclick="showDash()">← Back to dashboard</button></div>
@@ -996,6 +1052,18 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
             <div style="font-size:11px;color:var(--text3);margin-top:6px">Powered by Claude — has live access to your analytics database</div>
           </div>
 
+          <!-- Feedback Inbox -->
+          <div class="card" style="margin-bottom:16px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <div>
+                <div class="ct" style="margin:0">User feedback inbox</div>
+                <div style="font-size:11px;color:var(--text2);margin-top:2px">Every message submitted via the feedback button, in real time.</div>
+              </div>
+              <button class="btn btn-sm" onclick="loadAdminFeedback()">Refresh</button>
+            </div>
+            <div id="admin-feedback-list"><div style="color:var(--text3);font-size:12px;padding:8px 0">Loading…</div></div>
+          </div>
+
           <!-- Users table -->
           <div class="card">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
@@ -1018,13 +1086,52 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
       <div class="pg" id="pg-project">
         <div id="proj-header"></div>
         <div class="mg" id="proj-metrics"></div>
-        <div class="card">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-            <div class="ct" style="margin:0">Pay applications</div>
-            <button class="btn btn-sm" onclick="showEditProject(currentProjectId)">Edit project</button>
-            <button class="btn btn-primary btn-sm" id="new-pa-btn" onclick="newPayApp()">+ New pay app</button>
+        <div class="tabs">
+          <div class="tab on" onclick="projTab(0)">Pay Applications</div>
+          <div class="tab" onclick="projTab(1)">Contract &amp; Docs</div>
+          <div class="tab" onclick="projTab(2)">Lien Documents</div>
+        </div>
+        <!-- Pay Apps tab -->
+        <div class="tp on" id="proj-tp0">
+          <div class="card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <div class="ct" style="margin:0">Pay applications</div>
+              <div style="display:flex;gap:6px">
+                <button class="btn btn-sm" onclick="showEditProject(currentProjectId)">Edit project</button>
+                <button class="btn btn-primary btn-sm" id="new-pa-btn" onclick="newPayApp()">+ New pay app</button>
+              </div>
+            </div>
+            <div id="proj-pa-list"><div class="loading">Loading...</div></div>
           </div>
-          <div id="proj-pa-list"><div class="loading">Loading...</div></div>
+        </div>
+        <!-- Contract & Docs tab -->
+        <div class="tp" id="proj-tp1">
+          <div class="card">
+            <div class="ct">Contract intelligence</div>
+            <p style="font-size:12px;color:var(--text2);margin-bottom:12px">Upload your contract PDF or Word document. Key billing terms (contract sum, retainage %, dates) are extracted automatically.</p>
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+              <span id="contract-filename" style="font-size:12px;color:var(--text2)">No contract uploaded</span>
+              <label class="btn btn-sm btn-primary" style="cursor:pointer">Upload contract
+                <input type="file" accept=".pdf,.docx,.doc" style="display:none"
+                  onchange="handleContractUpload(this, currentProjectId)"/>
+              </label>
+              <span id="contract-upload-status" style="font-size:11px;color:var(--text2)"></span>
+            </div>
+            <div id="contract-intel-body"><div style="color:var(--text3);font-size:12px">No contract uploaded yet.</div></div>
+          </div>
+        </div>
+        <!-- Lien Documents tab -->
+        <div class="tp" id="proj-tp2">
+          <div class="card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <div>
+                <div class="ct" style="margin:0">Lien documents</div>
+                <p style="font-size:12px;color:var(--text2);margin-top:4px">Generate and electronically sign lien waivers and preliminary notices. PDFs include your company logo and a timestamped signature.</p>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="openLienDocModal(currentProjectId)">+ New document</button>
+            </div>
+            <div id="lien-docs-list"><div class="loading">Loading…</div></div>
+          </div>
         </div>
       </div>
 
@@ -1250,6 +1357,7 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
 <script>
 const API='/api';
 let token=localStorage.getItem('caib_token');
+function getToken(){return token||localStorage.getItem('caib_token')||''}
 let currentUser=JSON.parse(localStorage.getItem('caib_user')||'null');
 let currentProjectId=null;
 let currentPAId=null;
@@ -1277,6 +1385,8 @@ function togglePass(id,btn){
 // Initialise eye icons once DOM is ready
 document.addEventListener('DOMContentLoaded',()=>{
   document.querySelectorAll('.eye-btn').forEach(b=>b.innerHTML=_eyeShow);
+  // If user has a saved session, show "Go to Dashboard" on the landing nav
+  updateLandingNav();
 });
 const fmtR=n=>'$'+Math.round(parseFloat(n||0)).toLocaleString('en-US');
 const pf=n=>parseFloat(n||0).toFixed(1)+'%';
@@ -1314,7 +1424,32 @@ function showLanding(){
   document.getElementById('landing-screen').classList.remove('hidden');
   document.getElementById('auth-screen').classList.add('hidden');
   document.getElementById('app-screen').classList.add('hidden');
+  // Update nav: if logged in, show "Go to Dashboard" instead of Sign In / Register
+  updateLandingNav();
   window.scrollTo(0,0);
+}
+
+function updateLandingNav(){
+  const navBtns = document.getElementById('lp-nav-btns');
+  if (!navBtns) return;
+  if (token && currentUser) {
+    // Already logged in — show their name and a dashboard button
+    navBtns.innerHTML = `
+      <span style="font-size:13px;color:rgba(255,255,255,0.85)">${currentUser.name}</span>
+      <button class="lp-btn lp-btn-primary" onclick="resumeSession()">Go to Dashboard →</button>`;
+  } else {
+    navBtns.innerHTML = `
+      <button class="lp-btn lp-btn-ghost" onclick="showAuthFromLanding('login')">Sign in</button>
+      <button class="lp-btn lp-btn-primary" onclick="showAuthFromLanding('register')">Get started free</button>`;
+  }
+}
+
+function resumeSession(){
+  // Token already in memory — go straight to app without re-login
+  document.getElementById('landing-screen').classList.add('hidden');
+  document.getElementById('auth-screen').classList.add('hidden');
+  document.getElementById('app-screen').classList.remove('hidden');
+  showDash();
 }
 function authTab(t){
   document.getElementById('login-form').classList.toggle('hidden',t!=='login');
@@ -1385,6 +1520,9 @@ function setAuth(data){
   document.getElementById('user-name-display').textContent=currentUser.name;
   document.getElementById('user-avatar').textContent=currentUser.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
   loadSettings();
+  // Show feedback FAB now that user is logged in
+  const fab = document.getElementById('feedback-fab');
+  if (fab) fab.style.display = '';
   // Show admin nav item if user is an admin
   checkAdminAccess();
   // Show email verification banner if needed (soft nudge — account stays usable)
@@ -1699,7 +1837,15 @@ async function loadProject(id){
     currentProjects=projects;
     sidebarPACache[id]=payapps;
     buildSidebarProjects(projects, id);
+    // Load contract and lien docs (non-blocking)
+    loadContractIntel(id).catch(()=>{});
+    loadLienDocs(id).catch(()=>{});
   }catch(e){console.error(e);}
+}
+
+function projTab(n) {
+  document.querySelectorAll('#pg-project .tab').forEach((t,i)=>t.classList.toggle('on',i===n));
+  document.querySelectorAll('#pg-project .tp').forEach((t,i)=>t.classList.toggle('on',i===n));
 }
 async function quickMarkSubmitted(paId, appNum){
   if(!confirm('Mark Pay App #'+appNum+' as submitted?\n\nThis cannot be undone.')) return;
@@ -2196,7 +2342,7 @@ async function createProject(){
 
 function paTab(n){
   document.querySelectorAll('#pa-tabs .tab').forEach((t,i)=>t.classList.toggle('on',i===n));
-  document.querySelectorAll('.tp').forEach((p,i)=>p.classList.toggle('on',i===n));
+  document.querySelectorAll('#pg-payapp .tp').forEach((p,i)=>p.classList.toggle('on',i===n));
   if(n===4&&currentPAData) renderAIAPreview(currentPAData);
 }
 
@@ -2214,14 +2360,18 @@ async function loadSettings() {
     const ce = document.getElementById('set-contact-email');
     const pt = document.getElementById('set-payment-terms');
     const dr = document.getElementById('set-default-ret');
+    const jf = document.getElementById('set-job-format');
     if (cn) cn.value = companySettings.company_name || '';
     if (ct) ct.value = companySettings.contact_name || '';
     if (cp) cp.value = companySettings.contact_phone || '';
     if (ce) ce.value = companySettings.contact_email || '';
     if (pt) pt.value = companySettings.default_payment_terms || 'Due on receipt';
     if (dr) dr.value = companySettings.default_retainage || 10;
+    if (jf) jf.value = companySettings.job_number_format || '';
     if (companySettings.logo_filename) loadLogoPreview();
     if (companySettings.signature_filename) loadSigPreview();
+    // Load team
+    loadTeam().catch(()=>{});
   } catch(e) { console.log('No settings yet'); }
 }
 
@@ -2233,7 +2383,8 @@ async function saveSettings() {
       contact_phone: document.getElementById('set-contact-phone').value,
       contact_email: document.getElementById('set-contact-email').value,
       default_payment_terms: document.getElementById('set-payment-terms').value,
-      default_retainage: parseFloat(document.getElementById('set-default-ret').value) || 10
+      default_retainage: parseFloat(document.getElementById('set-default-ret').value) || 10,
+      job_number_format: document.getElementById('set-job-format')?.value || null
     });
     const msg = document.getElementById('settings-msg');
     msg.textContent = 'Settings saved!'; msg.classList.remove('hidden');
@@ -2381,8 +2532,44 @@ async function loadAdminDash(){
     renderAiHistory();
     document.getElementById('admin-loading').classList.add('hidden');
     document.getElementById('admin-content').classList.remove('hidden');
+    // Load feedback inbox in parallel (non-blocking — doesn't affect main dashboard render)
+    loadAdminFeedback().catch(()=>{});
   } catch(e){
     document.getElementById('admin-loading').textContent = 'Error loading admin data: '+e.message;
+  }
+}
+
+async function loadAdminFeedback() {
+  const el = document.getElementById('admin-feedback-list');
+  if (!el) return;
+  try {
+    const items = await api('GET', '/admin/feedback');
+    if (!items.length) {
+      el.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px 0">No feedback yet. Users can send feedback using the 💬 button in the bottom-right corner of the app.</div>';
+      return;
+    }
+    const catColors = { bug:'var(--red-light)', feature:'var(--blue-light)', general:'var(--bg3)', billing:'var(--amber-light)', other:'var(--bg3)' };
+    const catText = { bug:'var(--red)', feature:'var(--blue)', general:'var(--text2)', billing:'var(--amber)', other:'var(--text2)' };
+    el.innerHTML = `<div style="font-size:11px;color:var(--text2);margin-bottom:8px">${items.length} total submissions</div>` +
+      items.map(f => `
+        <div style="padding:11px 14px;border:0.5px solid var(--border);border-radius:var(--radius);margin-bottom:6px;background:var(--bg2)">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div style="flex:1;min-width:200px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                <span style="padding:2px 7px;border-radius:999px;font-size:10px;font-weight:600;background:${catColors[f.category]||'var(--bg3)'};color:${catText[f.category]||'var(--text2)'}">${f.category}</span>
+                <span style="font-size:11px;color:var(--text2)">${f.user_name||'Anonymous'} · ${f.user_email||'—'}</span>
+                ${f.page_context ? `<span style="font-size:10px;color:var(--text3)">on: ${f.page_context}</span>` : ''}
+              </div>
+              <div style="font-size:13px;color:var(--text);white-space:pre-wrap">${(f.message||'[no message]').replace(/</g,'&lt;')}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div style="font-size:10px;color:var(--text3)">${new Date(f.created_at).toLocaleString()}</div>
+              ${f.screenshot_filename ? `<div style="margin-top:4px"><a href="/uploads/${f.screenshot_filename}" target="_blank" style="font-size:11px;color:var(--blue)">View screenshot →</a></div>` : ''}
+            </div>
+          </div>
+        </div>`).join('');
+  } catch(e) {
+    if (el) el.innerHTML = `<div style="color:var(--text2);font-size:12px">${e.message}</div>`;
   }
 }
 
@@ -2567,6 +2754,348 @@ if('serviceWorker' in navigator){
     navigator.serviceWorker.register('/sw.js').catch(e=>console.log('SW registration failed:',e));
   });
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// PHASE 1 — FEEDBACK WIDGET
+// ═══════════════════════════════════════════════════════════════════
+let feedbackRecording = false, feedbackMediaRecorder = null, feedbackAudioChunks = [];
+
+function openFeedback() {
+  document.getElementById('feedback-modal').classList.remove('hidden');
+  document.getElementById('feedback-msg').value = '';
+  document.getElementById('feedback-category').value = 'general';
+  document.getElementById('feedback-voice-status').textContent = '';
+  document.getElementById('feedback-screenshot-name').textContent = '';
+}
+function closeFeedback() {
+  document.getElementById('feedback-modal').classList.add('hidden');
+}
+
+async function submitFeedback() {
+  const msg = document.getElementById('feedback-msg').value.trim();
+  const category = document.getElementById('feedback-category').value;
+  const screenshotInput = document.getElementById('feedback-screenshot-input');
+  const btn = document.getElementById('feedback-submit-btn');
+  if (!msg && !screenshotInput.files.length) { alert('Please enter a message or attach a screenshot.'); return; }
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const fd = new FormData();
+    fd.append('category', category);
+    fd.append('message', msg);
+    fd.append('page_context', window.location.hash || document.title);
+    if (screenshotInput.files[0]) fd.append('screenshot', screenshotInput.files[0]);
+    const r = await fetch('/api/feedback', { method:'POST', headers:{Authorization:'Bearer '+getToken()}, body:fd });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error||'Error');
+    btn.textContent = 'Sent! Thank you ✓';
+    setTimeout(closeFeedback, 1200);
+  } catch(e) {
+    btn.disabled = false; btn.textContent = 'Send feedback';
+    alert('Error: '+e.message);
+  }
+}
+
+async function startVoiceCapture() {
+  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+    // Fallback: use MediaRecorder for audio note
+    alert('Voice recognition not supported in this browser. Please type your feedback.');
+    return;
+  }
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const rec = new SpeechRecognition();
+  rec.lang = 'en-US'; rec.interimResults = false; rec.maxAlternatives = 1;
+  const btn = document.getElementById('feedback-voice-btn');
+  const status = document.getElementById('feedback-voice-status');
+  btn.textContent = '🔴 Listening…'; status.textContent = 'Speak now...';
+  rec.onresult = (e) => {
+    const transcript = e.results[0][0].transcript;
+    const ta = document.getElementById('feedback-msg');
+    ta.value = (ta.value ? ta.value + ' ' : '') + transcript;
+    status.textContent = '✓ Captured';
+    btn.textContent = '🎤 Voice';
+  };
+  rec.onerror = () => { btn.textContent = '🎤 Voice'; status.textContent = ''; };
+  rec.onend = () => { btn.textContent = '🎤 Voice'; };
+  rec.start();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PHASE 1 — JOB NUMBERS
+// ═══════════════════════════════════════════════════════════════════
+async function generateJobNumber(city, state) {
+  try {
+    const params = new URLSearchParams();
+    if (city) params.set('city', city);
+    if (state) params.set('state', state);
+    const r = await api('GET', '/settings/job-number/next?' + params.toString());
+    return r.job_number;
+  } catch(e) { return null; }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PHASE 1 — CONTRACT UPLOAD
+// ═══════════════════════════════════════════════════════════════════
+async function uploadContract(projectId, file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const r = await fetch(`/api/projects/${projectId}/contract`, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + getToken() },
+    body: fd
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || 'Upload failed');
+  return data;
+}
+
+async function loadContractIntel(projectId) {
+  const el = document.getElementById('contract-intel-body');
+  if (!el) return;
+  try {
+    const r = await api('GET', `/projects/${projectId}/contract`);
+    if (!r) { el.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px 0">No contract uploaded yet. Upload a PDF or Word contract to extract billing terms automatically.</div>'; return; }
+    const ext = r.extracted || {};
+    const rows = [
+      ['Contract type', r.contract_type ? r.contract_type.replace('_',' ').toUpperCase() : '—'],
+      ['Contract sum', ext.contract_sum ? '$'+parseFloat(ext.contract_sum).toLocaleString('en-US',{minimumFractionDigits:2}) : '—'],
+      ['Retainage %', ext.retainage_pct != null ? ext.retainage_pct+'%' : '—'],
+      ['Owner', ext.owner || '—'],
+      ['Contractor', ext.contractor || '—'],
+      ['Contract date', ext.contract_date || '—'],
+      ['Completion date', ext.completion_date || '—'],
+      ['Payment terms', ext.payment_terms || '—'],
+      ['Contract #', ext.contract_number || '—'],
+    ].filter(([,v])=>v && v!=='—');
+    if (!rows.length) { el.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px 0">Contract uploaded but key fields were not automatically detected. You can still reference the original file.</div>'; }
+    else el.innerHTML = rows.map(([l,v])=>`<div class="contract-field"><label>${l}</label><span>${v}</span></div>`).join('');
+    document.getElementById('contract-filename').textContent = r.original_name || 'Contract';
+  } catch(e) { el.innerHTML = '<div style="color:var(--text2);font-size:12px">'+e.message+'</div>'; }
+}
+
+async function handleContractUpload(input, projectId) {
+  if (!input.files[0]) return;
+  const statusEl = document.getElementById('contract-upload-status');
+  statusEl.textContent = 'Uploading and extracting…';
+  try {
+    const data = await uploadContract(projectId, input.files[0]);
+    statusEl.textContent = '✓ Contract uploaded';
+    await loadContractIntel(projectId);
+  } catch(e) { statusEl.textContent = 'Error: '+e.message; }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PHASE 1 — LIEN DOCUMENTS
+// ═══════════════════════════════════════════════════════════════════
+async function loadLienDocs(projectId) {
+  const el = document.getElementById('lien-docs-list');
+  if (!el) return;
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    const docs = await api('GET', `/projects/${projectId}/lien-docs`);
+    if (!docs.length) { el.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px 0">No lien documents generated yet.</div>'; return; }
+    const typeLabels = {
+      preliminary_notice: 'Preliminary Notice',
+      conditional_waiver: 'Conditional Waiver (Progress)',
+      unconditional_waiver: 'Unconditional Waiver (Progress)',
+      conditional_final_waiver: 'Conditional Waiver (Final)',
+      unconditional_final_waiver: 'Unconditional Waiver (Final)',
+    };
+    el.innerHTML = docs.map(d => `
+      <div class="lien-item">
+        <div>
+          <div style="font-weight:500;font-size:12px">${typeLabels[d.doc_type]||d.doc_type}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">${d.jurisdiction} · ${d.through_date ? 'Through '+new Date(d.through_date).toLocaleDateString() : ''} · ${d.signatory_name||''}</div>
+          <div style="font-size:10px;color:var(--text3)">${new Date(d.created_at).toLocaleString()}</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          ${d.signed_at ? '<span class="badge badge-green">Signed</span>' : ''}
+          <a href="/api/lien-docs/${d.id}/pdf?token=${getToken()}" target="_blank" class="btn btn-sm">Download PDF</a>
+        </div>
+      </div>`).join('');
+  } catch(e) { el.innerHTML = '<div style="color:var(--red)">'+e.message+'</div>'; }
+}
+
+function openLienDocModal(projectId) {
+  window._lienProjectId = projectId;
+  document.getElementById('lien-doc-modal').classList.remove('hidden');
+  document.getElementById('lien-doc-err').classList.add('hidden');
+  document.getElementById('lien-doc-through-date').value = '';
+  document.getElementById('lien-doc-amount').value = '';
+  document.getElementById('lien-doc-maker').value = '';
+  document.getElementById('lien-doc-payable-to').value = '';
+  document.getElementById('lien-doc-signatory').value = '';
+  document.getElementById('lien-doc-title').value = '';
+}
+function closeLienDocModal() {
+  document.getElementById('lien-doc-modal').classList.add('hidden');
+}
+
+async function submitLienDoc() {
+  const projectId = window._lienProjectId;
+  const doc_type = document.getElementById('lien-doc-type').value;
+  const through_date = document.getElementById('lien-doc-through-date').value;
+  const amount = document.getElementById('lien-doc-amount').value;
+  const maker_of_check = document.getElementById('lien-doc-maker').value;
+  const check_payable_to = document.getElementById('lien-doc-payable-to').value;
+  const signatory_name = document.getElementById('lien-doc-signatory').value.trim();
+  const signatory_title = document.getElementById('lien-doc-title').value.trim();
+  const jurisdiction = document.getElementById('lien-doc-jurisdiction').value;
+  const errEl = document.getElementById('lien-doc-err');
+  if (!signatory_name) { errEl.textContent = 'Signatory name is required.'; errEl.classList.remove('hidden'); return; }
+  const btn = document.getElementById('lien-doc-submit-btn');
+  btn.disabled = true; btn.textContent = 'Generating PDF…';
+  errEl.classList.add('hidden');
+  try {
+    const doc = await api('POST', `/projects/${projectId}/lien-docs`, {
+      doc_type, through_date, amount: amount ? parseFloat(amount) : null,
+      maker_of_check, check_payable_to, signatory_name, signatory_title, jurisdiction
+    });
+    closeLienDocModal();
+    await loadLienDocs(projectId);
+    // Auto-open PDF
+    window.open(`/api/lien-docs/${doc.id}/pdf?token=${getToken()}`, '_blank');
+  } catch(e) {
+    errEl.textContent = 'Error: '+e.message; errEl.classList.remove('hidden');
+    btn.disabled = false; btn.textContent = 'Generate & Sign Document';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PHASE 1 — TEAM MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════
+async function loadTeam() {
+  const el = document.getElementById('team-list');
+  if (!el) return;
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    const members = await api('GET', '/team');
+    if (!members.length) { el.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px 0">No team members yet. Invite people below to collaborate on projects.</div>'; return; }
+    const roleColors = { admin:'role-admin', accountant:'role-accountant', pm:'role-pm', executive:'role-executive', field:'role-field' };
+    const roleLabels = { admin:'Admin', accountant:'Accountant', pm:'Project Manager', executive:'Executive', field:'Field' };
+    el.innerHTML = members.map(m => `
+      <div class="team-item">
+        <div>
+          <div style="font-weight:500;font-size:13px">${m.name||m.email}</div>
+          <div style="font-size:11px;color:var(--text2)">${m.email}</div>
+          <div style="margin-top:4px">
+            <span class="role-badge ${roleColors[m.role]||'role-field'}">${roleLabels[m.role]||m.role}</span>
+            ${m.invite_accepted ? '' : '<span style="font-size:10px;color:var(--amber);margin-left:8px">Invite pending</span>'}
+          </div>
+        </div>
+        <button class="btn btn-sm btn-danger" onclick="removeTeamMember(${m.id})">Remove</button>
+      </div>`).join('');
+  } catch(e) { el.innerHTML = '<div style="color:var(--red)">'+e.message+'</div>'; }
+}
+
+async function inviteTeamMember() {
+  const email = document.getElementById('team-invite-email').value.trim();
+  const name = document.getElementById('team-invite-name').value.trim();
+  const role = document.getElementById('team-invite-role').value;
+  const errEl = document.getElementById('team-invite-err');
+  if (!email) { errEl.textContent = 'Email required'; errEl.classList.remove('hidden'); return; }
+  const btn = document.getElementById('team-invite-btn');
+  btn.disabled = true; btn.textContent = 'Sending invite…';
+  errEl.classList.add('hidden');
+  try {
+    await api('POST', '/team', { email, name: name||null, role });
+    document.getElementById('team-invite-email').value = '';
+    document.getElementById('team-invite-name').value = '';
+    await loadTeam();
+    btn.disabled = false; btn.textContent = '+ Invite';
+  } catch(e) {
+    errEl.textContent = e.message; errEl.classList.remove('hidden');
+    btn.disabled = false; btn.textContent = '+ Invite';
+  }
+}
+
+async function removeTeamMember(id) {
+  if (!confirm('Remove this team member?')) return;
+  try {
+    await api('DELETE', '/team/'+id);
+    await loadTeam();
+  } catch(e) { alert(e.message); }
+}
 </script>
+<!-- ── FEEDBACK FAB ──────────────────────────────────────────────────── -->
+<button class="feedback-fab" id="feedback-fab" onclick="openFeedback()" style="display:none">
+  💬 Feedback
+</button>
+
+<!-- ── FEEDBACK MODAL ─────────────────────────────────────────────────── -->
+<div class="modal-overlay hidden" id="feedback-modal" onclick="if(event.target===this)closeFeedback()">
+  <div class="modal-box">
+    <h3>Send feedback</h3>
+    <p class="modal-sub">Help us improve — bugs, suggestions, or anything on your mind.</p>
+    <div class="field">
+      <label>Category</label>
+      <select id="feedback-category">
+        <option value="bug">Bug / Something broken</option>
+        <option value="feature">Feature request</option>
+        <option value="general" selected>General feedback</option>
+        <option value="billing">Billing question</option>
+        <option value="other">Other</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Message</label>
+      <textarea id="feedback-msg" rows="4" style="padding:8px 10px;border:0.5px solid var(--border2);border-radius:var(--radius);font-size:13px;width:100%;resize:vertical" placeholder="Describe the issue or idea..."></textarea>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+      <button class="btn btn-sm" id="feedback-voice-btn" onclick="startVoiceCapture()">🎤 Voice</button>
+      <span id="feedback-voice-status" style="font-size:11px;color:var(--text2)"></span>
+      <label class="btn btn-sm" style="cursor:pointer">📎 Screenshot
+        <input type="file" id="feedback-screenshot-input" accept="image/*" style="display:none" onchange="document.getElementById('feedback-screenshot-name').textContent=this.files[0]?.name||''"/>
+      </label>
+      <span id="feedback-screenshot-name" style="font-size:11px;color:var(--text2)"></span>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn" onclick="closeFeedback()">Cancel</button>
+      <button class="btn btn-primary" id="feedback-submit-btn" onclick="submitFeedback()">Send feedback</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── LIEN DOCUMENT MODAL ────────────────────────────────────────────── -->
+<div class="modal-overlay hidden" id="lien-doc-modal" onclick="if(event.target===this)closeLienDocModal()">
+  <div class="modal-box">
+    <h3>Generate lien document</h3>
+    <p class="modal-sub">Electronically sign a lien waiver or preliminary notice. A timestamped PDF will be created.</p>
+    <div id="lien-doc-err" class="err hidden"></div>
+    <div class="field">
+      <label>Document type</label>
+      <select id="lien-doc-type">
+        <option value="preliminary_notice">Preliminary Notice (20-day)</option>
+        <option value="conditional_waiver">Conditional Waiver — Progress Payment</option>
+        <option value="unconditional_waiver">Unconditional Waiver — Progress Payment</option>
+        <option value="conditional_final_waiver">Conditional Waiver — Final Payment</option>
+        <option value="unconditional_final_waiver">Unconditional Waiver — Final Payment</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Jurisdiction</label>
+      <select id="lien-doc-jurisdiction">
+        <option value="california">California</option>
+        <option value="virginia">Virginia</option>
+        <option value="dc">Washington D.C.</option>
+      </select>
+    </div>
+    <div class="fg">
+      <div class="field"><label>Through date</label><input type="date" id="lien-doc-through-date"/></div>
+      <div class="field"><label>Amount ($)</label><input type="number" id="lien-doc-amount" placeholder="e.g. 45000"/></div>
+    </div>
+    <div class="field"><label>Maker of check (payer)</label><input type="text" id="lien-doc-maker" placeholder="Who is issuing the check?"/></div>
+    <div class="field"><label>Check payable to</label><input type="text" id="lien-doc-payable-to" placeholder="Your company name"/></div>
+    <hr style="border:none;border-top:0.5px solid var(--border);margin:12px 0"/>
+    <p style="font-size:11px;color:var(--text2);margin-bottom:8px">By typing your name below you are electronically signing this document. Your name, the date/time, and your IP address will be recorded on the PDF.</p>
+    <div class="fg">
+      <div class="field"><label>Signatory name *</label><input type="text" id="lien-doc-signatory" placeholder="Type your full legal name"/></div>
+      <div class="field"><label>Title</label><input type="text" id="lien-doc-title" placeholder="e.g. Project Manager"/></div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+      <button class="btn" onclick="closeLienDocModal()">Cancel</button>
+      <button class="btn btn-primary" id="lien-doc-submit-btn" onclick="submitLienDoc()">Generate &amp; Sign Document</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

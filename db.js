@@ -126,6 +126,69 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_analytics_event    ON analytics_events(event);
     CREATE INDEX IF NOT EXISTS idx_analytics_user     ON analytics_events(user_id);
     CREATE INDEX IF NOT EXISTS idx_analytics_created  ON analytics_events(created_at);
+
+    -- Phase 1: Roles, job numbers, contracts, lien docs, feedback
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS platform_role VARCHAR(50) DEFAULT 'user';
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS job_number VARCHAR(50);
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS jurisdiction VARCHAR(50) DEFAULT 'california';
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS job_number_format VARCHAR(200);
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS job_number_seq INTEGER DEFAULT 0;
+
+    CREATE TABLE IF NOT EXISTS team_members (
+      id SERIAL PRIMARY KEY,
+      owner_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      email VARCHAR(200) NOT NULL,
+      name VARCHAR(200),
+      role VARCHAR(50) DEFAULT 'field',
+      invite_token VARCHAR(200),
+      invite_accepted BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_team_owner_email
+      ON team_members(owner_user_id, email);
+
+    CREATE TABLE IF NOT EXISTS contracts (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+      filename VARCHAR(500),
+      original_name VARCHAR(500),
+      file_size INTEGER,
+      contract_type VARCHAR(100) DEFAULT 'unknown',
+      extracted JSONB DEFAULT '{}',
+      uploaded_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS lien_documents (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+      pay_app_id INTEGER REFERENCES pay_apps(id) ON DELETE SET NULL,
+      doc_type VARCHAR(50) NOT NULL,
+      filename VARCHAR(500),
+      jurisdiction VARCHAR(50) DEFAULT 'california',
+      through_date DATE,
+      amount NUMERIC(14,2),
+      maker_of_check VARCHAR(300),
+      check_payable_to VARCHAR(300),
+      signatory_name VARCHAR(200),
+      signatory_title VARCHAR(200),
+      signed_at TIMESTAMPTZ,
+      signatory_ip VARCHAR(100),
+      sent_at TIMESTAMPTZ,
+      sent_to VARCHAR(500),
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS feedback (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      category VARCHAR(50) DEFAULT 'other',
+      message TEXT,
+      screenshot_filename VARCHAR(500),
+      page_context VARCHAR(500),
+      digest_sent BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_feedback_digest ON feedback(digest_sent, created_at);
   `);
   console.log('Database ready');
 }
