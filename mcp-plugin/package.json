@@ -1,0 +1,20 @@
+{
+  "name": "construction-ai-billing-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for Construction AI Billing — list projects, pay apps, lien docs, and contract intel via Claude.",
+  "main": "index.js",
+  "type": "module",
+  "bin": {
+    "construction-ai-mcp": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["mcp", "construction", "billing", "aia", "g702", "g703", "lien", "pay-application"],
+  "author": "Varshyl Inc. <vaakapila@gmail.com>",
+  "license": "MIT",
+  "dependencies": {}
+}

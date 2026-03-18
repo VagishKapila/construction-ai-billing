@@ -1782,8 +1782,74 @@ app.get('/api/admin/feedback', adminAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// Feedback is viewed in the Admin dashboard — no automated email cron.
-// Admin can review all feedback via GET /api/admin/feedback at any time.
+// ── Weekly feedback digest — every Monday at 7am, only if new items exist ──
+let lastWeeklyDigestDate = null;
+setInterval(async () => {
+  const now = new Date();
+  const isMonday = now.getDay() === 1;          // 0=Sun, 1=Mon
+  if (!isMonday || now.getHours() !== 7) return; // only fire Monday at 7am
+  const today = now.toISOString().slice(0, 10);
+  if (lastWeeklyDigestDate === today) return;    // already sent this week
+  lastWeeklyDigestDate = today;
+
+  try {
+    const r = await pool.query(`
+      SELECT f.*, u.name as user_name, u.email as user_email
+      FROM feedback f LEFT JOIN users u ON u.id = f.user_id
+      WHERE f.digest_sent = FALSE ORDER BY f.created_at
+    `);
+    if (r.rows.length === 0) return; // nothing new — skip email entirely
+
+    const items = r.rows.map((f, i) => `
+      <tr style="background:${i%2===0?'#f9f9f9':'#fff'}">
+        <td style="padding:8px;border:1px solid #ddd;font-size:12px">${f.created_at.toISOString().slice(0,16).replace('T',' ')}</td>
+        <td style="padding:8px;border:1px solid #ddd;font-size:12px">${f.user_name||'Anon'} (${f.user_email||'—'})</td>
+        <td style="padding:8px;border:1px solid #ddd;font-size:12px">${f.category}</td>
+        <td style="padding:8px;border:1px solid #ddd;font-size:12px">${(f.message||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</td>
+        <td style="padding:8px;border:1px solid #ddd;font-size:12px">${f.page_context||'—'}</td>
+      </tr>`).join('');
+
+    const html = `<div style="font-family:sans-serif;max-width:900px;margin:0 auto;padding:24px">
+      <h2 style="color:#185FA5">Weekly Feedback Digest — Construction AI Billing</h2>
+      <p style="color:#555">${r.rows.length} new feedback item${r.rows.length!==1?'s':''} from your users this week.</p>
+      <table style="border-collapse:collapse;width:100%;font-size:13px;margin-top:16px">
+        <thead><tr style="background:#185FA5;color:#fff">
+          <th style="padding:8px;border:1px solid #ddd;text-align:left">Time</th>
+          <th style="padding:8px;border:1px solid #ddd;text-align:left">User</th>
+          <th style="padding:8px;border:1px solid #ddd;text-align:left">Category</th>
+          <th style="padding:8px;border:1px solid #ddd;text-align:left">Message</th>
+          <th style="padding:8px;border:1px solid #ddd;text-align:left">Page</th>
+        </tr></thead>
+        <tbody>${items}</tbody>
+      </table>
+      <p style="color:#888;font-size:11px;margin-top:20px">
+        View all feedback live at <a href="https://constructinv.varshyl.com" style="color:#185FA5">constructinv.varshyl.com</a> → Admin → Feedback inbox.<br>
+        You only receive this email when there are new items. No activity = no email.
+      </p>
+    </div>`;
+
+    const apiKey = process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY;
+    const digestTo = process.env.DIGEST_EMAIL || 'vaakapila@gmail.com';
+    const fromEmail = process.env.FROM_EMAIL || 'noreply@constructai.app';
+    if (apiKey) {
+      const isResend = !!process.env.RESEND_API_KEY;
+      const payload = isResend
+        ? { from: fromEmail, to: [digestTo], subject: `[Weekly Digest] ${r.rows.length} new feedback item${r.rows.length!==1?'s':''} — ${today}`, html }
+        : { personalizations:[{to:[{email:digestTo}]}], from:{email:fromEmail},
+            subject:`[Weekly Digest] ${r.rows.length} new feedback item${r.rows.length!==1?'s':''} — ${today}`,
+            content:[{type:'text/html',value:html}] };
+      await fetch(isResend ? 'https://api.resend.com/emails' : 'https://api.sendgrid.com/v3/mail/send', {
+        method:'POST', headers:{'Content-Type':'application/json',Authorization:`Bearer ${apiKey}`},
+        body:JSON.stringify(payload),
+      });
+      const ids = r.rows.map(f => f.id);
+      await pool.query('UPDATE feedback SET digest_sent=TRUE WHERE id=ANY($1)', [ids]);
+      console.log(`[Weekly Digest] Sent ${r.rows.length} feedback items to ${digestTo}`);
+    } else {
+      console.log(`[DEV] Weekly digest: ${r.rows.length} items would be sent to ${digestTo}`);
+    }
+  } catch(e) { console.error('[Weekly Digest] Error:', e.message); }
+}, 30 * 60 * 1000); // check every 30 minutes (tight enough to not miss the Monday 7am window)
 
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 
