@@ -658,14 +658,37 @@ function extractAmounts(text) {
 }
 
 function cleanDesc(s) {
-  return s.replace(/^[\*\•\-–—·]+\s*/, '').replace(/\s+/g, ' ').trim();
+  return s
+    .replace(/^[\*\•\-–—·]+\s*/, '')  // leading bullets
+    .replace(/^\d{4,6}\s+/, '')        // strip leading CSI/item code ("11300 " → "")
+    .replace(/^\d{5}(?=[A-Za-z])/, '') // strip concatenated 5-digit code ("95600Tile" → "Tile")
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function rowsFromLines(lines) {
+  // Pre-process: many contractor PDFs put description on one line, amount on the next.
+  // Merge "line with no amount" + "next line that is just a $amount" into a single line.
+  const merged = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const isJustDollarAmt = /^\$[\d,]+(?:\.\d{1,2})?$/.test(line);
+    if (isJustDollarAmt && merged.length > 0) {
+      const prev = merged[merged.length - 1];
+      // Only merge if the previous line has no amount yet (avoid double-merging)
+      if (!extractAmounts(prev).length) {
+        merged[merged.length - 1] = prev + ' ' + line;
+        continue;
+      }
+    }
+    merged.push(line);
+  }
+
   const rows = [];
   const seen = new Set();
   let counter = 1000;
-  for (const raw of lines) {
+  for (const raw of merged) {
     const line = raw.trim();
     if (line.length < 5) continue;
     if (SKIP_RE.test(line)) continue;
