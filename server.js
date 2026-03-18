@@ -102,6 +102,12 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
   }
 });
 
+// Delete own account (used by qa_live.js cleanup — cascades via FK to all user data)
+app.delete('/api/auth/account', auth, async (req, res) => {
+  await pool.query('DELETE FROM users WHERE id=$1', [req.user.id]);
+  res.json({ ok: true });
+});
+
 app.post('/api/auth/login', authLimiter, async (req, res) => {
   const { email, password } = req.body;
   try {
