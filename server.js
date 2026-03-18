@@ -669,6 +669,8 @@ function cleanDesc(s) {
 function rowsFromLines(lines) {
   // Pre-process: many contractor PDFs put description on one line, amount on the next.
   // Merge "line with no amount" + "next line that is just a $amount" into a single line.
+  // IMPORTANT: only merge onto lines that would NOT be skipped by SKIP_RE/SKIP_META_RE,
+  // otherwise e.g. "$12,331" merges onto "TOTAL" and the Fee row is lost.
   const merged = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -676,8 +678,8 @@ function rowsFromLines(lines) {
     const isJustDollarAmt = /^\$[\d,]+(?:\.\d{1,2})?$/.test(line);
     if (isJustDollarAmt && merged.length > 0) {
       const prev = merged[merged.length - 1];
-      // Only merge if the previous line has no amount yet (avoid double-merging)
-      if (!extractAmounts(prev).length) {
+      const prevWouldBeSkipped = SKIP_RE.test(prev) || SKIP_META_RE.test(prev);
+      if (!prevWouldBeSkipped && !extractAmounts(prev).length) {
         merged[merged.length - 1] = prev + ' ' + line;
         continue;
       }
@@ -703,7 +705,9 @@ function rowsFromLines(lines) {
           .replace(/\s+\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?\s*$/, '')
           .trim()
     );
-    if (desc.length < 4 || /^[\d\s.\-]+$/.test(desc)) continue;
+    // Filter out empty, purely numeric, or numeric-with-punctuation descriptions
+    // (catches "201,186.41" being treated as a description)
+    if (desc.length < 4 || /^[\d\s.,\-]+$/.test(desc)) continue;
     if (SKIP_RE.test(desc)) continue;
     const key = desc.toLowerCase();
     if (seen.has(key)) continue;
