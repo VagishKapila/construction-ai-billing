@@ -641,17 +641,19 @@ function parseSOVFile(filePath) {
 // Uses pdf-parse (PDF) and mammoth (DOCX) — pure JS, no Python needed.
 
 const SKIP_RE = /^(\*|•|·|–|—|-{2,})|^(subtotal|total|tax|overhead|company overhead|balance due|amount paid|terms|signature|page \d|note[:\s]|excludes|it is an honor|we thank|sincerely|dear |http|www\.)/i;
+// Skip metadata lines: license numbers, addresses, dates — not work items
+const SKIP_META_RE = /\b(lic(ense)?(\s*#|\s+no\.?)?|p\.?o\.?\s*box|phone|fax|e[\-]?mail|zip|contractor'?s)\b|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2},?\s*\d{4}/i;
 
 function extractAmounts(text) {
   // First try $X,XXX.XX format (explicit dollar sign)
   const dollarMatches = (text.match(/\$[\d,]+(?:\.\d{1,2})?/g) || [])
     .map(m => parseFloat(m.replace(/[$,]/g, '')));
   if (dollarMatches.length) return dollarMatches;
-  // Fallback: bare numbers at end of line (common in contractor PDFs without $ signs)
-  // e.g. "Painting - Interior  18,913" or "Fee  12,331.00"
-  const bareMatches = (text.match(/(?:^|\s)([\d]{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d{4,7}(?:\.\d{1,2})?)\s*$/g) || [])
+  // Fallback: comma-formatted numbers at end of line (e.g. "Painting - Interior  18,913")
+  // Requires X,XXX comma grouping — filters out zip codes, years, license plate numbers
+  const bareMatches = (text.match(/\b(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?)\s*$/g) || [])
     .map(m => parseFloat(m.trim().replace(/,/g, '')))
-    .filter(n => n >= 100); // Must be >= $100 to be a real line item amount
+    .filter(n => n >= 100 && n <= 500000); // realistic single line-item range
   return bareMatches;
 }
 
@@ -667,15 +669,15 @@ function rowsFromLines(lines) {
     const line = raw.trim();
     if (line.length < 5) continue;
     if (SKIP_RE.test(line)) continue;
+    if (SKIP_META_RE.test(line)) continue;
     const amounts = extractAmounts(line);
     if (!amounts.length) continue;
     const total = amounts[amounts.length - 1];
     if (total <= 0) continue;
-    // Description = everything before the amount (strip trailing number or $amount)
+    // Description = everything before the amount (strip trailing $X,XXX or bare X,XXX)
     let desc = cleanDesc(
-      line.replace(/\s*\$[\d,]+(?:\.\d{1,2})?.*$/, '')  // strip $X,XXX
-          .replace(/\s+[\d]{1,3}(?:,\d{3})+(?:\.\d{1,2})?\s*$/, '')  // strip bare X,XXX
-          .replace(/\s+\d{4,7}(?:\.\d{1,2})?\s*$/, '')  // strip bare XXXXX
+      line.replace(/\s*\$[\d,]+(?:\.\d{1,2})?.*$/, '')
+          .replace(/\s+\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?\s*$/, '')
           .trim()
     );
     if (desc.length < 4 || /^[\d\s.\-]+$/.test(desc)) continue;
@@ -742,7 +744,10 @@ app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
     if (ext === '.pdf' || ext === '.docx' || ext === '.doc') {
       // Node.js parser for PDFs and Word docs (no Python dependency)
       const rows = await parseSOVFromText(req.file.path, ext);
-      if (!rows || rows.length === 0) throw new Error('No line items with dollar amounts found in this file.');
+      if (!rows || rows.length === 0) {
+        cleanup();
+        return res.status(422).json({ error: 'No line items with dollar amounts could be extracted from this file. This may be a scanned/image PDF. Please try uploading an Excel (.xlsx) or Word (.docx) version instead.' });
+      }
       result = {
         rows, all_rows: rows,
         row_count: rows.length, total_rows: rows.length,
