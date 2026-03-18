@@ -1,0 +1,5 @@
+# nixpacks.toml — ensures Python3 is installed alongside Node.js
+# parse_sov.py uses pdfplumber + python-docx (installed via requirements.txt in railway.toml)
+
+[phases.setup]
+nixPkgs = ["python3", "python3Packages.pip"]
