@@ -15,6 +15,7 @@ try { helmet    = require('helmet');           } catch(e) { console.warn('helmet
 try { rateLimit = require('express-rate-limit');} catch(e) { console.warn('express-rate-limit not installed — run: npm install express-rate-limit'); }
 
 const app = express();
+app.set('trust proxy', 1); // Railway runs behind a load balancer — needed for express-rate-limit
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret';
 if (!process.env.JWT_SECRET) {
@@ -642,8 +643,16 @@ function parseSOVFile(filePath) {
 const SKIP_RE = /^(\*|•|·|–|—|-{2,})|^(subtotal|total|tax|overhead|company overhead|balance due|amount paid|terms|signature|page \d|note[:\s]|excludes|it is an honor|we thank|sincerely|dear |http|www\.)/i;
 
 function extractAmounts(text) {
-  const matches = text.match(/\$[\d,]+(?:\.\d{1,2})?/g) || [];
-  return matches.map(m => parseFloat(m.replace(/[$,]/g, '')));
+  // First try $X,XXX.XX format (explicit dollar sign)
+  const dollarMatches = (text.match(/\$[\d,]+(?:\.\d{1,2})?/g) || [])
+    .map(m => parseFloat(m.replace(/[$,]/g, '')));
+  if (dollarMatches.length) return dollarMatches;
+  // Fallback: bare numbers at end of line (common in contractor PDFs without $ signs)
+  // e.g. "Painting - Interior  18,913" or "Fee  12,331.00"
+  const bareMatches = (text.match(/(?:^|\s)([\d]{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d{4,7}(?:\.\d{1,2})?)\s*$/g) || [])
+    .map(m => parseFloat(m.trim().replace(/,/g, '')))
+    .filter(n => n >= 100); // Must be >= $100 to be a real line item amount
+  return bareMatches;
 }
 
 function cleanDesc(s) {
@@ -662,8 +671,13 @@ function rowsFromLines(lines) {
     if (!amounts.length) continue;
     const total = amounts[amounts.length - 1];
     if (total <= 0) continue;
-    // Description = everything before the first dollar sign
-    let desc = cleanDesc(line.replace(/\s*\$[\d,]+(?:\.\d{1,2})?.*$/, '').trim());
+    // Description = everything before the amount (strip trailing number or $amount)
+    let desc = cleanDesc(
+      line.replace(/\s*\$[\d,]+(?:\.\d{1,2})?.*$/, '')  // strip $X,XXX
+          .replace(/\s+[\d]{1,3}(?:,\d{3})+(?:\.\d{1,2})?\s*$/, '')  // strip bare X,XXX
+          .replace(/\s+\d{4,7}(?:\.\d{1,2})?\s*$/, '')  // strip bare XXXXX
+          .trim()
+    );
     if (desc.length < 4 || /^[\d\s.\-]+$/.test(desc)) continue;
     if (SKIP_RE.test(desc)) continue;
     const key = desc.toLowerCase();
