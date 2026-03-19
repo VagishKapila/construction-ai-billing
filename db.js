@@ -189,6 +189,29 @@ async function initDB() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_feedback_digest ON feedback(digest_sent, created_at);
+
+    -- Revenue & reminders
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS payment_due_date DATE;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS retention_due_date DATE;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS address VARCHAR(500);
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS amount_due NUMERIC(14,2);
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS retention_held NUMERIC(14,2);
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_7before BOOLEAN DEFAULT TRUE;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_due BOOLEAN DEFAULT TRUE;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_7after BOOLEAN DEFAULT TRUE;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_retention BOOLEAN DEFAULT TRUE;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_email VARCHAR(300);
+
+    CREATE TABLE IF NOT EXISTS reminder_log (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+      pay_app_id INTEGER,
+      reminder_type VARCHAR(50) NOT NULL,
+      sent_to VARCHAR(300),
+      sent_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_reminder_log ON reminder_log(user_id, reminder_type, sent_at);
   `);
   console.log('Database ready');
 }

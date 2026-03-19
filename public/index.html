@@ -183,9 +183,72 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
 .aia-dist-grid{display:flex;gap:20px}
 .aia-dist-item{display:flex;align-items:center;gap:6px}
 .aia-checkbox{width:11px;height:11px;border:1px solid #000;display:inline-block;flex-shrink:0}
-/* ── Phase 1: Feedback widget ─────────────────────────────────────── */
-.feedback-fab{position:fixed;bottom:24px;right:24px;z-index:900;background:var(--blue);color:#fff;border:none;border-radius:999px;padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 4px 16px rgba(24,95,165,0.35);display:flex;align-items:center;gap:7px;transition:background 0.15s}
-.feedback-fab:hover{background:var(--blue-dark)}
+/* ── Avatar AI Assistant ──────────────────────────────────────────── */
+.ai-avatar-fab{position:fixed;bottom:24px;right:24px;z-index:900;cursor:pointer;border:none;background:transparent;padding:0;transition:transform 0.2s}
+.ai-avatar-fab:hover .ai-avatar-img{transform:scale(1.06);box-shadow:0 0 0 4px rgba(24,95,165,0.25),0 8px 32px rgba(24,95,165,0.35)}
+.ai-avatar-img{width:72px;height:72px;border-radius:50%;object-fit:cover;object-position:top;box-shadow:0 0 0 3px #185FA5,0 6px 24px rgba(24,95,165,0.3);transition:all 0.2s;display:block}
+.ai-avatar-pulse{position:absolute;top:2px;right:2px;width:14px;height:14px;background:#22c55e;border-radius:50%;border:2px solid #fff;animation:pulse-dot 2s infinite}
+@keyframes pulse-dot{0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,0.5)}50%{box-shadow:0 0 0 5px rgba(34,197,94,0)}}
+.ai-chat-panel{position:fixed;bottom:112px;right:24px;width:360px;max-height:520px;background:rgba(255,255,255,0.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(24,95,165,0.15);border-radius:20px;box-shadow:0 12px 60px rgba(0,0,0,0.18);z-index:901;display:flex;flex-direction:column;overflow:hidden;transform:scale(0.92) translateY(12px);opacity:0;pointer-events:none;transition:all 0.22s cubic-bezier(0.34,1.56,0.64,1)}
+.ai-chat-panel.open{transform:scale(1) translateY(0);opacity:1;pointer-events:all}
+.ai-chat-header{background:linear-gradient(135deg,#0C3B6B 0%,#185FA5 100%);padding:14px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.ai-chat-header-avatar{width:40px;height:40px;border-radius:50%;object-fit:cover;object-position:top;border:2px solid rgba(255,255,255,0.4)}
+.ai-chat-header-info{flex:1}
+.ai-chat-header-name{color:#fff;font-size:14px;font-weight:700;line-height:1.2}
+.ai-chat-header-status{color:rgba(255,255,255,0.7);font-size:11px}
+.ai-chat-header-close{background:rgba(255,255,255,0.15);border:none;color:#fff;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;transition:background 0.15s}
+.ai-chat-header-close:hover{background:rgba(255,255,255,0.3)}
+.ai-chat-msgs{flex:1;overflow-y:auto;padding:14px 12px;display:flex;flex-direction:column;gap:10px;min-height:180px;max-height:260px}
+.ai-chat-msgs::-webkit-scrollbar{width:4px}.ai-chat-msgs::-webkit-scrollbar-track{background:transparent}.ai-chat-msgs::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.15);border-radius:2px}
+.ai-msg{display:flex;gap:8px;align-items:flex-end;animation:msgIn 0.2s ease}
+@keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.ai-msg-avatar{width:26px;height:26px;border-radius:50%;object-fit:cover;object-position:top;flex-shrink:0}
+.ai-msg-bubble{padding:9px 12px;border-radius:14px;font-size:13px;line-height:1.45;max-width:240px}
+.ai-msg.ai .ai-msg-bubble{background:linear-gradient(135deg,#0C3B6B,#185FA5);color:#fff;border-bottom-left-radius:4px}
+.ai-msg.user{flex-direction:row-reverse}
+.ai-msg.user .ai-msg-bubble{background:#f1f5ff;color:#0a1f3c;border-bottom-right-radius:4px;max-width:210px}
+.ai-chat-quick{padding:8px 12px;display:flex;gap:6px;flex-wrap:wrap;border-top:1px solid rgba(0,0,0,0.06)}
+.ai-quick-btn{background:#f1f5ff;border:1px solid rgba(24,95,165,0.2);color:#185FA5;border-radius:20px;padding:5px 11px;font-size:11px;cursor:pointer;transition:all 0.15s;white-space:nowrap}
+.ai-quick-btn:hover{background:#185FA5;color:#fff}
+.ai-chat-input-row{padding:10px 12px;border-top:1px solid rgba(0,0,0,0.08);display:flex;gap:8px;align-items:center;flex-shrink:0}
+.ai-chat-input{flex:1;border:1px solid rgba(24,95,165,0.2);border-radius:20px;padding:8px 14px;font-size:13px;outline:none;background:rgba(255,255,255,0.8)}
+.ai-chat-input:focus{border-color:#185FA5;background:#fff}
+.ai-chat-send{background:#185FA5;color:#fff;border:none;width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;transition:background 0.15s;flex-shrink:0}
+.ai-chat-send:hover{background:#0C3B6B}
+.ai-chat-attach{background:transparent;border:none;cursor:pointer;font-size:18px;color:var(--text2);transition:color 0.15s;padding:4px}
+.ai-chat-attach:hover{color:#185FA5}
+.ai-chat-screenshot-preview{margin:4px 12px 0;font-size:11px;color:var(--text2);display:flex;align-items:center;gap:6px}
+/* Revenue tab ──────────────────────────────────────────────────────── */
+.rev-kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}
+.rev-kpi{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px 20px}
+.rev-kpi-label{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px}
+.rev-kpi-val{font-size:24px;font-weight:700;color:#0a1f3c}
+.rev-kpi-sub{font-size:11px;color:var(--text2);margin-top:3px}
+.rev-filter-row{display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap}
+.rev-period-btn{border:1px solid var(--border2);background:var(--bg2);color:var(--text2);border-radius:var(--radius);padding:6px 16px;font-size:13px;cursor:pointer;transition:all 0.15s}
+.rev-period-btn.active,.rev-period-btn:hover{background:#185FA5;color:#fff;border-color:#185FA5}
+.rev-bar-chart{height:160px;display:flex;align-items:flex-end;gap:6px;padding:0 4px;margin-bottom:22px}
+.rev-bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px}
+.rev-bar{width:100%;background:linear-gradient(to top,#185FA5,#4a9be0);border-radius:4px 4px 0 0;min-height:4px;transition:height 0.4s}
+.rev-bar-lbl{font-size:9px;color:var(--text2);text-align:center;white-space:nowrap}
+.rev-bar-val{font-size:9px;color:#185FA5;font-weight:600;text-align:center}
+.rev-table th{background:var(--bg3);font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:var(--text2);padding:8px 12px;text-align:left;border-bottom:1px solid var(--border2)}
+.rev-table td{padding:10px 12px;font-size:13px;border-bottom:1px solid var(--border);vertical-align:middle}
+.rev-table tr:hover td{background:var(--blue-light)}
+.rev-status{border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600}
+.rev-status.submitted{background:#dcfce7;color:#166534}
+.rev-status.draft{background:#fef9c3;color:#854d0e}
+.rev-status.approved{background:#dbeafe;color:#1e40af}
+/* Reminder settings ────────────────────────────────────────────────── */
+.rem-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px 20px;margin-bottom:14px}
+.rem-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)}
+.rem-row:last-child{border-bottom:none}
+.toggle-switch{position:relative;display:inline-block;width:40px;height:22px}
+.toggle-switch input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;cursor:pointer;inset:0;background:#cbd5e1;border-radius:22px;transition:0.3s}
+.toggle-slider:before{content:'';position:absolute;width:16px;height:16px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:0.3s}
+input:checked + .toggle-slider{background:#185FA5}
+input:checked + .toggle-slider:before{transform:translateX(18px)}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px}
 .modal-box{background:var(--bg2);border-radius:var(--radius-lg);padding:24px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,0.18)}
 .modal-box h3{font-size:16px;font-weight:600;margin-bottom:4px}
@@ -483,8 +546,10 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
   /* AIA G702/G703 table — horizontal scroll (already in tbl-wrap) */
   .tbl-wrap{-webkit-overflow-scrolling:touch}
 
-  /* Feedback FAB — move left so it clears mobile browser chrome */
-  .feedback-fab{bottom:80px;right:16px}
+  /* Avatar FAB — move up so it clears mobile browser chrome */
+  .ai-avatar-fab{bottom:80px;right:16px}
+  .ai-chat-panel{right:16px;width:calc(100vw - 32px);bottom:160px}
+  .rev-kpi-row{grid-template-columns:repeat(2,1fr)}
 
   /* Settings: stack form rows */
   .settings-row{flex-direction:column;gap:8px}
@@ -805,6 +870,7 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
       <div class="sl" aria-hidden="true">Menu</div>
       <div class="ni active" id="nav-dash" onclick="showDash()" role="button" tabindex="0" aria-current="page" onkeydown="if(event.key==='Enter'||event.key===' ')showDash()">Dashboard</div>
       <div class="ni" id="nav-new-proj" onclick="showNewProject()" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')showNewProject()">+ New project</div>
+      <div class="ni" id="nav-revenue" onclick="showRevenue()" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')showRevenue()">📊 Revenue</div>
       <div class="ni hidden" id="nav-admin" onclick="showAdmin()" role="button" tabindex="0" style="color:var(--amber)" onkeydown="if(event.key==='Enter'||event.key===' ')showAdmin()">⚡ Admin</div>
       <div id="sidebar-projects" role="list"></div>
     </nav>
@@ -1135,6 +1201,89 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
             <button class="btn" onclick="npBackTo3()">← Back</button>
             <button class="btn btn-primary btn-sm" onclick="npFinish()">Finish — Go to project →</button>
           </div>
+        </div>
+      </div>
+
+      <!-- REVENUE & HISTORY -->
+      <div class="pg" id="pg-revenue">
+        <div class="ptitle">📊 Revenue & Billing History</div>
+        <div class="psub">All pay applications across every project — track what you've billed and what's been paid.</div>
+        <!-- Filter row -->
+        <div class="rev-filter-row">
+          <button class="rev-period-btn active" id="rev-btn-monthly" onclick="setRevPeriod('monthly')">Monthly</button>
+          <button class="rev-period-btn" id="rev-btn-quarterly" onclick="setRevPeriod('quarterly')">Quarterly</button>
+          <button class="rev-period-btn" id="rev-btn-yearly" onclick="setRevPeriod('yearly')">Yearly</button>
+          <select id="rev-year-select" style="border:1px solid var(--border2);border-radius:var(--radius);padding:6px 10px;font-size:13px;background:var(--bg2)" onchange="loadRevenue()"></select>
+          <button class="btn btn-sm" onclick="exportRevCSV()" style="margin-left:auto">⬇ Export CSV</button>
+        </div>
+        <!-- KPI cards -->
+        <div class="rev-kpi-row" id="rev-kpis">
+          <div class="rev-kpi"><div class="rev-kpi-label">Total Billed</div><div class="rev-kpi-val" id="rev-total-billed">—</div><div class="rev-kpi-sub">All submitted pay apps</div></div>
+          <div class="rev-kpi"><div class="rev-kpi-label">Retention Held</div><div class="rev-kpi-val" id="rev-total-retention">—</div><div class="rev-kpi-sub">Across all projects</div></div>
+          <div class="rev-kpi"><div class="rev-kpi-label">Net Received</div><div class="rev-kpi-val" id="rev-net-received">—</div><div class="rev-kpi-sub">Billed minus retention</div></div>
+          <div class="rev-kpi"><div class="rev-kpi-label">Active Projects</div><div class="rev-kpi-val" id="rev-active-projects">—</div><div class="rev-kpi-sub">With billing activity</div></div>
+        </div>
+        <!-- Bar chart -->
+        <div class="card" style="margin-bottom:22px">
+          <div class="ct" style="margin-bottom:12px">Billing by Period</div>
+          <div class="rev-bar-chart" id="rev-bar-chart"></div>
+        </div>
+        <!-- History table -->
+        <div class="card" style="padding:0;overflow:hidden">
+          <div style="padding:16px 20px 12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <div class="ct" style="margin:0">Pay Application History</div>
+            <input type="text" id="rev-search" placeholder="Search job, address, project..." style="border:1px solid var(--border2);border-radius:var(--radius);padding:6px 12px;font-size:13px;width:220px" oninput="filterRevTable()"/>
+          </div>
+          <div class="tbl-wrap">
+            <table class="rev-table" style="width:100%">
+              <thead>
+                <tr>
+                  <th>Job #</th>
+                  <th>Project / Address</th>
+                  <th>Pay App</th>
+                  <th>Period End</th>
+                  <th>Contract Amt</th>
+                  <th>This Invoice</th>
+                  <th>Retention</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="rev-table-body">
+                <tr><td colspan="8" style="text-align:center;color:var(--text2);padding:32px">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <!-- Reminder settings card -->
+        <div class="card" style="margin-top:22px">
+          <div class="ct" style="margin-bottom:4px">🔔 Follow-up & Reminder Settings</div>
+          <div class="psub" style="margin-bottom:14px">Automatic email reminders keep you paid on time and protect your lien rights.</div>
+          <div class="rem-card">
+            <div class="rem-row">
+              <div><div style="font-size:13px;font-weight:600">7 days before payment due</div><div style="font-size:11px;color:var(--text2)">Friendly heads-up to the owner or GC</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="rem-7before" checked onchange="saveReminderSettings()"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="rem-row">
+              <div><div style="font-size:13px;font-weight:600">Day payment is due</div><div style="font-size:11px;color:var(--text2)">Day-of reminder with invoice summary</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="rem-due" checked onchange="saveReminderSettings()"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="rem-row">
+              <div><div style="font-size:13px;font-weight:600">7 days after (overdue follow-up)</div><div style="font-size:11px;color:var(--text2)">Escalation email if payment not received</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="rem-7after" checked onchange="saveReminderSettings()"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="rem-row">
+              <div><div style="font-size:13px;font-weight:600">Retention release reminder</div><div style="font-size:11px;color:var(--text2)">Alert when retention becomes due per contract terms</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="rem-retention" checked onchange="saveReminderSettings()"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="rem-row" style="margin-top:8px">
+              <div style="flex:1">
+                <div style="font-size:13px;font-weight:600">Reminder email address</div>
+                <div style="font-size:11px;color:var(--text2)">Where to send follow-up alerts</div>
+              </div>
+              <input type="email" id="rem-email" placeholder="your@email.com" style="border:1px solid var(--border2);border-radius:var(--radius);padding:6px 10px;font-size:13px;width:220px" onblur="saveReminderSettings()"/>
+            </div>
+          </div>
+          <div id="rem-save-status" style="font-size:12px;color:var(--text2);margin-top:6px"></div>
         </div>
       </div>
 
@@ -1685,9 +1834,9 @@ function setAuth(data){
   document.getElementById('user-name-display').textContent=currentUser.name;
   document.getElementById('user-avatar').textContent=currentUser.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
   loadSettings();
-  // Show feedback FAB now that user is logged in
-  const fab = document.getElementById('feedback-fab');
-  if (fab) fab.style.display = '';
+  // Show AI avatar assistant now that user is logged in
+  const aiWrap = document.getElementById('ai-avatar-wrap');
+  if (aiWrap) aiWrap.style.display = '';
   // Show admin nav item if user is an admin
   checkAdminAccess();
   // Show email verification banner if needed (soft nudge — account stays usable)
@@ -1719,7 +1868,7 @@ function showPage(id){
   document.getElementById('pg-'+id).classList.add('on');
   // ADA: update aria-current on sidebar nav items
   document.querySelectorAll('.ni[aria-current]').forEach(n=>n.removeAttribute('aria-current'));
-  const navMap={dash:'nav-dash',settings:null,project:null};
+  const navMap={dash:'nav-dash',revenue:'nav-revenue',settings:null,project:null};
   if(navMap[id]) { const el=document.getElementById(navMap[id]); if(el) el.setAttribute('aria-current','page'); }
 }
 function showDash(){
@@ -3078,65 +3227,254 @@ if('serviceWorker' in navigator){
 // ═══════════════════════════════════════════════════════════════════
 // PHASE 1 — FEEDBACK WIDGET
 // ═══════════════════════════════════════════════════════════════════
-let feedbackRecording = false, feedbackMediaRecorder = null, feedbackAudioChunks = [];
+// ═══════════════════════════════════════════════════════════════════
+// AI AVATAR CHATBOT — ARIA
+// ═══════════════════════════════════════════════════════════════════
+let aiChatOpen = false;
+let aiScreenshotFile = null;
 
-function openFeedback() {
-  document.getElementById('feedback-modal').classList.remove('hidden');
-  document.getElementById('feedback-msg').value = '';
-  document.getElementById('feedback-category').value = 'general';
-  document.getElementById('feedback-voice-status').textContent = '';
-  document.getElementById('feedback-screenshot-name').textContent = '';
-}
-function closeFeedback() {
-  document.getElementById('feedback-modal').classList.add('hidden');
+// Smart response library — keyword → response
+const ARIA_SCRIPTS = [
+  {keys:['hello','hi','hey','howdy','hola'],reply:"Hey! 👋 I'm Aria, your Construction AI assistant. I can help you with pay apps, lien waivers, uploading your SOV, or anything else. What can I do for you today?"},
+  {keys:['create','new','start','begin','how do i'],sub:['pay app','application','invoice','billing'],reply:"To create a pay app: open your project from the Dashboard, go to the Pay Apps tab, and click '+ New Pay App'. Fill in the period dates, adjust % complete per line, and hit Save. Your AIA G702/G703 will be ready to download. 📄"},
+  {keys:['sov','schedule of values','upload','import'],reply:"You can upload your Schedule of Values as Excel (.xlsx/.xls), CSV, PDF, or Word. In the New Project wizard, go to Step 2 and drag-and-drop your file. The parser handles messy contractor files — it auto-detects the amount and description columns. 💪"},
+  {keys:['lien','waiver','release','prelim','preliminary'],reply:"We support all 5 California lien document types: Preliminary Notice, Conditional Progress Waiver, Unconditional Progress Waiver, Conditional Final, and Unconditional Final. After submitting a pay app, tap 'Generate waiver' from the notification or the Preview tab. The PDF is signed with your name, timestamp, and IP. ✅"},
+  {keys:['retention','retainage'],reply:"Retainage is tracked per line item in your pay app. Your default retainage % is set in Settings. When the project reaches final payment (≥98% complete), Aria will prompt you to generate an Unconditional Final Release. Remember: retention is often forgotten — that's why we built automatic reminders! 🔔"},
+  {keys:['pdf','download','print','export'],reply:"Click 'Download PDF' on the Preview & Export tab. You'll get a real AIA-formatted G702/G703 PDF — not a browser print screenshot. If you've generated a lien waiver, it's automatically attached as Page 3. ✨"},
+  {keys:['contract','aia','agreement','upload contract'],reply:"In the New Project wizard (Step 4), you can upload your AIA contract PDF or Word doc. We extract the contract sum and compare it against your SOV total — so you catch mismatches before billing. 📋"},
+  {keys:['federal','government','wawf','ipp','sf-1034'],reply:"Federal billing (SF-1034, SF-1035, WAWF/IPP) is coming soon! We're building it as a separate tab. If you work on federal or military contracts, let me know your specific forms and I'll pass it to the team. 🏛️"},
+  {keys:['email','remind','reminder','follow','follow-up','notification'],reply:"Check the Revenue tab — you can set up automatic email reminders: 7 days before payment due, day-of, 7 days overdue, and retention release alerts. Enter your email address there and toggle on what you need. 📬"},
+  {keys:['revenue','history','analytics','report','accounting'],reply:"The Revenue tab (sidebar) shows all your pay apps across every project — total billed, retention held, net received — filtered by month, quarter, or year. You can also export to CSV for your accountant. 📊"},
+  {keys:['settings','company','logo','signature','profile'],reply:"In Settings you can upload your company logo and signature (they print on every PDF), set default retainage %, payment terms, and your contact info. The New Project wizard auto-fills from these settings. ⚙️"},
+  {keys:['bug','broken','not working','error','issue','problem','crash','fail'],reply:"Ugh, I'm sorry that's happening! 😔 Please describe what went wrong and I'll send it straight to our engineering team. You can also attach a screenshot with the 📎 button. We usually fix critical bugs within 24 hours."},
+  {keys:['feature','idea','suggestion','request','wish','add','missing'],reply:"Love hearing ideas! 💡 Tell me what you're envisioning — even a rough description helps. I'll log it in our product backlog with your account info so the team can follow up. What would make your billing life easier?"},
+  {keys:['slow','performance','loading','lag'],reply:"Noticed some sluggishness? Thanks for flagging it. Most slowness happens on large SOV files or when generating multi-page PDFs. Try refreshing, and if it persists please let me know the project size and I'll escalate to our infra team. ⚡"},
+  {keys:['price','pricing','cost','charge','subscription','free','pay'],reply:"Construction AI Billing is currently free to use! We're focused on building the best AIA billing tool for contractors. No credit card required. If you run into any limits just let me know. 🎉"},
+  {keys:['account','login','password','sign in','register','verify'],reply:"For account issues — login problems, verification emails, or password resets — try the login page first. If you're stuck, describe the issue here and I'll escalate it to our support team right away. 🔐"},
+  {keys:['team','invite','member','role','accountant','executive','field'],reply:"You can invite team members from your Settings page — assign roles like Accountant, Executive, PM, or Field. They'll get an email invite. The Accountant role gets access to the Revenue & billing history view. 👥"},
+  {keys:['g702','g703','aia form','format','standard'],reply:"G702 is the Application and Certificate for Payment cover sheet — it shows your total contract, % complete, and amount due. G703 is the Continuation Sheet with the full Schedule of Values breakdown. We generate both automatically from your SOV. 📐"},
+  {keys:['change order','change','co','extra work','additional'],reply:"Add change orders on the Pay App editor — you'll see a '+ Change Order' section. Each CO gets its own line, and the math rolls up into the G702 totals automatically. Keep your original SOV clean and track all extras separately. 🔧"},
+  {keys:['csv','excel','xlsx','xls','word','docx','pdf upload'],reply:"SOV file formats accepted: Excel (.xlsx, .xls), CSV, PDF, and Word (.docx, .doc). The parser auto-detects your column layout — no template required. If it misses rows or amounts, send me your file and we'll tune it. 📂"},
+  {keys:['how','what is','explain','tell me','help'],reply:"Happy to help! I can explain any part of the app — pay apps, lien waivers, SOV parsing, PDF exports, or AIA formats. What topic are you curious about?"},
+  {keys:['thank','thanks','great','awesome','perfect','love it','nice'],reply:"You're so welcome! 😊 That's exactly why we built this. Anything else I can help with? If you have a moment, I'd love to hear what features would make your workflow even better."},
+  {keys:['bye','goodbye','close','done'],reply:"Sounds good! I'll be right here whenever you need me. Good luck with billing! 🏗️"},
+];
+
+function getAriaReply(text) {
+  const t = text.toLowerCase();
+  let best = null, bestScore = 0;
+  for (const s of ARIA_SCRIPTS) {
+    let score = 0;
+    for (const k of s.keys) if (t.includes(k)) score += 2;
+    if (s.sub) for (const k of s.sub) if (t.includes(k)) score += 3;
+    if (score > bestScore) { bestScore = score; best = s; }
+  }
+  if (best && bestScore >= 2) return best.reply;
+  return "Thanks for reaching out! 🙏 Could you tell me a bit more about what you need? I want to make sure I give you the right answer. And if something's broken, attach a screenshot — I'll send it to the team right away.";
 }
 
-async function submitFeedback() {
-  const msg = document.getElementById('feedback-msg').value.trim();
-  const category = document.getElementById('feedback-category').value;
-  const screenshotInput = document.getElementById('feedback-screenshot-input');
-  const btn = document.getElementById('feedback-submit-btn');
-  if (!msg && !screenshotInput.files.length) { alert('Please enter a message or attach a screenshot.'); return; }
-  btn.disabled = true; btn.textContent = 'Sending…';
+function toggleAIChat() {
+  aiChatOpen = !aiChatOpen;
+  const panel = document.getElementById('ai-chat-panel');
+  if (aiChatOpen) {
+    panel.classList.add('open');
+    const msgs = document.getElementById('ai-chat-msgs');
+    if (msgs.children.length === 0) {
+      appendAriaMsg("Hi! 👋 I'm **Aria**, your Construction AI assistant. I'm here to help with pay apps, lien waivers, billing questions — or to capture any bugs and ideas for the team. How can I help you today?", 'ai');
+    }
+    setTimeout(() => document.getElementById('ai-chat-input').focus(), 220);
+  } else {
+    panel.classList.remove('open');
+  }
+}
+
+function appendAriaMsg(text, who) {
+  const msgs = document.getElementById('ai-chat-msgs');
+  const div = document.createElement('div');
+  div.className = 'ai-msg ' + who;
+  const safe = text.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  if (who === 'ai') {
+    div.innerHTML = `<img src="/ai-avatar.png" class="ai-msg-avatar" alt="Aria"/><div class="ai-msg-bubble">${safe}</div>`;
+  } else {
+    div.innerHTML = `<div class="ai-msg-bubble">${safe}</div>`;
+  }
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function appendAriaTyping() {
+  const msgs = document.getElementById('ai-chat-msgs');
+  const div = document.createElement('div');
+  div.className = 'ai-msg ai'; div.id = 'aria-typing';
+  div.innerHTML = `<img src="/ai-avatar.png" class="ai-msg-avatar" alt="Aria"/><div class="ai-msg-bubble" style="font-size:18px;letter-spacing:4px;padding:6px 14px">●●●</div>`;
+  msgs.appendChild(div); msgs.scrollTop = msgs.scrollHeight;
+}
+function removeAriaTyping() { const t = document.getElementById('aria-typing'); if (t) t.remove(); }
+
+async function sendAIMsg() {
+  const input = document.getElementById('ai-chat-input');
+  const text = input.value.trim();
+  if (!text && !aiScreenshotFile) return;
+  input.value = '';
+  if (text) appendAriaMsg(text, 'user');
+  if (aiScreenshotFile) appendAriaMsg('📎 ' + aiScreenshotFile.name, 'user');
+  document.getElementById('ai-quick-btns').style.display = 'none';
+  appendAriaTyping();
   try {
     const fd = new FormData();
-    fd.append('category', category);
-    fd.append('message', msg);
+    fd.append('category', detectCategory(text));
+    fd.append('message', text || '(screenshot attached)');
     fd.append('page_context', window.location.hash || document.title);
-    if (screenshotInput.files[0]) fd.append('screenshot', screenshotInput.files[0]);
-    const r = await fetch('/api/feedback', { method:'POST', headers:{Authorization:'Bearer '+getToken()}, body:fd });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error||'Error');
-    btn.textContent = 'Sent! Thank you ✓';
-    setTimeout(closeFeedback, 1200);
+    if (aiScreenshotFile) fd.append('screenshot', aiScreenshotFile);
+    await fetch('/api/feedback', { method:'POST', headers:{Authorization:'Bearer '+getToken()}, body:fd });
+  } catch(_) {}
+  aiScreenshotFile = null;
+  document.getElementById('ai-screenshot-input').value = '';
+  document.getElementById('ai-screenshot-preview').classList.add('hidden');
+  setTimeout(() => {
+    removeAriaTyping();
+    const reply = getAriaReply(text);
+    appendAriaMsg(reply, 'ai');
+    if (text && detectCategory(text) !== 'general') {
+      setTimeout(() => appendAriaMsg("I've logged this with our team and they'll review it shortly. Thank you for helping us improve! 🙌", 'ai'), 900);
+    }
+  }, 900 + Math.random() * 400);
+}
+
+function aiQuickReply(text) {
+  document.getElementById('ai-chat-input').value = text;
+  sendAIMsg();
+}
+
+function detectCategory(text) {
+  const t = (text || '').toLowerCase();
+  if (t.match(/bug|broken|error|crash|not work|issue|problem/)) return 'bug';
+  if (t.match(/feature|idea|wish|suggest|add|missing|would be nice/)) return 'feature';
+  if (t.match(/billing|invoice|payment|charge|price/)) return 'billing';
+  return 'general';
+}
+
+function onAIScreenshot(input) {
+  if (!input.files[0]) return;
+  aiScreenshotFile = input.files[0];
+  document.getElementById('ai-screenshot-fname').textContent = aiScreenshotFile.name;
+  document.getElementById('ai-screenshot-preview').classList.remove('hidden');
+}
+function clearAIScreenshot() {
+  aiScreenshotFile = null;
+  document.getElementById('ai-screenshot-input').value = '';
+  document.getElementById('ai-screenshot-preview').classList.add('hidden');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// REVENUE & HISTORY TAB
+// ═══════════════════════════════════════════════════════════════════
+let revPeriod = 'monthly';
+let revAllRows = [];
+
+async function showRevenue() {
+  closeSidebar();
+  showPage('revenue');
+  document.querySelectorAll('.ni').forEach(n => n.classList.remove('active'));
+  document.getElementById('nav-revenue').classList.add('active');
+  const yearSel = document.getElementById('rev-year-select');
+  const currentYear = new Date().getFullYear();
+  if (!yearSel.options.length) {
+    for (let y = currentYear; y >= currentYear - 4; y--) {
+      const o = document.createElement('option'); o.value = y; o.textContent = y; yearSel.appendChild(o);
+    }
+  }
+  try {
+    const s = await api('GET', '/settings');
+    if (s.reminder_7before !== undefined) document.getElementById('rem-7before').checked = !!s.reminder_7before;
+    if (s.reminder_due !== undefined) document.getElementById('rem-due').checked = !!s.reminder_due;
+    if (s.reminder_7after !== undefined) document.getElementById('rem-7after').checked = !!s.reminder_7after;
+    if (s.reminder_retention !== undefined) document.getElementById('rem-retention').checked = !!s.reminder_retention;
+    if (s.reminder_email) document.getElementById('rem-email').value = s.reminder_email;
+  } catch(_) {}
+  await loadRevenue();
+}
+
+async function loadRevenue() {
+  try {
+    const year = document.getElementById('rev-year-select').value || new Date().getFullYear();
+    const data = await api('GET', `/revenue/summary?period=${revPeriod}&year=${year}`);
+    revAllRows = data.rows || [];
+    const fmt = v => '$' + Math.round(v || 0).toLocaleString();
+    document.getElementById('rev-total-billed').textContent = fmt(data.total_billed);
+    document.getElementById('rev-total-retention').textContent = fmt(data.total_retention);
+    document.getElementById('rev-net-received').textContent = fmt((data.total_billed || 0) - (data.total_retention || 0));
+    document.getElementById('rev-active-projects').textContent = data.active_projects || 0;
+    renderRevChart(data.chart || []);
+    renderRevTable(revAllRows);
   } catch(e) {
-    btn.disabled = false; btn.textContent = 'Send feedback';
-    alert('Error: '+e.message);
+    document.getElementById('rev-table-body').innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:32px">Could not load data.</td></tr>`;
   }
 }
 
-async function startVoiceCapture() {
-  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-    // Fallback: use MediaRecorder for audio note
-    alert('Voice recognition not supported in this browser. Please type your feedback.');
-    return;
-  }
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const rec = new SpeechRecognition();
-  rec.lang = 'en-US'; rec.interimResults = false; rec.maxAlternatives = 1;
-  const btn = document.getElementById('feedback-voice-btn');
-  const status = document.getElementById('feedback-voice-status');
-  btn.textContent = '🔴 Listening…'; status.textContent = 'Speak now...';
-  rec.onresult = (e) => {
-    const transcript = e.results[0][0].transcript;
-    const ta = document.getElementById('feedback-msg');
-    ta.value = (ta.value ? ta.value + ' ' : '') + transcript;
-    status.textContent = '✓ Captured';
-    btn.textContent = '🎤 Voice';
-  };
-  rec.onerror = () => { btn.textContent = '🎤 Voice'; status.textContent = ''; };
-  rec.onend = () => { btn.textContent = '🎤 Voice'; };
-  rec.start();
+function setRevPeriod(p) {
+  revPeriod = p;
+  ['monthly','quarterly','yearly'].forEach(x => document.getElementById('rev-btn-'+x).classList.toggle('active', x===p));
+  loadRevenue();
+}
+
+function renderRevChart(chart) {
+  const el = document.getElementById('rev-bar-chart');
+  if (!chart.length) { el.innerHTML = '<div style="color:var(--text2);font-size:13px;width:100%;text-align:center;padding-bottom:20px">No data for this period</div>'; return; }
+  const max = Math.max(...chart.map(c => c.amount || 0), 1);
+  el.innerHTML = chart.map(c => {
+    const pct = Math.round(((c.amount || 0) / max) * 130);
+    return `<div class="rev-bar-col"><div class="rev-bar-val">${c.amount > 0 ? '$'+Math.round(c.amount/1000)+'k' : ''}</div><div class="rev-bar" style="height:${pct}px"></div><div class="rev-bar-lbl">${c.label}</div></div>`;
+  }).join('');
+}
+
+function renderRevTable(rows) {
+  const tbody = document.getElementById('rev-table-body');
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:32px">No pay applications found for this period.</td></tr>'; return; }
+  const fmt = v => v ? '$' + parseFloat(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+  tbody.innerHTML = rows.map(r => `<tr>
+    <td style="font-weight:600;white-space:nowrap">${r.job_number||'—'}</td>
+    <td><div style="font-weight:600;font-size:13px">${r.project_name}</div><div style="font-size:11px;color:var(--text2)">${r.address||''}</div></td>
+    <td>Pay App #${r.pay_app_number||'?'}</td>
+    <td style="white-space:nowrap">${r.period_end?new Date(r.period_end).toLocaleDateString():'—'}</td>
+    <td>${fmt(r.contract_amount)}</td>
+    <td style="font-weight:600">${fmt(r.amount_due)}</td>
+    <td>${fmt(r.retention_held)}</td>
+    <td><span class="rev-status ${r.status||'draft'}">${r.status||'draft'}</span></td>
+  </tr>`).join('');
+}
+
+function filterRevTable() {
+  const q = document.getElementById('rev-search').value.toLowerCase();
+  renderRevTable(revAllRows.filter(r =>
+    (r.project_name||'').toLowerCase().includes(q)||(r.address||'').toLowerCase().includes(q)||(r.job_number||'').toLowerCase().includes(q)
+  ));
+}
+
+function exportRevCSV() {
+  if (!revAllRows.length) { alert('No data to export.'); return; }
+  const headers = ['Job Number','Project','Address','Pay App #','Period End','Contract Amount','Amount Due','Retention Held','Status'];
+  const rows = revAllRows.map(r => [r.job_number||'',r.project_name||'',r.address||'',r.pay_app_number||'',
+    r.period_end?new Date(r.period_end).toLocaleDateString():'',r.contract_amount||0,r.amount_due||0,r.retention_held||0,r.status||'']);
+  const csv = [headers,...rows].map(r=>r.map(v=>`"${v}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download = `revenue_${revPeriod}_${document.getElementById('rev-year-select').value}.csv`;
+  a.click();
+}
+
+async function saveReminderSettings() {
+  try {
+    await api('POST', '/settings', {
+      reminder_7before: document.getElementById('rem-7before').checked,
+      reminder_due: document.getElementById('rem-due').checked,
+      reminder_7after: document.getElementById('rem-7after').checked,
+      reminder_retention: document.getElementById('rem-retention').checked,
+      reminder_email: document.getElementById('rem-email').value.trim(),
+    });
+    const st = document.getElementById('rem-save-status');
+    st.textContent = '✓ Saved'; setTimeout(()=>{st.textContent='';},2500);
+  } catch(e) { console.error('save reminders',e); }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -3386,41 +3724,48 @@ async function removeTeamMember(id) {
   } catch(e) { alert(e.message); }
 }
 </script>
-<!-- ── FEEDBACK FAB ──────────────────────────────────────────────────── -->
-<button class="feedback-fab" id="feedback-fab" onclick="openFeedback()" style="display:none">
-  💬 Feedback
-</button>
+<!-- ── AI AVATAR ASSISTANT ─────────────────────────────────────────── -->
+<div id="ai-avatar-wrap" style="display:none">
+  <!-- Floating avatar button -->
+  <button class="ai-avatar-fab" id="ai-fab" onclick="toggleAIChat()" aria-label="Open AI Assistant">
+    <div style="position:relative;display:inline-block">
+      <img src="/ai-avatar.png" class="ai-avatar-img" alt="AI Assistant" id="ai-fab-img"/>
+      <span class="ai-avatar-pulse"></span>
+    </div>
+  </button>
 
-<!-- ── FEEDBACK MODAL ─────────────────────────────────────────────────── -->
-<div class="modal-overlay hidden" id="feedback-modal" onclick="if(event.target===this)closeFeedback()">
-  <div class="modal-box">
-    <h3>Send feedback</h3>
-    <p class="modal-sub">Help us improve — bugs, suggestions, or anything on your mind.</p>
-    <div class="field">
-      <label>Category</label>
-      <select id="feedback-category">
-        <option value="bug">Bug / Something broken</option>
-        <option value="feature">Feature request</option>
-        <option value="general" selected>General feedback</option>
-        <option value="billing">Billing question</option>
-        <option value="other">Other</option>
-      </select>
+  <!-- Chat panel -->
+  <div class="ai-chat-panel" id="ai-chat-panel">
+    <!-- Header -->
+    <div class="ai-chat-header">
+      <img src="/ai-avatar.png" class="ai-chat-header-avatar" alt="Aria"/>
+      <div class="ai-chat-header-info">
+        <div class="ai-chat-header-name">Aria · Construction AI</div>
+        <div class="ai-chat-header-status">● Online — here to help</div>
+      </div>
+      <button class="ai-chat-header-close" onclick="toggleAIChat()">×</button>
     </div>
-    <div class="field">
-      <label>Message</label>
-      <textarea id="feedback-msg" rows="4" style="padding:8px 10px;border:0.5px solid var(--border2);border-radius:var(--radius);font-size:13px;width:100%;resize:vertical" placeholder="Describe the issue or idea..."></textarea>
+    <!-- Messages -->
+    <div class="ai-chat-msgs" id="ai-chat-msgs"></div>
+    <!-- Quick replies -->
+    <div class="ai-chat-quick" id="ai-quick-btns">
+      <button class="ai-quick-btn" onclick="aiQuickReply('How do I create a pay app?')">Pay app help</button>
+      <button class="ai-quick-btn" onclick="aiQuickReply('What is a lien waiver?')">Lien waiver?</button>
+      <button class="ai-quick-btn" onclick="aiQuickReply('Something is broken')">Report a bug</button>
+      <button class="ai-quick-btn" onclick="aiQuickReply('I have a feature idea')">Feature idea</button>
     </div>
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
-      <button class="btn btn-sm" id="feedback-voice-btn" onclick="startVoiceCapture()">🎤 Voice</button>
-      <span id="feedback-voice-status" style="font-size:11px;color:var(--text2)"></span>
-      <label class="btn btn-sm" style="cursor:pointer">📎 Screenshot
-        <input type="file" id="feedback-screenshot-input" accept="image/*" style="display:none" onchange="document.getElementById('feedback-screenshot-name').textContent=this.files[0]?.name||''"/>
+    <!-- Screenshot preview -->
+    <div class="ai-chat-screenshot-preview hidden" id="ai-screenshot-preview">
+      <span>📎</span><span id="ai-screenshot-fname"></span>
+      <span style="cursor:pointer;color:var(--red)" onclick="clearAIScreenshot()">✕</span>
+    </div>
+    <!-- Input row -->
+    <div class="ai-chat-input-row">
+      <label class="ai-chat-attach" title="Attach screenshot">
+        📎<input type="file" id="ai-screenshot-input" accept="image/*" style="display:none" onchange="onAIScreenshot(this)"/>
       </label>
-      <span id="feedback-screenshot-name" style="font-size:11px;color:var(--text2)"></span>
-    </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end">
-      <button class="btn" onclick="closeFeedback()">Cancel</button>
-      <button class="btn btn-primary" id="feedback-submit-btn" onclick="submitFeedback()">Send feedback</button>
+      <input class="ai-chat-input" id="ai-chat-input" placeholder="Ask anything or report an issue…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAIMsg()}" maxlength="600"/>
+      <button class="ai-chat-send" onclick="sendAIMsg()" title="Send">➤</button>
     </div>
   </div>
 </div>

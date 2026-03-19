@@ -584,7 +584,23 @@ app.put('/api/payapps/:id', auth, async (req,res) => {
      distOwner, distArchitect, distContractor]
   );
   if(!r.rows[0]) return res.status(404).json({error:'Not found'});
-  if (status === 'submitted') await logEvent(req.user.id, 'payapp_submitted', { pay_app_id: parseInt(req.params.id) });
+  if (status === 'submitted') {
+    await logEvent(req.user.id, 'payapp_submitted', { pay_app_id: parseInt(req.params.id) });
+    // Snapshot amount_due and retention_held from live line math for revenue reporting
+    try {
+      const snap = await pool.query(`
+        SELECT
+          SUM(pal.this_period_amount - COALESCE(pal.retainage_amount,0)) as amount_due,
+          SUM(COALESCE(pal.retainage_amount,0)) as retention_held
+        FROM pay_app_lines pal WHERE pal.pay_app_id=$1`, [req.params.id]);
+      if (snap.rows[0]) {
+        await pool.query(
+          'UPDATE pay_apps SET amount_due=$1, retention_held=$2 WHERE id=$3',
+          [snap.rows[0].amount_due||0, snap.rows[0].retention_held||0, req.params.id]
+        );
+      }
+    } catch(snapErr) { console.error('[Snap amount_due]', snapErr.message); }
+  }
   res.json(r.rows[0]);
 });
 
@@ -1171,10 +1187,12 @@ app.get('/api/settings', auth, async (req,res) => {
 });
 
 app.post('/api/settings', auth, async (req,res) => {
-  const {company_name,default_payment_terms,default_retainage,contact_name,contact_phone,contact_email,job_number_format} = req.body;
+  const {company_name,default_payment_terms,default_retainage,contact_name,contact_phone,contact_email,job_number_format,
+    reminder_7before,reminder_due,reminder_7after,reminder_retention,reminder_email} = req.body;
   const r = await pool.query(
-    `INSERT INTO company_settings(user_id,company_name,default_payment_terms,default_retainage,contact_name,contact_phone,contact_email,job_number_format)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+    `INSERT INTO company_settings(user_id,company_name,default_payment_terms,default_retainage,contact_name,contact_phone,contact_email,job_number_format,
+       reminder_7before,reminder_due,reminder_7after,reminder_retention,reminder_email)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      ON CONFLICT(user_id) DO UPDATE SET
        company_name=EXCLUDED.company_name,
        default_payment_terms=EXCLUDED.default_payment_terms,
@@ -1183,9 +1201,16 @@ app.post('/api/settings', auth, async (req,res) => {
        contact_phone=EXCLUDED.contact_phone,
        contact_email=EXCLUDED.contact_email,
        job_number_format=EXCLUDED.job_number_format,
+       reminder_7before=COALESCE(EXCLUDED.reminder_7before, company_settings.reminder_7before, TRUE),
+       reminder_due=COALESCE(EXCLUDED.reminder_due, company_settings.reminder_due, TRUE),
+       reminder_7after=COALESCE(EXCLUDED.reminder_7after, company_settings.reminder_7after, TRUE),
+       reminder_retention=COALESCE(EXCLUDED.reminder_retention, company_settings.reminder_retention, TRUE),
+       reminder_email=COALESCE(EXCLUDED.reminder_email, company_settings.reminder_email),
        updated_at=NOW()
      RETURNING *`,
-    [req.user.id,company_name,default_payment_terms||'Due on receipt',default_retainage||10,contact_name||null,contact_phone||null,contact_email||null,job_number_format||null]
+    [req.user.id,company_name,default_payment_terms||'Due on receipt',default_retainage||10,
+     contact_name||null,contact_phone||null,contact_email||null,job_number_format||null,
+     reminder_7before??null,reminder_due??null,reminder_7after??null,reminder_retention??null,reminder_email||null]
   );
   res.json(r.rows[0]);
 });
@@ -2159,6 +2184,69 @@ async function generateLienDocPDF({ fpath, doc_type, project, through_date, amou
   });
 }
 
+// ── REVENUE SUMMARY ────────────────────────────────────────────────────────
+app.get('/api/revenue/summary', auth, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const period = req.query.period || 'monthly'; // monthly | quarterly | yearly
+
+    // All pay apps for this user in the selected year
+    const paRes = await pool.query(`
+      SELECT pa.id, pa.pay_app_number, pa.period_end_date as period_end, pa.status,
+             pa.amount_due, pa.retention_held,
+             p.name as project_name, p.address, p.job_number,
+             p.contract_amount,
+             EXTRACT(MONTH FROM pa.period_end_date) as month,
+             EXTRACT(QUARTER FROM pa.period_end_date) as quarter
+      FROM pay_apps pa
+      JOIN projects p ON p.id = pa.project_id
+      WHERE p.user_id = $1
+        AND EXTRACT(YEAR FROM pa.period_end_date) = $2
+      ORDER BY pa.period_end_date DESC
+    `, [uid, year]);
+
+    const rows = paRes.rows;
+
+    // KPIs — sum over submitted/approved only
+    const billedRows = rows.filter(r => r.status === 'submitted' || r.status === 'approved');
+    const total_billed = billedRows.reduce((s, r) => s + parseFloat(r.amount_due || 0), 0);
+    const total_retention = billedRows.reduce((s, r) => s + parseFloat(r.retention_held || 0), 0);
+    const active_projects = new Set(billedRows.map(r => r.project_name)).size;
+
+    // Build chart buckets
+    let chart = [];
+    if (period === 'monthly') {
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      chart = months.map((label, i) => ({
+        label,
+        amount: billedRows.filter(r => parseInt(r.month) === i+1).reduce((s,r)=>s+parseFloat(r.amount_due||0),0)
+      }));
+    } else if (period === 'quarterly') {
+      chart = ['Q1','Q2','Q3','Q4'].map((label, i) => ({
+        label,
+        amount: billedRows.filter(r => parseInt(r.quarter) === i+1).reduce((s,r)=>s+parseFloat(r.amount_due||0),0)
+      }));
+    } else {
+      // Yearly — show last 5 years
+      const yRes = await pool.query(`
+        SELECT EXTRACT(YEAR FROM pa.period_end_date) as yr,
+               SUM(pa.amount_due) as amount
+        FROM pay_apps pa JOIN projects p ON p.id=pa.project_id
+        WHERE p.user_id=$1 AND pa.status IN ('submitted','approved')
+          AND pa.period_end_date IS NOT NULL
+        GROUP BY yr ORDER BY yr
+      `, [uid]);
+      chart = yRes.rows.map(r => ({ label: String(parseInt(r.yr)), amount: parseFloat(r.amount)||0 }));
+    }
+
+    res.json({ total_billed, total_retention, active_projects, chart, rows });
+  } catch(e) {
+    console.error('[Revenue]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ── FEEDBACK WIDGET ────────────────────────────────────────────────────────
 app.post('/api/feedback', auth, upload.single('screenshot'), async (req, res) => {
   const { category, message, page_context } = req.body;
@@ -2256,6 +2344,140 @@ setInterval(async () => {
     }
   } catch(e) { console.error('[Weekly Digest] Error:', e.message); }
 }, 30 * 60 * 1000); // check every 30 minutes (tight enough to not miss the Monday 7am window)
+
+// ── PAYMENT & RETENTION REMINDERS ─────────────────────────────────────────
+// Runs once per hour. Checks payment_due_date and retention_due_date on projects.
+// Sends via Resend. Respects per-user toggle preferences.
+async function sendReminderEmail(toEmail, subject, html) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.FROM_EMAIL || 'reminders@constructai.app';
+  if (!apiKey) {
+    console.log(`[DEV Reminder] TO: ${toEmail} | ${subject}`);
+    return true;
+  }
+  try {
+    const r = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: fromEmail, to: toEmail, subject, html })
+    });
+    if (!r.ok) { const e = await r.text(); console.error('[Resend Reminder]', e); return false; }
+    return true;
+  } catch(e) { console.error('[Reminder Email Error]', e.message); return false; }
+}
+
+function reminderEmailHtml({ subject, headline, body, projectName, amount, dueDate, appUrl }) {
+  return `
+  <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:0">
+    <div style="background:#0C3B6B;padding:24px 32px;border-radius:10px 10px 0 0">
+      <div style="color:#fff;font-size:20px;font-weight:700">Construction AI Billing</div>
+      <div style="color:rgba(255,255,255,0.7);font-size:13px;margin-top:2px">Payment Reminder</div>
+    </div>
+    <div style="background:#fff;padding:28px 32px;border:1px solid #e2e8f0;border-top:none">
+      <div style="font-size:22px;font-weight:700;color:#0C3B6B;margin-bottom:8px">${headline}</div>
+      <div style="font-size:14px;color:#475569;margin-bottom:20px">${body}</div>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px 20px;margin-bottom:20px">
+        <div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Project</div>
+        <div style="font-size:16px;font-weight:600;color:#0a1f3c">${projectName}</div>
+        ${amount ? `<div style="font-size:13px;color:#64748b;margin-top:6px">Amount: <strong style="color:#0C3B6B">$${parseFloat(amount).toLocaleString()}</strong></div>` : ''}
+        ${dueDate ? `<div style="font-size:13px;color:#64748b;margin-top:4px">Due: <strong>${new Date(dueDate).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</strong></div>` : ''}
+      </div>
+      <a href="${appUrl}" style="display:inline-block;background:#185FA5;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px">View Pay Application →</a>
+    </div>
+    <div style="padding:16px 32px;font-size:11px;color:#94a3b8;text-align:center">
+      You're receiving this because you have reminders enabled in Construction AI Billing.<br/>
+      To unsubscribe, visit your Revenue tab and toggle off reminders.
+    </div>
+  </div>`;
+}
+
+async function runPaymentReminders() {
+  try {
+    const appUrl = process.env.APP_URL || 'https://constructinv.varshyl.com';
+    const today = new Date(); today.setHours(0,0,0,0);
+
+    // Get all users with reminder preferences + their projects that have payment_due_date set
+    const res = await pool.query(`
+      SELECT p.id as project_id, p.name as project_name, p.user_id,
+             p.payment_due_date, p.retention_due_date,
+             pa.id as pay_app_id, pa.amount_due,
+             cs.reminder_7before, cs.reminder_due, cs.reminder_7after, cs.reminder_retention,
+             cs.reminder_email, u.email as user_email, u.name as user_name
+      FROM projects p
+      JOIN users u ON u.id = p.user_id
+      LEFT JOIN company_settings cs ON cs.user_id = p.user_id
+      LEFT JOIN pay_apps pa ON pa.project_id = p.id AND pa.status = 'submitted'
+        AND pa.id = (SELECT id FROM pay_apps WHERE project_id=p.id AND status='submitted' ORDER BY created_at DESC LIMIT 1)
+      WHERE (p.payment_due_date IS NOT NULL OR p.retention_due_date IS NOT NULL)
+        AND u.blocked IS NOT TRUE
+    `);
+
+    for (const r of res.rows) {
+      const toEmail = r.reminder_email || r.user_email;
+      if (!toEmail) continue;
+
+      const payDue = r.payment_due_date ? new Date(r.payment_due_date) : null;
+      const retDue = r.retention_due_date ? new Date(r.retention_due_date) : null;
+
+      // Helper: days between today and a date
+      const daysDiff = (d) => Math.round((d - today) / (1000 * 60 * 60 * 24));
+
+      // Check if already sent today for this type
+      async function alreadySent(type) {
+        const chk = await pool.query(
+          `SELECT id FROM reminder_log WHERE project_id=$1 AND reminder_type=$2 AND sent_at > NOW() - INTERVAL '20 hours'`,
+          [r.project_id, type]
+        );
+        return chk.rows.length > 0;
+      }
+
+      if (payDue) {
+        const diff = daysDiff(payDue);
+
+        if (diff === 7 && r.reminder_7before && !await alreadySent('7_before')) {
+          const ok = await sendReminderEmail(toEmail,
+            `Payment due in 7 days — ${r.project_name}`,
+            reminderEmailHtml({ subject: '7-Day Reminder', headline: '⏰ Payment Due in 7 Days', body: `A friendly heads-up that payment for <strong>${r.project_name}</strong> is due in one week. Make sure your lien waiver is ready to send.`, projectName: r.project_name, amount: r.amount_due, dueDate: payDue, appUrl })
+          );
+          if (ok) await pool.query('INSERT INTO reminder_log(user_id,project_id,pay_app_id,reminder_type,sent_to) VALUES($1,$2,$3,$4,$5)', [r.user_id, r.project_id, r.pay_app_id, '7_before', toEmail]);
+        }
+
+        if (diff === 0 && r.reminder_due && !await alreadySent('due_today')) {
+          const ok = await sendReminderEmail(toEmail,
+            `Payment due TODAY — ${r.project_name}`,
+            reminderEmailHtml({ subject: 'Due Today', headline: '🗓️ Payment Due Today', body: `Payment for <strong>${r.project_name}</strong> is due today. Log in to download your pay application PDF and send with your lien waiver.`, projectName: r.project_name, amount: r.amount_due, dueDate: payDue, appUrl })
+          );
+          if (ok) await pool.query('INSERT INTO reminder_log(user_id,project_id,pay_app_id,reminder_type,sent_to) VALUES($1,$2,$3,$4,$5)', [r.user_id, r.project_id, r.pay_app_id, 'due_today', toEmail]);
+        }
+
+        if (diff === -7 && r.reminder_7after && !await alreadySent('7_after')) {
+          const ok = await sendReminderEmail(toEmail,
+            `⚠️ Overdue follow-up — ${r.project_name}`,
+            reminderEmailHtml({ subject: 'Overdue', headline: '⚠️ Payment 7 Days Overdue', body: `Payment for <strong>${r.project_name}</strong> was due 7 days ago and may not have been received. Now is the time to follow up in writing. This reminder protects your lien rights.`, projectName: r.project_name, amount: r.amount_due, dueDate: payDue, appUrl })
+          );
+          if (ok) await pool.query('INSERT INTO reminder_log(user_id,project_id,pay_app_id,reminder_type,sent_to) VALUES($1,$2,$3,$4,$5)', [r.user_id, r.project_id, r.pay_app_id, '7_after', toEmail]);
+        }
+      }
+
+      // Retention reminder
+      if (retDue && r.reminder_retention) {
+        const diff = daysDiff(retDue);
+        if ((diff === 30 || diff === 7) && !await alreadySent(`retention_${diff}`)) {
+          const ok = await sendReminderEmail(toEmail,
+            `Retention release due in ${diff} days — ${r.project_name}`,
+            reminderEmailHtml({ subject: 'Retention Reminder', headline: `💰 Retention Release Due in ${diff} Days`, body: `Per your contract, retention for <strong>${r.project_name}</strong> should be released in ${diff} days. Now is the time to submit your Unconditional Final Lien Release and request retention payment.`, projectName: r.project_name, amount: null, dueDate: retDue, appUrl })
+          );
+          if (ok) await pool.query('INSERT INTO reminder_log(user_id,project_id,pay_app_id,reminder_type,sent_to) VALUES($1,$2,$3,$4,$5)', [r.user_id, r.project_id, r.pay_app_id, `retention_${diff}`, toEmail]);
+        }
+      }
+    }
+  } catch(e) { console.error('[Reminders Error]', e.message); }
+}
+
+// Run reminders every hour
+setInterval(runPaymentReminders, 60 * 60 * 1000);
+// Also run once at startup (after a short delay so DB is ready)
+setTimeout(runPaymentReminders, 15000);
 
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 
