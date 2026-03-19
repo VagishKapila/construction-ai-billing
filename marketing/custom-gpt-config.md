@@ -167,17 +167,31 @@ paths:
 
 ## Authentication Setup in GPT Actions
 
-**Authentication type:** API Key
-**Header name:** `Authorization`
-**Header value format:** `Bearer {user's JWT token}`
+**Authentication type:** OAuth (Authorization Code Flow — now live)
 
-**How users get their token:**
-1. Log in at constructinv.varshyl.com
-2. Open browser DevTools → Application tab → Local Storage
-3. Copy the value of `cai_token`
-4. Paste into the GPT authentication dialog
+**OAuth endpoints (live on constructinv.varshyl.com):**
+- Authorization URL: `https://constructinv.varshyl.com/oauth/authorize`
+- Token URL: `https://constructinv.varshyl.com/oauth/token`
+- Scope: *(leave blank — no scopes needed)*
 
-> **Note for production:** Implement proper OAuth 2.0 with an authorization code flow so users don't need to copy tokens manually. Railway/Express supports this — add `/oauth/authorize` and `/oauth/token` endpoints to server.js.
+**How to register your GPT as an OAuth client:**
+Add an entry to the `OAUTH_CLIENTS` Railway environment variable (JSON array):
+```json
+[{
+  "client_id": "gpt_caib",
+  "client_secret": "choose-a-strong-secret",
+  "name": "Construction AI Billing GPT",
+  "redirect_uris": ["https://chat.openai.com/aip/XXXXXXXXXX/oauth/callback"]
+}]
+```
+Replace `XXXXXXXXXX` with the actual callback URI that OpenAI shows you when you set up Actions authentication.
+
+**User experience (once configured):**
+1. User opens the Custom GPT
+2. GPT shows "Connect to Construction AI Billing" button
+3. User is redirected to constructinv.varshyl.com, logs in, and clicks "Approve Access"
+4. Redirected back to GPT — connected. No token copying required.
+5. Token lasts 90 days; user just clicks Connect again to refresh.
 
 ---
 

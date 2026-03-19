@@ -57,6 +57,12 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .btn-sm{padding:5px 10px;font-size:11px}
 .btn-full{width:100%;justify-content:center}
 .err{background:var(--red-light);color:var(--red);border-radius:var(--radius);padding:8px 12px;font-size:12px;margin-bottom:12px}
+/* ADA / WCAG 2.1 AA — Skip link and focus styles */
+.skip-link{position:absolute;top:-999px;left:6px;background:var(--blue);color:#fff;padding:8px 16px;border-radius:0 0 6px 6px;font-size:13px;font-weight:600;z-index:9999;text-decoration:none}
+.skip-link:focus{top:0}
+*:focus-visible{outline:2.5px solid var(--blue);outline-offset:2px;border-radius:3px}
+button:focus-visible,a:focus-visible,[role="button"]:focus-visible{outline:2.5px solid var(--blue);outline-offset:2px}
+
 .shell{display:flex;flex-direction:column;height:100vh}
 .topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;background:var(--bg2);border-bottom:0.5px solid var(--border);flex-shrink:0}
 .logo{font-size:15px;font-weight:600}.logo span{color:var(--blue)}
@@ -691,14 +697,18 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
   </div>
 
   <!-- FOOTER -->
-  <footer class="lp-footer">
+  <footer class="lp-footer" role="contentinfo">
     <div class="lp-footer-logo">
       <img src="/varshyl-logo.png" alt="Varshyl Inc." onerror="this.style.display='none'">
       <div class="lp-footer-brand">Construction <span>AI</span> Billing</div>
     </div>
     <p style="margin-bottom:8px">A product of <strong style="color:rgba(255,255,255,0.85)">Varshyl Inc.</strong> &nbsp;·&nbsp; San Jose, CA</p>
     <p><a href="mailto:vaakapila@gmail.com">vaakapila@gmail.com</a> &nbsp;·&nbsp; Questions? We're real people and we actually respond.</p>
-    <p style="margin-top:16px;font-size:11px;opacity:.5">© 2025 Varshyl Inc. · constructinv.varshyl.com</p>
+    <p style="margin-top:14px;font-size:12px">
+      <a href="/privacy.html">Privacy Policy</a> &nbsp;·&nbsp;
+      <a href="/terms.html">Terms of Service</a>
+    </p>
+    <p style="margin-top:10px;font-size:11px;opacity:.5">© 2026 Varshyl Inc. · constructinv.varshyl.com</p>
   </footer>
 
 </div><!-- /landing-screen -->
@@ -758,19 +768,20 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
 </div>
 
 <div id="app-screen" class="shell hidden">
-  <div class="topbar">
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+  <header class="topbar" role="banner">
     <div style="display:flex;align-items:center;gap:10px">
-      <button class="hamburger btn btn-sm" onclick="toggleSidebar()" title="Menu" style="display:none;font-size:16px;padding:5px 8px;line-height:1">☰</button>
-      <div class="logo">Construction <span>AI</span> Billing</div>
-      <button class="btn btn-sm" onclick="showLanding()" title="Back to homepage" style="font-size:11px;color:var(--text2)">🏠 Home</button>
+      <button class="hamburger btn btn-sm" onclick="toggleSidebar()" aria-label="Open navigation menu" aria-expanded="false" id="hamburger-btn" style="display:none;font-size:16px;padding:5px 8px;line-height:1">☰</button>
+      <div class="logo" aria-label="Construction AI Billing">Construction <span aria-hidden="true">AI</span> Billing</div>
+      <button class="btn btn-sm" onclick="showLanding()" aria-label="Back to homepage" style="font-size:11px;color:var(--text2)">🏠 Home</button>
     </div>
     <div class="topbar-right">
-      <span class="user-name" id="user-name-display"></span>
-      <div class="avatar" id="user-avatar">?</div>
-      <button class="btn btn-sm" onclick="showSettings()">&#9881; Settings</button>
-      <button class="btn btn-sm" onclick="logout()">Sign out</button>
+      <span class="user-name" id="user-name-display" aria-live="polite"></span>
+      <div class="avatar" id="user-avatar" aria-hidden="true">?</div>
+      <button class="btn btn-sm" onclick="showSettings()" aria-label="Settings">&#9881; Settings</button>
+      <button class="btn btn-sm" onclick="logout()" aria-label="Sign out">Sign out</button>
     </div>
-  </div>
+  </header>
   <!-- Email verification nudge — shown when email_verified === false -->
   <div id="verify-banner" class="verify-banner hidden">
     <span>📧 Please verify your email to keep your account secure. Check your inbox for a verification link.</span>
@@ -780,15 +791,15 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
     </div>
   </div>
   <div class="main">
-    <div id="sb-backdrop" onclick="closeSidebar()"></div>
-    <div class="sidebar" id="app-sidebar">
-      <div class="sl">Menu</div>
-      <div class="ni active" id="nav-dash" onclick="showDash()">Dashboard</div>
-      <div class="ni" id="nav-new-proj" onclick="showNewProject()">+ New project</div>
-      <div class="ni hidden" id="nav-admin" onclick="showAdmin()" style="color:var(--amber)">⚡ Admin</div>
-      <div id="sidebar-projects"></div>
-    </div>
-    <div class="content">
+    <div id="sb-backdrop" onclick="closeSidebar()" aria-hidden="true"></div>
+    <nav class="sidebar" id="app-sidebar" role="navigation" aria-label="Main navigation">
+      <div class="sl" aria-hidden="true">Menu</div>
+      <div class="ni active" id="nav-dash" onclick="showDash()" role="button" tabindex="0" aria-current="page" onkeydown="if(event.key==='Enter'||event.key===' ')showDash()">Dashboard</div>
+      <div class="ni" id="nav-new-proj" onclick="showNewProject()" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')showNewProject()">+ New project</div>
+      <div class="ni hidden" id="nav-admin" onclick="showAdmin()" role="button" tabindex="0" style="color:var(--amber)" onkeydown="if(event.key==='Enter'||event.key===' ')showAdmin()">⚡ Admin</div>
+      <div id="sidebar-projects" role="list"></div>
+    </nav>
+    <main class="content" id="main-content" role="main" aria-live="polite" aria-relevant="additions text">
 
 
       <!-- SETTINGS PAGE -->
@@ -1505,8 +1516,10 @@ function showAuthFromLanding(tab){
 function toggleSidebar(){
   const sb=document.getElementById('app-sidebar');
   const bd=document.getElementById('sb-backdrop');
+  const btn=document.getElementById('hamburger-btn');
   const open=sb.classList.toggle('sb-open');
   bd.classList.toggle('sb-open',open);
+  if(btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 function closeSidebar(){
   document.getElementById('app-sidebar').classList.remove('sb-open');
@@ -1642,7 +1655,14 @@ function logout(){
   localStorage.removeItem('caib_token');localStorage.removeItem('caib_user');
   showLanding();
 }
-function showPage(id){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));document.getElementById('pg-'+id).classList.add('on');}
+function showPage(id){
+  document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));
+  document.getElementById('pg-'+id).classList.add('on');
+  // ADA: update aria-current on sidebar nav items
+  document.querySelectorAll('.ni[aria-current]').forEach(n=>n.removeAttribute('aria-current'));
+  const navMap={dash:'nav-dash',settings:null,project:null};
+  if(navMap[id]) { const el=document.getElementById(navMap[id]); if(el) el.setAttribute('aria-current','page'); }
+}
 function showDash(){
   closeSidebar();
   showPage('dash');
