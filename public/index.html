@@ -1413,6 +1413,15 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               </div>
             </div>
             <div id="proj-pa-list"><div class="loading">Loading...</div></div>
+            <!-- Deleted Invoices Trash Drawer -->
+            <div id="trash-drawer" style="margin-top:8px;display:none">
+              <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--bg2);border-radius:var(--radius);cursor:pointer;user-select:none" onclick="toggleTrashDrawer()">
+                <span style="font-size:13px">🗑 Deleted invoices</span>
+                <span id="trash-count" style="font-size:11px;color:var(--text2)"></span>
+                <span id="trash-chevron" style="margin-left:auto;font-size:10px;color:var(--text3)">▶</span>
+              </div>
+              <div id="trash-list" style="display:none;padding:8px 0;border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius) var(--radius)"></div>
+            </div>
           </div>
         </div>
         <!-- Contract & Docs tab -->
@@ -1740,7 +1749,12 @@ async function api(method,path,body){
   if(body) opts.body=JSON.stringify(body);
   const r=await fetch(API+path,opts);
   const data=await r.json();
-  if(!r.ok) throw new Error(data.error||'Request failed');
+  if(!r.ok){
+    const err=new Error(data.error||'Request failed');
+    err.status=r.status;
+    err.data=data; // attach full payload so callers can read warning fields
+    throw err;
+  }
   return data;
 }
 
@@ -2175,12 +2189,15 @@ async function loadProject(id){
     }else{
       paList.innerHTML=payapps.map(pa=>{
         const submitted=pa.status==='submitted';
+        const delBtn=`<button class="btn btn-sm" onclick="event.stopPropagation();deletePayApp(${pa.id},currentProjectId,'${(pa.period_label||'Pay App #'+pa.app_number).replace(/'/g,"\\'")}',${pa.app_number})" style="background:none;border:1px solid var(--red);color:var(--red);padding:3px 8px;font-size:11px" title="Delete">🗑</button>`;
         const actions=submitted
           ?`<button class="btn btn-sm" onclick="event.stopPropagation();loadPayApp(${pa.id},4)" title="Preview &amp; Export">⬡ Preview</button>
-             <span class="badge badge-green" style="margin-left:4px">submitted</span>`
+             <span class="badge badge-green" style="margin-left:4px">submitted</span>
+             ${delBtn}`
           :`<button class="btn btn-amber btn-sm" onclick="event.stopPropagation();quickMarkSubmitted(${pa.id},${pa.app_number})" title="Mark as submitted">✓ Submit</button>
              <button class="btn btn-sm" onclick="event.stopPropagation();loadPayApp(${pa.id},4)" title="Preview &amp; Export">⬡ Preview</button>
-             <span class="badge badge-amber" style="margin-left:4px">draft</span>`;
+             <span class="badge badge-amber" style="margin-left:4px">draft</span>
+             ${delBtn}`;
         return`<div class="pa-item" onclick="loadPayApp(${pa.id})">
           <div>
             <div style="font-size:13px;font-weight:600">Pay App #${pa.app_number} — ${pa.period_label||'No period set'}</div>
@@ -2193,9 +2210,10 @@ async function loadProject(id){
     currentProjects=projects;
     sidebarPACache[id]=payapps;
     buildSidebarProjects(projects, id);
-    // Load contract and lien docs (non-blocking)
+    // Load contract, lien docs, and trash drawer (non-blocking)
     loadContractIntel(id).catch(()=>{});
     loadLienDocs(id).catch(()=>{});
+    loadTrashDrawer(id).catch(()=>{});
   }catch(e){console.error(e);}
 }
 
@@ -2203,6 +2221,82 @@ function projTab(n) {
   document.querySelectorAll('#pg-project .tab').forEach((t,i)=>t.classList.toggle('on',i===n));
   document.querySelectorAll('#pg-project .tp').forEach((t,i)=>t.classList.toggle('on',i===n));
 }
+
+// ── Delete / Trash ──────────────────────────────────────────────────────────
+async function deletePayApp(paId, projectId, label, appNum){
+  const msg = `Delete Pay App #${appNum} — "${label}"?\n\nThis invoice will be moved to Deleted history and removed from all reports. You can restore it within 1 year.`;
+  if(!confirm(msg)) return;
+  try{
+    let cascade = false;
+
+    // First attempt — may get a 409 warning if subsequent pay apps exist
+    try {
+      await api('DELETE','/payapps/'+paId);
+    } catch(err) {
+      if(err.status === 409 && err.data && err.data.warning) {
+        const w = err.data;
+        const subList = w.subsequent.map(s =>
+          `  •  Pay App #${s.app_number}${s.period_label ? ' — '+s.period_label : ''} [${s.status}]`
+        ).join('\n');
+        const proceed = confirm(
+          `⚠️  Heads up — ${w.subsequent.length} later pay app${w.subsequent.length>1?'s are':' is'} affected:\n\n`+
+          subList+'\n\n'+
+          `Pay App #${appNum} is the foundation their "Previous Billing" totals are built on. `+
+          `Deleting it alone would leave those applications with incorrect cumulative numbers.\n\n`+
+          `To keep your records clean, all ${1+w.subsequent.length} will be moved to Deleted history together.\n\n`+
+          `Click OK to delete all ${1+w.subsequent.length} pay apps.\n`+
+          `Click Cancel to keep everything unchanged.`
+        );
+        if(!proceed) return;
+        cascade = true;
+        await api('DELETE','/payapps/'+paId+'?cascade=true');
+      } else {
+        throw err;
+      }
+    }
+    loadProject(projectId);
+  }catch(e){alert('Could not delete: '+e.message);}
+}
+
+async function loadTrashDrawer(projectId){
+  try{
+    const rows = await api('GET','/projects/'+projectId+'/payapps/deleted');
+    const drawer = document.getElementById('trash-drawer');
+    const list = document.getElementById('trash-list');
+    const count = document.getElementById('trash-count');
+    if(!drawer) return;
+    if(!rows.length){ drawer.style.display='none'; return; }
+    drawer.style.display='block';
+    count.textContent = `(${rows.length} item${rows.length>1?'s':''})`;
+    list.innerHTML = rows.map(r=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--border);font-size:12px">
+        <div style="flex:1">
+          <span style="font-weight:600">Pay App #${r.app_number}</span>
+          <span style="color:var(--text2);margin-left:6px">${r.period_label||''}</span>
+          ${r.amount_due?`<span style="color:var(--text2);margin-left:6px">$${parseFloat(r.amount_due).toLocaleString('en-US',{minimumFractionDigits:2})}</span>`:''}
+          <div style="color:var(--text3);font-size:10px;margin-top:2px">Deleted ${new Date(r.deleted_at).toLocaleDateString()} by ${r.deleted_by_name||'you'}</div>
+        </div>
+        <button class="btn btn-sm" onclick="restorePayApp(${r.id},${projectId})" style="font-size:11px;padding:3px 10px">↩ Restore</button>
+      </div>`).join('');
+  }catch(e){console.error('Trash load error',e);}
+}
+
+function toggleTrashDrawer(){
+  const list = document.getElementById('trash-list');
+  const chevron = document.getElementById('trash-chevron');
+  const open = list.style.display !== 'none';
+  list.style.display = open ? 'none' : 'block';
+  if(chevron) chevron.textContent = open ? '▶' : '▼';
+}
+
+async function restorePayApp(paId, projectId){
+  if(!confirm('Restore this pay application? It will reappear in the project and reports.')) return;
+  try{
+    await api('POST','/payapps/'+paId+'/restore');
+    loadProject(projectId);
+  }catch(e){alert('Could not restore: '+e.message);}
+}
+
 async function quickMarkSubmitted(paId, appNum){
   if(!confirm('Mark Pay App #'+appNum+' as submitted?\n\nThis cannot be undone.')) return;
   try{
@@ -2323,12 +2417,13 @@ function renderPAHeader(pa){
         <div style="font-size:18px;font-weight:600">Pay App #${pa.app_number} <span class="badge ${submitted?'badge-green':'badge-amber'}" style="font-size:11px;vertical-align:middle;cursor:pointer" onclick="paTab(4)" title="Click to view preview">${pa.status||'draft'}</span></div>
         <div style="font-size:12px;color:var(--text2)">${pa.period_label||'No period set'} · ${pa.project_name} · ${pa.app_number>1?'Carries forward from Pay App #'+(pa.app_number-1):'First application'}</div>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button class="btn btn-sm" onclick="loadProject(${pa.project_id})">Back to project</button>
         ${submitted
           ?'<button class="btn btn-sm" disabled style="opacity:0.5;cursor:default">✓ Submitted</button>'
           :'<button class="btn btn-amber btn-sm" onclick="markSubmitted()">✓ Mark submitted</button>'}
         <button class="btn btn-primary btn-sm" onclick="paTab(4)">Preview &amp; Export</button>
+        <button class="btn btn-sm" onclick="deletePayApp(${pa.id},${pa.project_id},'${(pa.period_label||'Pay App #'+pa.app_number).replace(/'/g,"\\'")}',${pa.app_number})" style="margin-left:auto;background:none;border:1px solid var(--red);color:var(--red);font-size:11px" title="Delete this pay application">🗑 Delete</button>
       </div>
     </div>`;
 }

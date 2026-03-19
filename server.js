@@ -443,6 +443,7 @@ app.get('/api/stats', auth, async (req,res) => {
       JOIN sov_lines      sl  ON sl.id           = pal.sov_line_id
       WHERE p.user_id = $1
         AND pa.status = 'submitted'
+        AND pa.deleted_at IS NULL
     `, [req.user.id]);
     res.json(r.rows[0] || { total_billed: 0, total_retainage: 0 });
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -501,7 +502,8 @@ app.post('/api/projects/:id/sov', auth, async (req,res) => {
 
 // PAY APPS
 app.get('/api/projects/:id/payapps', auth, async (req,res) => {
-  const r = await pool.query('SELECT * FROM pay_apps WHERE project_id=$1 ORDER BY app_number',[req.params.id]);
+  // Exclude soft-deleted pay apps from the normal listing
+  const r = await pool.query('SELECT * FROM pay_apps WHERE project_id=$1 AND deleted_at IS NULL ORDER BY app_number',[req.params.id]);
   res.json(r.rows);
 });
 
@@ -538,7 +540,7 @@ app.post('/api/projects/:id/payapps', auth, async (req,res) => {
 
 app.get('/api/payapps/:id', auth, async (req,res) => {
   const pa = await pool.query(
-    'SELECT pa.*,p.name as project_name,p.owner,p.contractor,p.architect,p.contact,p.contact_name,p.contact_phone,p.contact_email,p.original_contract,p.number as project_number,p.building_area,p.id as project_id,p.contract_date FROM pay_apps pa JOIN projects p ON p.id=pa.project_id WHERE pa.id=$1 AND p.user_id=$2',
+    'SELECT pa.*,p.name as project_name,p.owner,p.contractor,p.architect,p.contact,p.contact_name,p.contact_phone,p.contact_email,p.original_contract,p.number as project_number,p.building_area,p.id as project_id,p.contract_date FROM pay_apps pa JOIN projects p ON p.id=pa.project_id WHERE pa.id=$1 AND p.user_id=$2 AND pa.deleted_at IS NULL',
     [req.params.id, req.user.id]
   );
   if(!pa.rows[0]) return res.status(404).json({error:'Not found'});
@@ -634,6 +636,100 @@ app.put('/api/payapps/:id', auth, async (req,res) => {
     } catch(dueErr) { console.error('[Auto due date]', dueErr.message); }
   }
   res.json(r.rows[0]);
+});
+
+// ── Soft-delete a pay app (moves to trash, never permanently destroyed) ───────
+// Query param: ?cascade=true → also deletes all subsequent pay apps in the same project
+app.delete('/api/payapps/:id', auth, async (req, res) => {
+  try {
+    const cascade = req.query.cascade === 'true';
+
+    // Verify ownership and get app_number + project_id
+    const target = await pool.query(
+      `SELECT pa.id, pa.app_number, pa.project_id, pa.status
+       FROM pay_apps pa
+       JOIN projects p ON p.id = pa.project_id
+       WHERE pa.id=$1 AND p.user_id=$2 AND pa.deleted_at IS NULL`,
+      [req.params.id, req.user.id]
+    );
+    if (!target.rows[0]) return res.status(404).json({ error: 'Pay application not found or already deleted' });
+
+    const { app_number, project_id } = target.rows[0];
+
+    // Check for subsequent non-deleted pay apps that depend on this one
+    const subsequent = await pool.query(
+      `SELECT id, app_number, period_label, status
+       FROM pay_apps
+       WHERE project_id=$1 AND app_number > $2 AND deleted_at IS NULL
+       ORDER BY app_number`,
+      [project_id, app_number]
+    );
+
+    // If there are subsequent pay apps and cascade not requested, return a warning
+    if (subsequent.rows.length > 0 && !cascade) {
+      return res.status(409).json({
+        warning: true,
+        message: `Pay App #${app_number} has ${subsequent.rows.length} subsequent application${subsequent.rows.length > 1 ? 's' : ''} that depend on it for their "Previous Billing" totals.`,
+        subsequent: subsequent.rows.map(r => ({ id: r.id, app_number: r.app_number, period_label: r.period_label, status: r.status })),
+        target: { id: target.rows[0].id, app_number }
+      });
+    }
+
+    // Delete the target + all subsequent if cascade
+    const toDelete = [target.rows[0].id, ...subsequent.rows.map(r => r.id)];
+    await pool.query(
+      `UPDATE pay_apps SET deleted_at=NOW(), deleted_by=$1 WHERE id = ANY($2::int[])`,
+      [req.user.id, toDelete]
+    );
+
+    for (const pid of toDelete) {
+      await logEvent(req.user.id, 'payapp_deleted', { pay_app_id: pid, cascade: toDelete.length > 1 });
+    }
+
+    res.json({
+      ok: true,
+      deleted_count: toDelete.length,
+      app_numbers: [app_number, ...subsequent.rows.map(r => r.app_number)]
+    });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── Restore a soft-deleted pay app ───────────────────────────────────────────
+app.post('/api/payapps/:id/restore', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `UPDATE pay_apps SET deleted_at=NULL, deleted_by=NULL
+       WHERE id=$1
+         AND project_id IN (SELECT id FROM projects WHERE user_id=$2)
+         AND deleted_at IS NOT NULL
+       RETURNING id, app_number`,
+      [req.params.id, req.user.id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Pay application not found or not deleted' });
+    await logEvent(req.user.id, 'payapp_restored', { pay_app_id: parseInt(req.params.id) });
+    res.json({ ok: true, id: r.rows[0].id, app_number: r.rows[0].app_number });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── Get deleted pay apps for a project (trash history, last 1 year) ──────────
+app.get('/api/projects/:id/payapps/deleted', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT pa.id, pa.app_number, pa.period_label, pa.amount_due, pa.retention_held,
+              pa.deleted_at, pa.status,
+              u.name as deleted_by_name
+       FROM pay_apps pa
+       JOIN projects p ON p.id = pa.project_id
+       LEFT JOIN users u ON u.id = pa.deleted_by
+       WHERE pa.project_id=$1
+         AND p.user_id=$2
+         AND pa.deleted_at IS NOT NULL
+         AND pa.deleted_at > NOW() - INTERVAL '1 year'
+       ORDER BY pa.deleted_at DESC`,
+      [req.params.id, req.user.id]
+    );
+    res.json(r.rows);
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 app.put('/api/payapps/:id/lines', auth, async (req,res) => {
@@ -2269,6 +2365,7 @@ app.get('/api/revenue/summary', auth, async (req, res) => {
       JOIN projects p ON p.id = pa.project_id
       WHERE p.user_id = $1
         AND EXTRACT(YEAR FROM pa.period_end_date) = $2
+        AND pa.deleted_at IS NULL
       ORDER BY pa.period_end_date DESC
     `, [uid, year]);
 
@@ -2301,6 +2398,7 @@ app.get('/api/revenue/summary', auth, async (req, res) => {
         FROM pay_apps pa JOIN projects p ON p.id=pa.project_id
         WHERE p.user_id=$1 AND pa.status IN ('submitted','approved')
           AND pa.period_end_date IS NOT NULL
+          AND pa.deleted_at IS NULL
         GROUP BY yr ORDER BY yr
       `, [uid]);
       chart = yRes.rows.map(r => ({ label: String(parseInt(r.yr)), amount: parseFloat(r.amount)||0 }));
@@ -2718,8 +2816,8 @@ async function runPaymentReminders() {
       FROM projects p
       JOIN users u ON u.id = p.user_id
       LEFT JOIN company_settings cs ON cs.user_id = p.user_id
-      INNER JOIN pay_apps pa ON pa.project_id = p.id AND pa.status = 'submitted'
-        AND pa.id = (SELECT id FROM pay_apps WHERE project_id=p.id AND status='submitted' ORDER BY created_at DESC LIMIT 1)
+      INNER JOIN pay_apps pa ON pa.project_id = p.id AND pa.status = 'submitted' AND pa.deleted_at IS NULL
+        AND pa.id = (SELECT id FROM pay_apps WHERE project_id=p.id AND status='submitted' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1)
       WHERE (pa.payment_due_date IS NOT NULL OR p.retention_due_date IS NOT NULL)
         AND u.blocked IS NOT TRUE
     `);
@@ -2728,8 +2826,8 @@ async function runPaymentReminders() {
     const upcomingRes = await pool.query(`
       SELECT p.user_id, p.name as project_name, pa.amount_due, pa.payment_due_date as due_date
       FROM projects p
-      JOIN pay_apps pa ON pa.project_id = p.id AND pa.status='submitted'
-        AND pa.id = (SELECT id FROM pay_apps WHERE project_id=p.id AND status='submitted' ORDER BY created_at DESC LIMIT 1)
+      JOIN pay_apps pa ON pa.project_id = p.id AND pa.status='submitted' AND pa.deleted_at IS NULL
+        AND pa.id = (SELECT id FROM pay_apps WHERE project_id=p.id AND status='submitted' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1)
       WHERE pa.payment_due_date BETWEEN NOW() AND NOW() + INTERVAL '14 days'
     `);
     const upcomingByUser = {};

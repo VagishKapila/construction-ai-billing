@@ -200,6 +200,8 @@ async function initDB() {
     ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS retention_held NUMERIC(14,2);
     ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS invoice_token VARCHAR(100) UNIQUE;
     ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS payment_due_date DATE;
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS deleted_by INTEGER REFERENCES users(id);
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_7before BOOLEAN DEFAULT TRUE;
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_due BOOLEAN DEFAULT TRUE;
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_7after BOOLEAN DEFAULT TRUE;
