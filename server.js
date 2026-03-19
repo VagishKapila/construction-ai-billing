@@ -237,6 +237,38 @@ app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// ── Emergency admin: check or force-reset a user password (ADMIN_SECRET protected) ──
+// Used when user is locked out and email is not working.
+// Requires ADMIN_SECRET env var to be set on Railway.
+app.post('/api/admin/emergency-reset', async (req, res) => {
+  const { secret, email, new_password } = req.body;
+  const adminSecret = process.env.ADMIN_SECRET;
+  if (!adminSecret || secret !== adminSecret) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  if (!email) return res.status(400).json({ error: 'email required' });
+  try {
+    const r = await pool.query(
+      `SELECT id, name, email, email_verified, blocked, created_at,
+              length(password_hash) as hash_length
+       FROM users WHERE lower(email)=lower($1)`, [email]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'User not found', email });
+    const user = r.rows[0];
+    // If new_password provided, reset it
+    if (new_password) {
+      if (new_password.length < 8) return res.status(400).json({ error: 'Password must be 8+ characters' });
+      const hash = await bcrypt.hash(new_password, 10);
+      await pool.query('UPDATE users SET password_hash=$1, reset_token=NULL WHERE id=$2', [hash, user.id]);
+      const tok = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
+      await logEvent(user.id, 'password_emergency_reset', { email: user.email });
+      return res.json({ ok: true, reset: true, user, token: tok });
+    }
+    // Otherwise just return account info for diagnosis
+    res.json({ ok: true, user });
+  } catch(e) { console.error('[Emergency Reset]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // ── Public config (PostHog key, Google client ID — safe to expose) ─────────
 app.get('/api/config', (req, res) => {
   res.json({
