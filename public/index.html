@@ -934,6 +934,28 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
           <button class="btn btn-primary" onclick="saveSettings()">Save settings</button>
         </div>
         <div class="card">
+          <div class="ct">🔔 Follow-up &amp; Reminder Settings</div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:14px">Automated emails keep you cash-flow positive. Reminders go to the owner/client. You get a CC. Per-project dates are set in the project wizard.</p>
+          <div class="fg">
+            <div class="field">
+              <label>Your reminder email <span style="color:var(--text2);font-weight:400;font-size:11px">(you'll receive copies of all reminders)</span></label>
+              <input type="email" id="set-reminder-email" placeholder="you@yourcompany.com"/>
+            </div>
+            <div class="field">
+              <label>Your cell phone <span style="color:var(--text2);font-weight:400;font-size:11px">(SMS reminders — coming soon)</span></label>
+              <input type="tel" id="set-reminder-phone" placeholder="e.g. 408-410-6151"/>
+            </div>
+          </div>
+          <div style="margin:14px 0 10px">
+            <div style="font-size:12px;font-weight:600;color:#0a1f3c;margin-bottom:10px">Which reminders to send:</div>
+            <div class="rem-row"><div><div style="font-size:13px;font-weight:600">7 days before payment due</div><div style="font-size:11px;color:var(--text2)">Friendly heads-up — include invoice copy</div></div><label class="toggle-switch"><input type="checkbox" id="set-rem-7before" checked><span class="toggle-slider"></span></label></div>
+            <div class="rem-row"><div><div style="font-size:13px;font-weight:600">Day payment is due</div><div style="font-size:11px;color:var(--text2)">Day-of notice with bold amount due</div></div><label class="toggle-switch"><input type="checkbox" id="set-rem-due" checked><span class="toggle-slider"></span></label></div>
+            <div class="rem-row"><div><div style="font-size:13px;font-weight:600">7 days overdue</div><div style="font-size:11px;color:var(--text2)">Escalation with red overdue banner</div></div><label class="toggle-switch"><input type="checkbox" id="set-rem-7after" checked><span class="toggle-slider"></span></label></div>
+            <div class="rem-row"><div><div style="font-size:13px;font-weight:600">Retention release reminder</div><div style="font-size:11px;color:var(--text2)">30-day and 7-day alerts before retention is due</div></div><label class="toggle-switch"><input type="checkbox" id="set-rem-retention" checked><span class="toggle-slider"></span></label></div>
+          </div>
+          <button class="btn btn-primary" onclick="saveSettings()">Save settings</button>
+        </div>
+        <div class="card">
           <div class="ct">Team members</div>
           <p style="font-size:12px;color:var(--text2);margin-bottom:12px">Invite team members to collaborate. Field users see no financial data — only content creation tools.</p>
           <div id="team-list" style="margin-bottom:16px"></div>
@@ -1032,6 +1054,8 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               <div class="field"><label>Project name *</label><input type="text" id="np-name" placeholder="e.g. Law Office TI Renovation"/></div>
               <div class="field"><label>Project number</label><input type="text" id="np-number" placeholder="e.g. 3011"/></div>
               <div class="field"><label>Owner / Client</label><input type="text" id="np-owner" placeholder="Owner name"/></div>
+              <div class="field"><label>Owner email <span style="color:var(--text2);font-weight:400;font-size:11px">(invoices &amp; reminders sent here)</span></label><input type="email" id="np-owner-email" placeholder="owner@company.com"/></div>
+              <div class="field"><label>Owner phone <span style="color:var(--text2);font-weight:400;font-size:11px">(future SMS)</span></label><input type="tel" id="np-owner-phone" placeholder="e.g. 415-555-0100"/></div>
               <div class="field"><label>General contractor</label><input type="text" id="np-contractor" placeholder="Contractor name"/></div>
               <div class="field"><label>Architect</label><input type="text" id="np-architect" placeholder="Architect name"/></div>
               <div class="field"><label>Building area (SF)</label><input type="text" id="np-area" placeholder="e.g. 8720"/></div>
@@ -2721,6 +2745,8 @@ async function createProject(){
       name:document.getElementById('np-name').value.trim(),
       number:document.getElementById('np-number').value,
       owner:document.getElementById('np-owner').value,
+      owner_email:document.getElementById('np-owner-email').value||null,
+      owner_phone:document.getElementById('np-owner-phone').value||null,
       contractor:document.getElementById('np-contractor').value,
       architect:document.getElementById('np-architect').value,
       contact,contact_name:contactName,contact_phone:contactPhone,contact_email:contactEmail,
@@ -2728,7 +2754,7 @@ async function createProject(){
       original_contract:parseFloat(document.getElementById('np-contract').value.replace(/,/g,'')),
       contract_date:document.getElementById('np-contract-date').value||null,
       est_date:document.getElementById('np-est-date').value||null,
-      default_retainage:parseFloat(document.getElementById('np-retainage').value)||0
+      default_retainage:parseFloat(document.getElementById('np-retainage').value)||0,
     });
     await api('POST','/projects/'+proj.id+'/sov',{lines:validRows});
     ph('project_created',{sov_line_count:validRows.length,contract_value:parseFloat(document.getElementById('np-contract').value.replace(/,/g,''))});
@@ -2751,6 +2777,8 @@ async function createProjectAndNext(){
       name:document.getElementById('np-name').value.trim(),
       number:document.getElementById('np-number').value,
       owner:document.getElementById('np-owner').value,
+      owner_email:document.getElementById('np-owner-email').value||null,
+      owner_phone:document.getElementById('np-owner-phone').value||null,
       contractor:document.getElementById('np-contractor').value,
       architect:document.getElementById('np-architect').value,
       contact,contact_name:contactName,contact_phone:contactPhone,contact_email:contactEmail,
@@ -2758,7 +2786,7 @@ async function createProjectAndNext(){
       original_contract:parseFloat(document.getElementById('np-contract').value.replace(/,/g,'')),
       contract_date:document.getElementById('np-contract-date').value||null,
       est_date:document.getElementById('np-est-date').value||null,
-      default_retainage:parseFloat(document.getElementById('np-retainage').value)||0
+      default_retainage:parseFloat(document.getElementById('np-retainage').value)||0,
     });
     await api('POST','/projects/'+proj.id+'/sov',{lines:validRows});
     ph('project_created',{sov_line_count:validRows.length,contract_value:parseFloat(document.getElementById('np-contract').value.replace(/,/g,''))});
@@ -2837,6 +2865,19 @@ async function loadSettings() {
     if (pt) pt.value = companySettings.default_payment_terms || 'Due on receipt';
     if (dr) dr.value = companySettings.default_retainage || 10;
     if (jf) jf.value = companySettings.job_number_format || '';
+    // Reminder settings
+    const sre = document.getElementById('set-reminder-email');
+    const srp = document.getElementById('set-reminder-phone');
+    if (sre) sre.value = companySettings.reminder_email || '';
+    if (srp) srp.value = companySettings.reminder_phone || '';
+    const rem7b = document.getElementById('set-rem-7before');
+    const remDue = document.getElementById('set-rem-due');
+    const rem7a = document.getElementById('set-rem-7after');
+    const remRet = document.getElementById('set-rem-retention');
+    if (rem7b) rem7b.checked = companySettings.reminder_7before !== false;
+    if (remDue) remDue.checked = companySettings.reminder_due !== false;
+    if (rem7a) rem7a.checked = companySettings.reminder_7after !== false;
+    if (remRet) remRet.checked = companySettings.reminder_retention !== false;
     if (companySettings.logo_filename) loadLogoPreview();
     if (companySettings.signature_filename) loadSigPreview();
     // Load team
@@ -2853,7 +2894,13 @@ async function saveSettings() {
       contact_email: document.getElementById('set-contact-email').value,
       default_payment_terms: document.getElementById('set-payment-terms').value,
       default_retainage: parseFloat(document.getElementById('set-default-ret').value) || 10,
-      job_number_format: document.getElementById('set-job-format')?.value || null
+      job_number_format: document.getElementById('set-job-format')?.value || null,
+      reminder_email: document.getElementById('set-reminder-email')?.value || null,
+      reminder_phone: document.getElementById('set-reminder-phone')?.value || null,
+      reminder_7before: document.getElementById('set-rem-7before')?.checked ?? true,
+      reminder_due: document.getElementById('set-rem-due')?.checked ?? true,
+      reminder_7after: document.getElementById('set-rem-7after')?.checked ?? true,
+      reminder_retention: document.getElementById('set-rem-retention')?.checked ?? true,
     });
     const msg = document.getElementById('settings-msg');
     msg.textContent = 'Settings saved!'; msg.classList.remove('hidden');

@@ -194,13 +194,18 @@ async function initDB() {
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS payment_due_date DATE;
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS retention_due_date DATE;
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS address VARCHAR(500);
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS owner_email VARCHAR(300);
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS owner_phone VARCHAR(50);
     ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS amount_due NUMERIC(14,2);
     ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS retention_held NUMERIC(14,2);
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS invoice_token VARCHAR(100) UNIQUE;
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS payment_due_date DATE;
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_7before BOOLEAN DEFAULT TRUE;
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_due BOOLEAN DEFAULT TRUE;
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_7after BOOLEAN DEFAULT TRUE;
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_retention BOOLEAN DEFAULT TRUE;
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_email VARCHAR(300);
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_phone VARCHAR(50);
 
     CREATE TABLE IF NOT EXISTS reminder_log (
       id SERIAL PRIMARY KEY,

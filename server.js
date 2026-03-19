@@ -449,11 +449,12 @@ app.get('/api/projects', auth, async (req,res) => {
 });
 
 app.post('/api/projects', auth, async (req,res) => {
-  const {name,number,owner,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date,est_date,default_retainage} = req.body;
+  const {name,number,owner,owner_email,owner_phone,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date,est_date,default_retainage} = req.body;
   const retPct = (default_retainage !== undefined && default_retainage !== null) ? parseFloat(default_retainage) : 10;
   const r = await pool.query(
-    'INSERT INTO projects(user_id,name,number,owner,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date,est_date,default_retainage) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
-    [req.user.id,name,number,owner,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date,est_date,retPct]
+    `INSERT INTO projects(user_id,name,number,owner,owner_email,owner_phone,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date,est_date,default_retainage)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
+    [req.user.id,name,number,owner,owner_email||null,owner_phone||null,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date||null,est_date||null,retPct]
   );
   await logEvent(req.user.id, 'project_created', { project_id: r.rows[0].id, contract_value: original_contract });
   res.json(r.rows[0]);
@@ -500,9 +501,10 @@ app.get('/api/projects/:id/payapps', auth, async (req,res) => {
 
 app.post('/api/projects/:id/payapps', auth, async (req,res) => {
   const {period_label,period_start,period_end,app_number} = req.body;
+  const invoiceToken = require('crypto').randomBytes(24).toString('hex');
   const pa = await pool.query(
-    'INSERT INTO pay_apps(project_id,app_number,period_label,period_start,period_end) VALUES($1,$2,$3,$4,$5) RETURNING *',
-    [req.params.id,app_number,period_label,period_start,period_end]
+    'INSERT INTO pay_apps(project_id,app_number,period_label,period_start,period_end,invoice_token) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',
+    [req.params.id,app_number,period_label,period_start,period_end,invoiceToken]
   );
   const paId = pa.rows[0].id;
   const sovLines = await pool.query('SELECT * FROM sov_lines WHERE project_id=$1 ORDER BY sort_order',[req.params.id]);
@@ -600,6 +602,30 @@ app.put('/api/payapps/:id', auth, async (req,res) => {
         );
       }
     } catch(snapErr) { console.error('[Snap amount_due]', snapErr.message); }
+
+    // Auto-calculate payment_due_date from project payment_terms (e.g. "Net 30" → today + 30 days)
+    try {
+      const projR = await pool.query(
+        'SELECT payment_terms FROM projects WHERE id IN (SELECT project_id FROM pay_apps WHERE id=$1)',
+        [req.params.id]
+      );
+      if (projR.rows[0]?.payment_terms) {
+        const terms = projR.rows[0].payment_terms.toString().toLowerCase().trim();
+        let daysToAdd = 30; // sensible default
+        if (terms === 'due on receipt' || terms === 'due on demand') {
+          daysToAdd = 0;
+        } else {
+          const m = terms.match(/net\s*(\d+)/);
+          if (m) daysToAdd = parseInt(m[1]);
+        }
+        const dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + daysToAdd);
+        await pool.query(
+          'UPDATE pay_apps SET payment_due_date=$1 WHERE id=$2',
+          [dueDate.toISOString().split('T')[0], req.params.id]
+        );
+      }
+    } catch(dueErr) { console.error('[Auto due date]', dueErr.message); }
   }
   res.json(r.rows[0]);
 });
@@ -1188,11 +1214,11 @@ app.get('/api/settings', auth, async (req,res) => {
 
 app.post('/api/settings', auth, async (req,res) => {
   const {company_name,default_payment_terms,default_retainage,contact_name,contact_phone,contact_email,job_number_format,
-    reminder_7before,reminder_due,reminder_7after,reminder_retention,reminder_email} = req.body;
+    reminder_7before,reminder_due,reminder_7after,reminder_retention,reminder_email,reminder_phone} = req.body;
   const r = await pool.query(
     `INSERT INTO company_settings(user_id,company_name,default_payment_terms,default_retainage,contact_name,contact_phone,contact_email,job_number_format,
-       reminder_7before,reminder_due,reminder_7after,reminder_retention,reminder_email)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       reminder_7before,reminder_due,reminder_7after,reminder_retention,reminder_email,reminder_phone)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
      ON CONFLICT(user_id) DO UPDATE SET
        company_name=EXCLUDED.company_name,
        default_payment_terms=EXCLUDED.default_payment_terms,
@@ -1206,11 +1232,13 @@ app.post('/api/settings', auth, async (req,res) => {
        reminder_7after=COALESCE(EXCLUDED.reminder_7after, company_settings.reminder_7after, TRUE),
        reminder_retention=COALESCE(EXCLUDED.reminder_retention, company_settings.reminder_retention, TRUE),
        reminder_email=COALESCE(EXCLUDED.reminder_email, company_settings.reminder_email),
+       reminder_phone=COALESCE(EXCLUDED.reminder_phone, company_settings.reminder_phone),
        updated_at=NOW()
      RETURNING *`,
     [req.user.id,company_name,default_payment_terms||'Due on receipt',default_retainage||10,
      contact_name||null,contact_phone||null,contact_email||null,job_number_format||null,
-     reminder_7before??null,reminder_due??null,reminder_7after??null,reminder_retention??null,reminder_email||null]
+     reminder_7before??null,reminder_due??null,reminder_7after??null,reminder_retention??null,
+     reminder_email||null,reminder_phone||null]
   );
   res.json(r.rows[0]);
 });
@@ -2247,6 +2275,135 @@ app.get('/api/revenue/summary', auth, async (req, res) => {
   }
 });
 
+// ── PUBLIC INVOICE VIEW (no auth — shareable link sent to owners) ──────────
+app.get('/invoice/:token', async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT pa.*, p.name as project_name, p.owner, p.owner_email, p.owner_phone,
+             p.contractor, p.architect, p.original_contract, p.number as project_number,
+             p.contact_name, p.contact_phone, p.contact_email, p.address,
+             pa.payment_due_date, p.job_number,
+             cs.company_name, cs.logo_filename, cs.contact_name as co_contact, cs.contact_email as co_email
+      FROM pay_apps pa
+      JOIN projects p ON p.id = pa.project_id
+      LEFT JOIN company_settings cs ON cs.user_id = p.user_id
+      WHERE pa.invoice_token = $1
+    `, [req.params.token]);
+    if (!r.rows[0]) return res.status(404).send('<h2>Invoice not found or link has expired.</h2>');
+    const pa = r.rows[0];
+
+    const lines = await pool.query(`
+      SELECT sl.description, sl.item_id, sl.scheduled_value,
+             pal.prev_pct, pal.this_pct, pal.retainage_pct,
+             ROUND(sl.scheduled_value * pal.this_pct / 100, 2) as this_amount,
+             ROUND(sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100, 2) as completed,
+             ROUND(sl.scheduled_value * (pal.prev_pct + pal.this_pct) * pal.retainage_pct / 10000, 2) as retainage
+      FROM pay_app_lines pal
+      JOIN sov_lines sl ON sl.id = pal.sov_line_id
+      WHERE pal.pay_app_id = $1 ORDER BY sl.sort_order
+    `, [pa.id]);
+
+    const totalDue = parseFloat(pa.amount_due || 0);
+    const totalRet = parseFloat(pa.retention_held || 0);
+    const fmt = v => '$' + parseFloat(v||0).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2});
+    const dueDate = pa.payment_due_date ? new Date(pa.payment_due_date) : null;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const daysUntil = dueDate ? Math.round((dueDate - today) / 86400000) : null;
+    const isOverdue = daysUntil !== null && daysUntil < 0;
+    const isDueToday = daysUntil === 0;
+    const statusColor = isOverdue ? '#dc2626' : isDueToday ? '#d97706' : '#1d4ed8';
+    const statusText = isOverdue ? `OVERDUE — ${Math.abs(daysUntil)} DAYS PAST DUE` : isDueToday ? 'DUE TODAY' : dueDate ? `DUE IN ${daysUntil} DAYS` : 'INVOICE';
+    const logoUrl = pa.logo_filename ? `/uploads/${pa.logo_filename}` : null;
+
+    const linesHTML = lines.rows.map(l => `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#64748b">${l.item_id||''}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:13px">${l.description}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:13px;text-align:right">${fmt(l.scheduled_value)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:13px;text-align:right">${parseFloat(l.prev_pct||0).toFixed(0)}%</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:13px;text-align:right;font-weight:600">${parseFloat(l.this_pct||0).toFixed(0)}%</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:13px;text-align:right;font-weight:600">${fmt(l.this_amount)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:13px;text-align:right;color:#94a3b8">${fmt(l.retainage)}</td>
+      </tr>`).join('');
+
+    res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Invoice — ${pa.project_name}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8fafc;color:#1e293b;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  @media print{body{background:#fff}.no-print{display:none!important}}
+</style>
+</head>
+<body>
+<div style="max-width:860px;margin:0 auto;padding:24px 16px">
+  <!-- Status banner -->
+  <div style="background:${statusColor};color:#fff;text-align:center;padding:14px;border-radius:10px 10px 0 0;font-size:17px;font-weight:800;letter-spacing:0.05em">${statusText}</div>
+  <!-- Header -->
+  <div style="background:#fff;border:1px solid #e2e8f0;border-top:none;padding:28px 32px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap">
+    <div>
+      ${logoUrl ? `<img src="${logoUrl}" style="max-height:60px;max-width:180px;object-fit:contain;margin-bottom:12px;display:block"/>` : `<div style="font-size:20px;font-weight:800;color:#0C3B6B;margin-bottom:8px">${pa.company_name||pa.contractor||'Contractor'}</div>`}
+      <div style="font-size:13px;color:#64748b">${pa.co_contact||pa.contact_name||''}</div>
+      <div style="font-size:13px;color:#64748b">${pa.co_email||pa.contact_email||''}</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:28px;font-weight:800;color:${statusColor}">${fmt(totalDue)}</div>
+      <div style="font-size:13px;color:#64748b;margin-top:4px">Amount Due${dueDate ? ' — Due ' + dueDate.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : ''}</div>
+      ${totalRet > 0 ? `<div style="font-size:12px;color:#94a3b8;margin-top:2px">+ ${fmt(totalRet)} retention held</div>` : ''}
+    </div>
+  </div>
+  <!-- Project info -->
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-top:none;padding:16px 32px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+    <div><div style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#94a3b8;margin-bottom:3px">Project</div><div style="font-size:13px;font-weight:600">${pa.project_name}</div>${pa.job_number ? `<div style="font-size:11px;color:#64748b">Job #${pa.job_number}</div>` : ''}</div>
+    <div><div style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#94a3b8;margin-bottom:3px">Pay Application</div><div style="font-size:13px;font-weight:600">No. ${pa.app_number}</div><div style="font-size:11px;color:#64748b">${pa.period_label||''}</div></div>
+    <div><div style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#94a3b8;margin-bottom:3px">Bill To</div><div style="font-size:13px;font-weight:600">${pa.owner||'Owner'}</div>${pa.owner_email ? `<div style="font-size:11px;color:#64748b">${pa.owner_email}</div>` : ''}</div>
+  </div>
+  <!-- Pay Now button -->
+  <div class="no-print" style="background:#fff;border:1px solid #e2e8f0;border-top:none;padding:20px 32px;text-align:center;border-bottom:none">
+    <div style="font-size:13px;color:#64748b;margin-bottom:12px">To pay, please remit <strong>${fmt(totalDue)}</strong> via check or wire transfer per your contract terms.</div>
+    <a href="mailto:${pa.co_email||pa.contact_email||''}?subject=Payment%20for%20${encodeURIComponent(pa.project_name)}%20Pay%20App%20%23${pa.app_number}&body=Please%20find%20payment%20confirmation%20for%20Pay%20Application%20%23${pa.app_number}." style="display:inline-block;background:#0C3B6B;color:#fff;padding:13px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;margin-right:12px">📧 Confirm Payment</a>
+    <button onclick="window.print()" style="display:inline-block;background:#f1f5f9;color:#1e293b;border:1px solid #e2e8f0;padding:13px 24px;border-radius:8px;font-weight:600;font-size:14px;cursor:pointer">🖨 Print Invoice</button>
+  </div>
+  <!-- SOV table -->
+  <div style="background:#fff;border:1px solid #e2e8f0;overflow:hidden;margin-top:0">
+    <div style="padding:14px 32px;background:#f8fafc;border-bottom:1px solid #e2e8f0">
+      <div style="font-size:13px;font-weight:700;color:#0C3B6B">Schedule of Values — Pay Application #${pa.app_number}</div>
+    </div>
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr style="background:#f8fafc">
+          <th style="padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;border-bottom:1px solid #e2e8f0">Item</th>
+          <th style="padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;border-bottom:1px solid #e2e8f0">Description</th>
+          <th style="padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;border-bottom:1px solid #e2e8f0">Scheduled</th>
+          <th style="padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;border-bottom:1px solid #e2e8f0">Prev %</th>
+          <th style="padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;border-bottom:1px solid #e2e8f0">This %</th>
+          <th style="padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;border-bottom:1px solid #e2e8f0">This Period</th>
+          <th style="padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;border-bottom:1px solid #e2e8f0">Retainage</th>
+        </tr>
+      </thead>
+      <tbody>${linesHTML}</tbody>
+      <tfoot>
+        <tr style="background:#0C3B6B">
+          <td colspan="5" style="padding:12px 32px;color:#fff;font-weight:700;font-size:14px">TOTAL AMOUNT DUE THIS PERIOD</td>
+          <td style="padding:12px 12px;color:#fff;font-weight:800;font-size:16px;text-align:right">${fmt(totalDue)}</td>
+          <td style="padding:12px 12px;color:rgba(255,255,255,0.7);font-size:13px;text-align:right">${fmt(totalRet)}</td>
+        </tr>
+      </tfoot>
+    </table>
+    </div>
+  </div>
+  <div style="text-align:center;padding:20px;font-size:11px;color:#94a3b8">Generated by Construction AI Billing · ${new Date().toLocaleDateString()}</div>
+</div>
+</body></html>`);
+  } catch(e) {
+    console.error('[Public Invoice]', e.message);
+    res.status(500).send('<h2>Error loading invoice.</h2>');
+  }
+});
+
 // ── FEEDBACK WIDGET ────────────────────────────────────────────────────────
 app.post('/api/feedback', auth, upload.single('screenshot'), async (req, res) => {
   const { category, message, page_context } = req.body;
@@ -2348,47 +2505,159 @@ setInterval(async () => {
 // ── PAYMENT & RETENTION REMINDERS ─────────────────────────────────────────
 // Runs once per hour. Checks payment_due_date and retention_due_date on projects.
 // Sends via Resend. Respects per-user toggle preferences.
-async function sendReminderEmail(toEmail, subject, html) {
+// ── REMINDER EMAIL ENGINE ─────────────────────────────────────────────────
+async function sendReminderEmail({ to, cc, replyTo, subject, html, attachments }) {
   const apiKey = process.env.RESEND_API_KEY;
+  const fromName = process.env.FROM_NAME || 'Construction AI Billing';
   const fromEmail = process.env.FROM_EMAIL || 'reminders@constructai.app';
   if (!apiKey) {
-    console.log(`[DEV Reminder] TO: ${toEmail} | ${subject}`);
+    console.log(`[DEV Reminder] TO: ${to} CC: ${cc||'-'} | ${subject}`);
     return true;
   }
   try {
+    const payload = {
+      from: `${fromName} <${fromEmail}>`,
+      to: Array.isArray(to) ? to : [to],
+      subject,
+      html,
+    };
+    if (cc) payload.cc = Array.isArray(cc) ? cc : [cc];
+    if (replyTo) payload.reply_to = replyTo;
+    if (attachments && attachments.length) payload.attachments = attachments;
     const r = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: fromEmail, to: toEmail, subject, html })
+      body: JSON.stringify(payload)
     });
     if (!r.ok) { const e = await r.text(); console.error('[Resend Reminder]', e); return false; }
     return true;
   } catch(e) { console.error('[Reminder Email Error]', e.message); return false; }
 }
 
-function reminderEmailHtml({ subject, headline, body, projectName, amount, dueDate, appUrl }) {
-  return `
-  <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:0">
-    <div style="background:#0C3B6B;padding:24px 32px;border-radius:10px 10px 0 0">
-      <div style="color:#fff;font-size:20px;font-weight:700">Construction AI Billing</div>
-      <div style="color:rgba(255,255,255,0.7);font-size:13px;margin-top:2px">Payment Reminder</div>
+function buildReminderEmail({
+  urgency,           // 'upcoming' | 'due_today' | 'overdue' | 'retention'
+  daysLabel,         // e.g. "7 days", "TODAY", "7 days OVERDUE"
+  projectName, jobNumber, address,
+  payAppNumber, periodLabel,
+  amountDue, retentionHeld, contractAmount,
+  dueDate,
+  invoiceUrl,        // public /invoice/:token link
+  contractorName, contractorEmail,
+  ownerName,
+  upcomingInvoices,  // array of {project_name, amount_due, due_date} within 14 days
+}) {
+  const fmt = v => v ? '$' + parseFloat(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+  const fmtDate = d => d ? new Date(d).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}) : '';
+
+  const colors = {
+    upcoming: { banner:'#1d4ed8', badge:'#dbeafe', badgeText:'#1e40af', icon:'📅' },
+    due_today: { banner:'#d97706', badge:'#fef3c7', badgeText:'#92400e', icon:'🗓️' },
+    overdue:   { banner:'#dc2626', badge:'#fee2e2', badgeText:'#991b1b', icon:'🚨' },
+    retention: { banner:'#059669', badge:'#d1fae5', badgeText:'#065f46', icon:'💰' },
+  };
+  const c = colors[urgency] || colors.upcoming;
+
+  const bannerText = {
+    upcoming: `Payment Due in ${daysLabel}`,
+    due_today: 'Payment Due TODAY',
+    overdue: `Payment ${daysLabel} Overdue — Action Required`,
+    retention: `Retention Release Due in ${daysLabel}`,
+  }[urgency];
+
+  const messageText = {
+    upcoming: `This is a friendly reminder that payment for the project below is due in <strong>${daysLabel}</strong>. Please review the invoice and plan your payment accordingly.`,
+    due_today: `Payment for the project below is <strong>due today</strong>. Please remit payment at your earliest convenience to avoid a formal follow-up.`,
+    overdue: `Payment for the project below was due <strong>${daysLabel} ago</strong> and has not been received. Please remit payment immediately or contact us to discuss. Continued non-payment may result in lien action per applicable law.`,
+    retention: `Per your contract, retention for the project below is due for release in <strong>${daysLabel}</strong>. Please initiate the retention payment process.`,
+  }[urgency];
+
+  const upcomingBlock = (upcomingInvoices && upcomingInvoices.length > 0) ? `
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px 20px;margin-top:20px">
+      <div style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">📋 Also Due Within 14 Days</div>
+      ${upcomingInvoices.map(u => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9">
+          <div style="font-size:13px;color:#1e293b">${u.project_name}</div>
+          <div style="font-size:13px;font-weight:600;color:#0C3B6B">${fmt(u.amount_due)} — ${fmtDate(u.due_date)}</div>
+        </div>`).join('')}
+    </div>` : '';
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+<div style="max-width:600px;margin:32px auto;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
+
+  <!-- Status banner -->
+  <div style="background:${c.banner};padding:18px 32px;text-align:center">
+    <div style="color:#fff;font-size:20px;font-weight:800;letter-spacing:0.02em">${c.icon} ${bannerText}</div>
+  </div>
+
+  <!-- Header -->
+  <div style="background:#0C3B6B;padding:20px 32px;display:flex;align-items:center;justify-content:space-between">
+    <div>
+      <div style="color:#fff;font-size:16px;font-weight:700">${contractorName || 'Construction AI Billing'}</div>
+      <div style="color:rgba(255,255,255,0.65);font-size:12px">Pay Application Notice</div>
     </div>
-    <div style="background:#fff;padding:28px 32px;border:1px solid #e2e8f0;border-top:none">
-      <div style="font-size:22px;font-weight:700;color:#0C3B6B;margin-bottom:8px">${headline}</div>
-      <div style="font-size:14px;color:#475569;margin-bottom:20px">${body}</div>
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px 20px;margin-bottom:20px">
-        <div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Project</div>
-        <div style="font-size:16px;font-weight:600;color:#0a1f3c">${projectName}</div>
-        ${amount ? `<div style="font-size:13px;color:#64748b;margin-top:6px">Amount: <strong style="color:#0C3B6B">$${parseFloat(amount).toLocaleString()}</strong></div>` : ''}
-        ${dueDate ? `<div style="font-size:13px;color:#64748b;margin-top:4px">Due: <strong>${new Date(dueDate).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</strong></div>` : ''}
+    <div style="text-align:right">
+      <div style="color:#fff;font-size:28px;font-weight:800">${fmt(amountDue)}</div>
+      <div style="color:rgba(255,255,255,0.65);font-size:12px">Amount Due</div>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div style="background:#fff;padding:28px 32px">
+    <p style="font-size:14px;color:#475569;margin:0 0 20px">${messageText}</p>
+
+    <!-- Invoice card -->
+    <div style="border:2px solid ${c.banner};border-radius:10px;overflow:hidden;margin-bottom:24px">
+      <div style="background:${c.badge};padding:12px 20px;display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:13px;font-weight:700;color:${c.bannerText}">INVOICE DETAILS</div>
+        <div style="font-size:12px;color:${c.bannerText}">Pay App #${payAppNumber || '?'} · ${periodLabel || ''}</div>
       </div>
-      <a href="${appUrl}" style="display:inline-block;background:#185FA5;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px">View Pay Application →</a>
+      <div style="padding:16px 20px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em">Project</div>
+          <div style="font-size:14px;font-weight:700;color:#0a1f3c;margin-top:2px">${projectName}</div>
+          ${jobNumber ? `<div style="font-size:11px;color:#64748b">Job #${jobNumber}</div>` : ''}
+          ${address ? `<div style="font-size:11px;color:#64748b">${address}</div>` : ''}
+        </div>
+        <div>
+          <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em">Due Date</div>
+          <div style="font-size:14px;font-weight:700;color:${c.banner};margin-top:2px">${fmtDate(dueDate)}</div>
+          ${contractAmount ? `<div style="font-size:11px;color:#64748b">Contract: ${fmt(contractAmount)}</div>` : ''}
+        </div>
+        <div>
+          <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em">Amount Due</div>
+          <div style="font-size:22px;font-weight:800;color:${c.banner};margin-top:2px">${fmt(amountDue)}</div>
+        </div>
+        ${retentionHeld > 0 ? `<div>
+          <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em">Retention Held</div>
+          <div style="font-size:14px;font-weight:600;color:#64748b;margin-top:2px">${fmt(retentionHeld)}</div>
+          <div style="font-size:11px;color:#94a3b8">Not due this payment</div>
+        </div>` : ''}
+      </div>
     </div>
-    <div style="padding:16px 32px;font-size:11px;color:#94a3b8;text-align:center">
-      You're receiving this because you have reminders enabled in Construction AI Billing.<br/>
-      To unsubscribe, visit your Revenue tab and toggle off reminders.
+
+    <!-- View Invoice button -->
+    <div style="text-align:center;margin-bottom:20px">
+      <a href="${invoiceUrl}" style="display:inline-block;background:${c.banner};color:#fff;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:800;font-size:16px;letter-spacing:0.02em">
+        View Full Invoice &amp; Pay →
+      </a>
+      <div style="font-size:11px;color:#94a3b8;margin-top:8px">Click to view the complete invoice with all line items</div>
     </div>
-  </div>`;
+
+    ${upcomingBlock}
+  </div>
+
+  <!-- Footer -->
+  <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:16px 32px;text-align:center">
+    <div style="font-size:12px;color:#64748b">Questions? Reply to this email or contact <a href="mailto:${contractorEmail||''}" style="color:#185FA5">${contractorEmail||contractorName||'the billing team'}</a></div>
+    <div style="font-size:10px;color:#94a3b8;margin-top:6px">
+      Sent by Construction AI Billing on behalf of ${contractorName||'your contractor'} ·
+      <a href="${process.env.APP_URL||'https://constructinv.varshyl.com'}/settings" style="color:#94a3b8">Manage reminders</a>
+    </div>
+  </div>
+</div>
+</body></html>`;
 }
 
 async function runPaymentReminders() {
@@ -2396,81 +2665,120 @@ async function runPaymentReminders() {
     const appUrl = process.env.APP_URL || 'https://constructinv.varshyl.com';
     const today = new Date(); today.setHours(0,0,0,0);
 
-    // Get all users with reminder preferences + their projects that have payment_due_date set
+    // Get all pay apps with due dates, with user prefs and project info
+    // payment_due_date is per pay_app (auto-calculated from payment_terms on submission)
     const res = await pool.query(`
-      SELECT p.id as project_id, p.name as project_name, p.user_id,
-             p.payment_due_date, p.retention_due_date,
-             pa.id as pay_app_id, pa.amount_due,
+      SELECT p.id as project_id, p.name as project_name, p.job_number, p.address,
+             p.owner, p.owner_email, p.retention_due_date,
+             p.original_contract, p.user_id,
+             pa.id as pay_app_id, pa.app_number as pay_app_number, pa.period_label,
+             pa.amount_due, pa.retention_held, pa.invoice_token,
+             pa.payment_due_date,
              cs.reminder_7before, cs.reminder_due, cs.reminder_7after, cs.reminder_retention,
-             cs.reminder_email, u.email as user_email, u.name as user_name
+             cs.reminder_email, cs.reminder_phone, cs.company_name,
+             u.email as user_email, u.name as user_name
       FROM projects p
       JOIN users u ON u.id = p.user_id
       LEFT JOIN company_settings cs ON cs.user_id = p.user_id
-      LEFT JOIN pay_apps pa ON pa.project_id = p.id AND pa.status = 'submitted'
+      INNER JOIN pay_apps pa ON pa.project_id = p.id AND pa.status = 'submitted'
         AND pa.id = (SELECT id FROM pay_apps WHERE project_id=p.id AND status='submitted' ORDER BY created_at DESC LIMIT 1)
-      WHERE (p.payment_due_date IS NOT NULL OR p.retention_due_date IS NOT NULL)
+      WHERE (pa.payment_due_date IS NOT NULL OR p.retention_due_date IS NOT NULL)
         AND u.blocked IS NOT TRUE
     `);
 
+    // Get all upcoming invoices per user (within 14 days) for "also due soon" section
+    const upcomingRes = await pool.query(`
+      SELECT p.user_id, p.name as project_name, pa.amount_due, pa.payment_due_date as due_date
+      FROM projects p
+      JOIN pay_apps pa ON pa.project_id = p.id AND pa.status='submitted'
+        AND pa.id = (SELECT id FROM pay_apps WHERE project_id=p.id AND status='submitted' ORDER BY created_at DESC LIMIT 1)
+      WHERE pa.payment_due_date BETWEEN NOW() AND NOW() + INTERVAL '14 days'
+    `);
+    const upcomingByUser = {};
+    for (const u of upcomingRes.rows) {
+      if (!upcomingByUser[u.user_id]) upcomingByUser[u.user_id] = [];
+      upcomingByUser[u.user_id].push(u);
+    }
+
     for (const r of res.rows) {
-      const toEmail = r.reminder_email || r.user_email;
-      if (!toEmail) continue;
+      // TO: owner email (who pays). CC: contractor (reminder_email or user_email)
+      const ownerEmail = r.owner_email;
+      const contractorEmail = r.reminder_email || r.user_email;
+      const contractorName = r.company_name || r.user_name;
+      const invoiceUrl = r.invoice_token ? `${appUrl}/invoice/${r.invoice_token}` : appUrl;
+      const upcomingInvoices = (upcomingByUser[r.user_id] || []).filter(u => u.project_name !== r.project_name);
+
+      const baseArgs = {
+        projectName: r.project_name, jobNumber: r.job_number, address: r.address,
+        payAppNumber: r.pay_app_number, periodLabel: r.period_label,
+        amountDue: r.amount_due, retentionHeld: parseFloat(r.retention_held||0),
+        contractAmount: r.original_contract,
+        contractorName, contractorEmail, ownerName: r.owner,
+        invoiceUrl, upcomingInvoices,
+      };
 
       const payDue = r.payment_due_date ? new Date(r.payment_due_date) : null;
       const retDue = r.retention_due_date ? new Date(r.retention_due_date) : null;
-
-      // Helper: days between today and a date
       const daysDiff = (d) => Math.round((d - today) / (1000 * 60 * 60 * 24));
 
-      // Check if already sent today for this type
-      async function alreadySent(type) {
+      const alreadySent = async (type) => {
         const chk = await pool.query(
           `SELECT id FROM reminder_log WHERE project_id=$1 AND reminder_type=$2 AND sent_at > NOW() - INTERVAL '20 hours'`,
-          [r.project_id, type]
-        );
+          [r.project_id, type]);
         return chk.rows.length > 0;
-      }
+      };
+
+      const logSent = async (type, to) => {
+        await pool.query('INSERT INTO reminder_log(user_id,project_id,pay_app_id,reminder_type,sent_to) VALUES($1,$2,$3,$4,$5)',
+          [r.user_id, r.project_id, r.pay_app_id, type, to]);
+      };
 
       if (payDue) {
         const diff = daysDiff(payDue);
 
-        if (diff === 7 && r.reminder_7before && !await alreadySent('7_before')) {
-          const ok = await sendReminderEmail(toEmail,
-            `Payment due in 7 days — ${r.project_name}`,
-            reminderEmailHtml({ subject: '7-Day Reminder', headline: '⏰ Payment Due in 7 Days', body: `A friendly heads-up that payment for <strong>${r.project_name}</strong> is due in one week. Make sure your lien waiver is ready to send.`, projectName: r.project_name, amount: r.amount_due, dueDate: payDue, appUrl })
-          );
-          if (ok) await pool.query('INSERT INTO reminder_log(user_id,project_id,pay_app_id,reminder_type,sent_to) VALUES($1,$2,$3,$4,$5)', [r.user_id, r.project_id, r.pay_app_id, '7_before', toEmail]);
+        if (diff === 7 && r.reminder_7before !== false && !await alreadySent('7_before')) {
+          const subject = `Payment Due in 7 Days — ${r.project_name}`;
+          const html = buildReminderEmail({ ...baseArgs, urgency:'upcoming', daysLabel:'7 days', dueDate:payDue });
+          const ok = await sendReminderEmail({ to: ownerEmail||contractorEmail, cc: ownerEmail ? contractorEmail : null, replyTo: contractorEmail, subject, html });
+          if (ok) await logSent('7_before', ownerEmail||contractorEmail);
         }
 
-        if (diff === 0 && r.reminder_due && !await alreadySent('due_today')) {
-          const ok = await sendReminderEmail(toEmail,
-            `Payment due TODAY — ${r.project_name}`,
-            reminderEmailHtml({ subject: 'Due Today', headline: '🗓️ Payment Due Today', body: `Payment for <strong>${r.project_name}</strong> is due today. Log in to download your pay application PDF and send with your lien waiver.`, projectName: r.project_name, amount: r.amount_due, dueDate: payDue, appUrl })
-          );
-          if (ok) await pool.query('INSERT INTO reminder_log(user_id,project_id,pay_app_id,reminder_type,sent_to) VALUES($1,$2,$3,$4,$5)', [r.user_id, r.project_id, r.pay_app_id, 'due_today', toEmail]);
+        if (diff === 0 && r.reminder_due !== false && !await alreadySent('due_today')) {
+          const subject = `⚠️ Payment Due TODAY — ${r.project_name} — ${baseArgs.amountDue ? '$'+parseFloat(baseArgs.amountDue).toLocaleString() : ''}`;
+          const html = buildReminderEmail({ ...baseArgs, urgency:'due_today', daysLabel:'TODAY', dueDate:payDue });
+          const ok = await sendReminderEmail({ to: ownerEmail||contractorEmail, cc: ownerEmail ? contractorEmail : null, replyTo: contractorEmail, subject, html });
+          if (ok) await logSent('due_today', ownerEmail||contractorEmail);
         }
 
-        if (diff === -7 && r.reminder_7after && !await alreadySent('7_after')) {
-          const ok = await sendReminderEmail(toEmail,
-            `⚠️ Overdue follow-up — ${r.project_name}`,
-            reminderEmailHtml({ subject: 'Overdue', headline: '⚠️ Payment 7 Days Overdue', body: `Payment for <strong>${r.project_name}</strong> was due 7 days ago and may not have been received. Now is the time to follow up in writing. This reminder protects your lien rights.`, projectName: r.project_name, amount: r.amount_due, dueDate: payDue, appUrl })
-          );
-          if (ok) await pool.query('INSERT INTO reminder_log(user_id,project_id,pay_app_id,reminder_type,sent_to) VALUES($1,$2,$3,$4,$5)', [r.user_id, r.project_id, r.pay_app_id, '7_after', toEmail]);
+        if (diff === -7 && r.reminder_7after !== false && !await alreadySent('7_after')) {
+          const subject = `🚨 OVERDUE: Payment 7 Days Past Due — ${r.project_name}`;
+          const html = buildReminderEmail({ ...baseArgs, urgency:'overdue', daysLabel:'7 days', dueDate:payDue });
+          const ok = await sendReminderEmail({ to: ownerEmail||contractorEmail, cc: ownerEmail ? contractorEmail : null, replyTo: contractorEmail, subject, html });
+          if (ok) await logSent('7_after', ownerEmail||contractorEmail);
+        }
+
+        // Also fire at -14 and -21 for persistent non-payers
+        if ((diff === -14 || diff === -21) && r.reminder_7after !== false && !await alreadySent(`overdue_${Math.abs(diff)}`)) {
+          const absDays = Math.abs(diff);
+          const subject = `🚨 OVERDUE ${absDays} Days — ${r.project_name} — Immediate Attention Required`;
+          const html = buildReminderEmail({ ...baseArgs, urgency:'overdue', daysLabel:`${absDays} days`, dueDate:payDue });
+          const ok = await sendReminderEmail({ to: ownerEmail||contractorEmail, cc: ownerEmail ? contractorEmail : null, replyTo: contractorEmail, subject, html });
+          if (ok) await logSent(`overdue_${absDays}`, ownerEmail||contractorEmail);
         }
       }
 
-      // Retention reminder
-      if (retDue && r.reminder_retention) {
+      // Retention reminders — to contractor (they need to request it)
+      if (retDue && r.reminder_retention !== false) {
         const diff = daysDiff(retDue);
-        if ((diff === 30 || diff === 7) && !await alreadySent(`retention_${diff}`)) {
-          const ok = await sendReminderEmail(toEmail,
-            `Retention release due in ${diff} days — ${r.project_name}`,
-            reminderEmailHtml({ subject: 'Retention Reminder', headline: `💰 Retention Release Due in ${diff} Days`, body: `Per your contract, retention for <strong>${r.project_name}</strong> should be released in ${diff} days. Now is the time to submit your Unconditional Final Lien Release and request retention payment.`, projectName: r.project_name, amount: null, dueDate: retDue, appUrl })
-          );
-          if (ok) await pool.query('INSERT INTO reminder_log(user_id,project_id,pay_app_id,reminder_type,sent_to) VALUES($1,$2,$3,$4,$5)', [r.user_id, r.project_id, r.pay_app_id, `retention_${diff}`, toEmail]);
+        if ((diff === 30 || diff === 14 || diff === 7) && !await alreadySent(`retention_${diff}`)) {
+          const subject = `Retention Release Due in ${diff} Days — ${r.project_name}`;
+          const html = buildReminderEmail({ ...baseArgs, urgency:'retention', daysLabel:`${diff} days`, dueDate:retDue, amountDue: r.retention_held });
+          const ok = await sendReminderEmail({ to: contractorEmail, replyTo: contractorEmail, subject, html });
+          if (ok) await logSent(`retention_${diff}`, contractorEmail);
         }
       }
     }
+    console.log(`[Reminders] Checked ${res.rows.length} projects at ${new Date().toISOString()}`);
   } catch(e) { console.error('[Reminders Error]', e.message); }
 }
 
