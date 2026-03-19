@@ -255,14 +255,23 @@ app.post('/api/admin/emergency-reset', async (req, res) => {
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'User not found', email });
     const user = r.rows[0];
-    // If new_password provided, reset it
+    // Unblock only (no password change needed)
+    if (req.body.action === 'unblock') {
+      await pool.query('UPDATE users SET blocked=FALSE, blocked_reason=NULL WHERE id=$1', [user.id]);
+      await logEvent(user.id, 'emergency_unblock', { email: user.email });
+      return res.json({ ok: true, unblocked: true, user });
+    }
+    // If new_password provided, reset password AND unblock the account
     if (new_password) {
       if (new_password.length < 8) return res.status(400).json({ error: 'Password must be 8+ characters' });
       const hash = await bcrypt.hash(new_password, 10);
-      await pool.query('UPDATE users SET password_hash=$1, reset_token=NULL WHERE id=$2', [hash, user.id]);
+      await pool.query(
+        'UPDATE users SET password_hash=$1, reset_token=NULL, blocked=FALSE, blocked_reason=NULL WHERE id=$2',
+        [hash, user.id]
+      );
       const tok = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
       await logEvent(user.id, 'password_emergency_reset', { email: user.email });
-      return res.json({ ok: true, reset: true, user, token: tok });
+      return res.json({ ok: true, reset: true, unblocked: true, user, token: tok });
     }
     // Otherwise just return account info for diagnosis
     res.json({ ok: true, user });
