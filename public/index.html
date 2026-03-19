@@ -805,8 +805,13 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
           <button type="button" class="eye-btn" onclick="togglePass('login-pass',this)" tabindex="-1" aria-label="Show password"></button>
         </div>
       </div>
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px">
+        <input type="checkbox" id="remember-me" checked style="width:14px;height:14px;cursor:pointer;accent-color:var(--accent)"/>
+        <label for="remember-me" style="font-size:12px;color:var(--text2);cursor:pointer;user-select:none">Keep me signed in for 30 days</label>
+      </div>
       <button class="btn btn-primary btn-full" onclick="doLogin()">Sign in</button>
-      <div style="text-align:right;margin-top:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+        <button type="button" onclick="showSupportRequest()" style="background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;padding:0;text-decoration:underline">Can't access your account?</button>
         <button type="button" onclick="showForgotPassword()" style="background:none;border:none;color:var(--accent);font-size:12px;cursor:pointer;padding:0;text-decoration:underline">Forgot password?</button>
       </div>
       <div style="display:flex;align-items:center;gap:10px;margin:14px 0 0">
@@ -849,6 +854,19 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
       <button class="btn btn-primary btn-full" onclick="doForgotPassword()">Send Reset Link</button>
       <div id="forgot-success" class="hidden" style="margin-top:12px;padding:12px;background:var(--green-light);border-radius:var(--radius);color:var(--green);font-size:13px;text-align:center">
         ✅ If that email is registered, a reset link is on its way. Check your inbox (and spam folder).
+      </div>
+      <button type="button" onclick="showLoginPanel()" style="background:none;border:none;color:var(--accent);font-size:12px;cursor:pointer;margin-top:10px;text-decoration:underline">← Back to sign in</button>
+    </div>
+
+    <!-- Support Request panel (hidden by default) -->
+    <div id="support-form" class="hidden" style="margin-top:4px">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:14px">Can't log in? Send us a message and we'll help you get back in.</div>
+      <div class="field"><label>Your email</label><input type="email" id="support-email" placeholder="you@company.com"/></div>
+      <div class="field"><label>Your name (optional)</label><input type="text" id="support-name" placeholder="Jane Smith"/></div>
+      <div class="field"><label>Describe the issue</label><textarea id="support-issue" placeholder="e.g. I can't log in, my password reset email never arrived..." style="width:100%;height:80px;resize:vertical;padding:8px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:inherit"></textarea></div>
+      <button class="btn btn-primary btn-full" onclick="doSupportRequest()">Send Request</button>
+      <div id="support-success" class="hidden" style="margin-top:12px;padding:12px;background:var(--green-light);border-radius:var(--radius);color:var(--green);font-size:13px;text-align:center">
+        ✅ Request sent! We'll follow up at your email address shortly.
       </div>
       <button type="button" onclick="showLoginPanel()" style="background:none;border:none;color:var(--accent);font-size:12px;cursor:pointer;margin-top:10px;text-decoration:underline">← Back to sign in</button>
     </div>
@@ -1415,6 +1433,18 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
             <div id="admin-feedback-list"><div style="color:var(--text3);font-size:12px;padding:8px 0">Loading…</div></div>
           </div>
 
+          <!-- Support Requests -->
+          <div class="card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <div>
+                <div class="ct" style="margin:0">Support requests <span id="support-req-badge" style="display:none;background:var(--red);color:#fff;border-radius:999px;font-size:10px;font-weight:600;padding:2px 7px;margin-left:6px;vertical-align:middle"></span></div>
+                <div style="font-size:11px;color:var(--text2);margin-top:2px">Submitted from the login screen by locked-out or stuck users.</div>
+              </div>
+              <button class="btn btn-sm" onclick="loadAdminSupportRequests()">Refresh</button>
+            </div>
+            <div id="admin-support-list"><div style="color:var(--text3);font-size:12px;padding:8px 0">Loading…</div></div>
+          </div>
+
           <!-- Users table -->
           <div class="card">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
@@ -1736,9 +1766,10 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
 
 <script>
 const API='/api';
-let token=localStorage.getItem('caib_token');
-function getToken(){return token||localStorage.getItem('caib_token')||''}
-let currentUser=JSON.parse(localStorage.getItem('caib_user')||'null');
+let token=localStorage.getItem('caib_token')||sessionStorage.getItem('caib_token');
+function getToken(){return token||localStorage.getItem('caib_token')||sessionStorage.getItem('caib_token')||''}
+let currentUser=JSON.parse(localStorage.getItem('caib_user')||sessionStorage.getItem('caib_user')||'null');
+let _rememberMe=true; // tracks whether current login should persist
 let currentProjectId=null;
 let currentPAId=null;
 let currentPAData=null;
@@ -1854,6 +1885,7 @@ function authTab(t){
   document.getElementById('login-form').classList.toggle('hidden',t!=='login');
   document.getElementById('register-form').classList.toggle('hidden',t!=='register');
   document.getElementById('forgot-form').classList.add('hidden');
+  document.getElementById('support-form').classList.add('hidden');
   document.querySelectorAll('.auth-tab button').forEach((b,i)=>b.classList.toggle('on',(i===0&&t==='login')||(i===1&&t==='register')));
   document.getElementById('auth-err').classList.add('hidden');
 }
@@ -1861,14 +1893,40 @@ function showForgotPassword(){
   document.getElementById('login-form').classList.add('hidden');
   document.getElementById('register-form').classList.add('hidden');
   document.getElementById('forgot-form').classList.remove('hidden');
+  document.getElementById('support-form').classList.add('hidden');
   document.getElementById('forgot-success').classList.add('hidden');
   document.querySelectorAll('.auth-tab button').forEach(b=>b.classList.remove('on'));
   document.getElementById('auth-err').classList.add('hidden');
   setTimeout(()=>document.getElementById('forgot-email').focus(),50);
 }
+function showSupportRequest(){
+  document.getElementById('login-form').classList.add('hidden');
+  document.getElementById('register-form').classList.add('hidden');
+  document.getElementById('forgot-form').classList.add('hidden');
+  document.getElementById('support-form').classList.remove('hidden');
+  document.getElementById('support-success').classList.add('hidden');
+  document.querySelectorAll('.auth-tab button').forEach(b=>b.classList.remove('on'));
+  document.getElementById('auth-err').classList.add('hidden');
+  setTimeout(()=>document.getElementById('support-email').focus(),50);
+}
 function showLoginPanel(){
   document.getElementById('forgot-form').classList.add('hidden');
+  document.getElementById('support-form').classList.add('hidden');
   authTab('login');
+}
+async function doSupportRequest(){
+  const email=document.getElementById('support-email').value.trim();
+  const name=document.getElementById('support-name').value.trim();
+  const issue=document.getElementById('support-issue').value.trim();
+  if(!email){alert('Please enter your email address.');return;}
+  if(!issue){alert('Please describe the issue.');return;}
+  try{
+    await api('POST','/support/request',{email,name,issue});
+    document.getElementById('support-success').classList.remove('hidden');
+    document.getElementById('support-email').value='';
+    document.getElementById('support-name').value='';
+    document.getElementById('support-issue').value='';
+  }catch(e){alert('Error sending request: '+e.message);}
 }
 async function doForgotPassword(){
   const email=document.getElementById('forgot-email').value.trim();
@@ -1900,6 +1958,7 @@ async function doResetPassword(){
 async function doLogin(){
   const email=document.getElementById('login-email').value;
   const password=document.getElementById('login-pass').value;
+  _rememberMe=document.getElementById('remember-me')?.checked !== false;
   try{const data=await api('POST','/auth/login',{email,password});setAuth(data);}
   catch(e){showAuthErr(e.message);}
 }
@@ -1964,10 +2023,15 @@ function signInWithGoogle(){
 })();
 function setAuth(data){
   token=data.token;currentUser=data.user;
-  localStorage.setItem('caib_token',token);
+  // Store in localStorage (persistent) or sessionStorage (clears when browser closes)
+  const store=_rememberMe ? localStorage : sessionStorage;
+  const clear=_rememberMe ? sessionStorage : localStorage;
+  store.setItem('caib_token',token);
+  store.setItem('caib_user',JSON.stringify(currentUser));
+  clear.removeItem('caib_token');
+  clear.removeItem('caib_user');
   // Identify user in PostHog so all future events are linked to them
   try{ if(window.__phReady) posthog.identify(currentUser.id, { email: currentUser.email, name: currentUser.name }); }catch(e){}
-  localStorage.setItem('caib_user',JSON.stringify(currentUser));
   document.getElementById('landing-screen').classList.add('hidden');
   document.getElementById('auth-screen').classList.add('hidden');
   document.getElementById('app-screen').classList.remove('hidden');
@@ -2001,6 +2065,7 @@ async function resendVerification(){
 function logout(){
   token=null;currentUser=null;
   localStorage.removeItem('caib_token');localStorage.removeItem('caib_user');
+  sessionStorage.removeItem('caib_token');sessionStorage.removeItem('caib_user');
   showLanding();
 }
 function showPage(id){
@@ -3258,8 +3323,9 @@ async function loadAdminDash(){
     renderAiHistory();
     document.getElementById('admin-loading').classList.add('hidden');
     document.getElementById('admin-content').classList.remove('hidden');
-    // Load feedback inbox in parallel (non-blocking — doesn't affect main dashboard render)
+    // Load feedback inbox and support requests in parallel (non-blocking)
     loadAdminFeedback().catch(()=>{});
+    loadAdminSupportRequests().catch(()=>{});
   } catch(e){
     document.getElementById('admin-loading').textContent = 'Error loading admin data: '+e.message;
   }
@@ -3294,6 +3360,42 @@ async function loadAdminFeedback() {
             </div>
           </div>
         </div>`).join('');
+  } catch(e) {
+    if (el) el.innerHTML = `<div style="color:var(--text2);font-size:12px">${e.message}</div>`;
+  }
+}
+
+async function loadAdminSupportRequests() {
+  const el = document.getElementById('admin-support-list');
+  if (!el) return;
+  try {
+    // Uses admin analytics endpoint — filter event='support_request'
+    const items = await api('GET', '/admin/support-requests');
+    const badge = document.getElementById('support-req-badge');
+    if (!items.length) {
+      el.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px 0">No support requests yet.</div>';
+      if(badge)badge.style.display='none';
+      return;
+    }
+    if(badge){badge.textContent=items.length;badge.style.display='inline';}
+    el.innerHTML = items.map(r => {
+      const d = r.event_data || {};
+      return `<div style="padding:11px 14px;border:0.5px solid var(--border);border-radius:var(--radius);margin-bottom:6px;background:var(--bg2)">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+              <b style="font-size:13px">${(d.name||'Unknown').replace(/</g,'&lt;')}</b>
+              <a href="mailto:${d.email||''}" style="font-size:12px;color:var(--accent)">${(d.email||'—').replace(/</g,'&lt;')}</a>
+            </div>
+            <div style="font-size:13px;color:var(--text);white-space:pre-wrap">${(d.issue||'[no message]').replace(/</g,'&lt;')}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-size:10px;color:var(--text3)">${new Date(r.created_at).toLocaleString()}</div>
+            <a href="mailto:${d.email||''}" style="font-size:11px;color:var(--blue);display:block;margin-top:4px">Reply →</a>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
   } catch(e) {
     if (el) el.innerHTML = `<div style="color:var(--text2);font-size:12px">${e.message}</div>`;
   }
@@ -3387,6 +3489,7 @@ function renderAdminUsers(users){
     const verifyBtn=u.email_verified?''
       :`<button class="btn btn-sm" onclick="adminVerifyUser(${u.id})" style="color:var(--blue);border-color:var(--blue)">Verify</button>`;
     const deleteBtn=`<button class="btn btn-sm btn-danger" onclick="adminDeleteUser(${u.id},'${u.name.replace(/'/g,"\\'")}')">Delete</button>`;
+    const resetPwdBtn=`<button class="btn btn-sm" onclick="adminResetUserPassword(${u.id},'${u.email.replace(/'/g,"\\'")}','${u.name.replace(/'/g,"\\'")}')">Reset Pwd</button>`;
     return `<tr>
       <td style="padding:6px 8px">${u.name}</td>
       <td style="padding:6px 8px;color:var(--text2)">${u.email}</td>
@@ -3396,7 +3499,7 @@ function renderAdminUsers(users){
       <td class="r" style="padding:6px 8px;color:${u.submitted_count>0?'var(--green)':'var(--text2)'}">${u.submitted_count}</td>
       <td style="padding:6px 8px;color:var(--text2);font-size:11px">${u.last_active?new Date(u.last_active).toLocaleDateString():'—'}</td>
       <td style="padding:6px 8px;white-space:nowrap">${blockedBadge}${verifiedBadge}${googleBadge}</td>
-      <td style="padding:6px 8px;white-space:nowrap;display:flex;gap:5px">${blockBtn}${verifyBtn}${deleteBtn}</td>
+      <td style="padding:6px 8px;white-space:nowrap;display:flex;gap:5px;flex-wrap:wrap">${blockBtn}${verifyBtn}${resetPwdBtn}${deleteBtn}</td>
     </tr>`;
   }).join('');
 }
@@ -3421,6 +3524,41 @@ async function adminDeleteUser(id,name){
   if(!confirm(`Permanently delete user "${name}" and ALL their data? This cannot be undone.`))return;
   try{await api('DELETE','/admin/users/'+id,null);loadAdminDash();}
   catch(e){alert('Error: '+e.message);}
+}
+async function adminResetUserPassword(id,email,name){
+  // Show inline modal
+  const existing=document.getElementById('admin-reset-modal');
+  if(existing)existing.remove();
+  const modal=document.createElement('div');
+  modal.id='admin-reset-modal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML=`
+    <div style="background:var(--bg);border-radius:var(--radius);padding:24px;width:340px;max-width:92vw;box-shadow:0 8px 32px rgba(0,0,0,.18)">
+      <div class="ct" style="margin:0 0 6px">Reset Password</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:16px">Set a new password for <b>${name}</b> (${email})</div>
+      <div class="field"><label>New Password</label><input type="password" id="admin-reset-pw" placeholder="Min 8 characters" style="width:100%"/></div>
+      <div class="field"><label>Confirm Password</label><input type="password" id="admin-reset-pw2" placeholder="Re-enter password" style="width:100%"/></div>
+      <div id="admin-reset-err" class="hidden" style="color:var(--red);font-size:12px;margin-bottom:8px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-sm" onclick="document.getElementById('admin-reset-modal').remove()">Cancel</button>
+        <button class="btn btn-sm btn-primary" onclick="adminDoResetPwd(${id})">Set Password</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  setTimeout(()=>document.getElementById('admin-reset-pw').focus(),50);
+}
+async function adminDoResetPwd(id){
+  const pw=document.getElementById('admin-reset-pw').value;
+  const pw2=document.getElementById('admin-reset-pw2').value;
+  const errEl=document.getElementById('admin-reset-err');
+  if(!pw||pw.length<8){errEl.textContent='Password must be at least 8 characters';errEl.classList.remove('hidden');return;}
+  if(pw!==pw2){errEl.textContent='Passwords do not match';errEl.classList.remove('hidden');return;}
+  errEl.classList.add('hidden');
+  try{
+    const r=await api('POST','/admin/users/'+id+'/reset-password',{new_password:pw});
+    document.getElementById('admin-reset-modal').remove();
+    alert(`✅ Password updated for ${r.email}`);
+  }catch(e){errEl.textContent=e.message;errEl.classList.remove('hidden');}
 }
 
 function filterAdminUsers(q){

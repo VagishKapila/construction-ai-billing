@@ -1649,6 +1649,68 @@ app.post('/api/admin/users/:id/verify-email', adminAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Admin: reset any user's password directly (no email needed) ─────────────
+app.post('/api/admin/users/:id/reset-password', adminAuth, async (req, res) => {
+  const { new_password } = req.body;
+  if (!new_password || new_password.length < 8)
+    return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  try {
+    const user = (await pool.query('SELECT id, email, name FROM users WHERE id=$1', [req.params.id])).rows[0];
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const hash = await bcrypt.hash(new_password, 10);
+    await pool.query('UPDATE users SET password_hash=$1, reset_token=NULL, reset_token_sent_at=NULL WHERE id=$2', [hash, req.params.id]);
+    await logEvent(req.user.id, 'admin_password_reset', { target_user_id: parseInt(req.params.id), target_email: user.email });
+    // Return a fresh login token so admin can hand it off to the user if needed
+    const tok = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
+    res.json({ ok: true, email: user.email, token: tok });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── Support requests (for locked-out users or general help) ─────────────────
+app.post('/api/support/request', async (req, res) => {
+  // Public endpoint — no auth needed (user might be locked out)
+  const { email, name, issue } = req.body;
+  if (!email || !issue) return res.status(400).json({ error: 'Email and issue description required' });
+  try {
+    await logEvent(null, 'support_request', { email, name: name||'', issue: issue.slice(0, 500) });
+    // Notify admin via email
+    const apiKey = process.env.RESEND_API_KEY;
+    const fromEmail = process.env.FROM_EMAIL || 'noreply@constructai.app';
+    const adminEmail = (process.env.ADMIN_EMAILS||'').split(',')[0].trim() || 'vaakapila@gmail.com';
+    if (apiKey) {
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          from: fromEmail,
+          to: [adminEmail],
+          subject: `Support Request — ${email}`,
+          html: `<div style="font-family:sans-serif;padding:24px">
+            <h2>Support Request</h2>
+            <p><b>From:</b> ${name||'Unknown'} &lt;${email}&gt;</p>
+            <p><b>Issue:</b></p>
+            <blockquote style="border-left:3px solid #185FA5;padding-left:12px;color:#334155">${issue}</blockquote>
+            <p style="margin-top:24px"><a href="${process.env.APP_URL||'https://constructinv.varshyl.com'}/?admin=1" style="background:#185FA5;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none">Open Admin Dashboard</a></p>
+          </div>`
+        })
+      }).catch(e => console.error('[Support email]', e.message));
+    }
+    res.json({ ok: true });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── Admin: list support requests (from analytics_events) ────────────────────
+app.get('/api/admin/support-requests', adminAuth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT id, event_data, created_at FROM analytics_events
+       WHERE event = 'support_request'
+       ORDER BY created_at DESC LIMIT 100`
+    );
+    res.json(r.rows);
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 app.delete('/api/admin/users/:id', adminAuth, async (req, res) => {
   // Cascade deletes all projects/payapps via FK ON DELETE CASCADE
   const user = (await pool.query('SELECT email FROM users WHERE id=$1', [req.params.id])).rows[0];
