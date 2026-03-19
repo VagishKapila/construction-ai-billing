@@ -2107,6 +2107,7 @@ async function loadPayApp(id,tab=1){
     currentPAData=pa;coCounter=pa.change_orders.length;
     renderPAHeader(pa);renderG702(pa);renderG703(pa);renderCOs(pa);renderAttachments(pa);
     renderAIAPreview(pa);
+    renderPayAppLienStatus(id);
     // Refresh sidebar: highlight active pay app under its project
     if(currentProjects.length){
       try{const allPAs=await api('GET','/projects/'+pa.project_id+'/payapps');sidebarPACache[pa.project_id]=allPAs;buildSidebarProjects(currentProjects,pa.project_id);}catch(e){}
@@ -2639,18 +2640,16 @@ async function handleNewProjectContractUpload(input) {
     intelEl.innerHTML = rows.length
       ? rows.map(([l,v])=>`<div class="contract-field"><label>${l}</label><span>${v}</span></div>`).join('')
       : '<div style="color:var(--text2);font-size:12px">Contract uploaded — key fields not detected automatically.</div>';
-    // If SOV found, offer to replace
-    if (data.sov_lines && data.sov_lines.length >= 2) {
-      const total=data.sov_lines.reduce((s,l)=>s+(l.scheduled_value||0),0);
-      const sovBanner=document.createElement('div');
-      sovBanner.style.cssText='margin-top:12px;padding:12px 14px;background:var(--blue-light);border-radius:var(--radius);border:1px solid rgba(24,95,165,0.2)';
-      sovBanner.innerHTML=`<div style="font-weight:600;font-size:12px;color:var(--blue);margin-bottom:4px">📊 SOV detected in contract (${data.sov_lines.length} lines · ${fmt(total)})</div>
-        <div style="font-size:11px;color:#333;margin-bottom:8px">Would you like to replace your uploaded SOV with the one in the contract?</div>
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-primary btn-sm" onclick="replaceSOVFromContract(${_newProjId},window._contractSOVLines)">Use contract SOV</button>
-          <button class="btn btn-sm" onclick="this.parentElement.parentElement.remove()">Keep current</button>
-        </div>`;
-      window._contractSOVLines=data.sov_lines;
+    // Show SOV comparison if available
+    if (data.sov_comparison) {
+      const cmp = data.sov_comparison;
+      const isMatch = cmp.match;
+      const variance = cmp.variance;
+      const sovBanner = document.createElement('div');
+      sovBanner.style.cssText = `margin-top:12px;padding:12px 14px;background:${isMatch?'var(--green-light)':'#FFF3CD'};border-radius:var(--radius);border:1px solid ${isMatch?'rgba(59,109,17,0.2)':'rgba(204,153,0,0.3)'}`;
+      sovBanner.innerHTML = `<div style="font-weight:600;font-size:12px;color:${isMatch?'var(--green)':'#7A4F00'};margin-bottom:5px">${isMatch?'✅ SOV matches contract sum':'⚠️ SOV variance detected'}</div>
+        <div style="font-size:11px;color:#333">Contract Sum: <strong>${fmt(cmp.contract_sum)}</strong> · Your SOV: <strong>${fmt(cmp.sov_total)}</strong> · Variance: <strong>${cmp.variance>=0?'+':''}${fmt(variance)}</strong></div>
+        ${!isMatch?'<div style="font-size:11px;color:#7A4F00;margin-top:4px">Please review your SOV line items — they should add up to the contract amount.</div>':''}`;
       intelEl.appendChild(sovBanner);
     }
   } catch(e) { statusEl.textContent = 'Error: '+e.message; }
@@ -3196,45 +3195,46 @@ async function handleContractUpload(input, projectId) {
     const data = await uploadContract(projectId, input.files[0]);
     statusEl.textContent = '✓ Contract uploaded';
     await loadContractIntel(projectId);
-    // If SOV lines found in contract, offer to use them
-    if (data.sov_lines && data.sov_lines.length >= 2) {
-      showSOVFromContractBanner(projectId, data.sov_lines);
+    // Show SOV vs contract comparison if available
+    if (data.sov_comparison) {
+      showSOVComparisonBanner(data.sov_comparison);
     }
   } catch(e) { statusEl.textContent = 'Error: '+e.message; }
 }
 
-function showSOVFromContractBanner(projectId, sovLines) {
+function showSOVComparisonBanner(cmp) {
+  // Remove any existing comparison banner
+  const existing = document.getElementById('sov-comparison-banner');
+  if (existing) existing.remove();
   const el = document.getElementById('contract-intel-body');
   if (!el) return;
-  const total = sovLines.reduce((s,l)=>s+(l.scheduled_value||0),0);
+  const isMatch = cmp.match;
+  const variance = cmp.variance;
+  const pct = cmp.variance_pct;
   const banner = document.createElement('div');
-  banner.id = 'sov-from-contract-banner';
-  banner.style.cssText = 'margin-top:14px;padding:14px 16px;background:var(--blue-light);border-radius:var(--radius);border:1px solid rgba(24,95,165,0.2)';
+  banner.id = 'sov-comparison-banner';
+  banner.style.cssText = `margin-top:14px;padding:14px 16px;background:${isMatch?'var(--green-light)':'#FFF3CD'};border-radius:var(--radius);border:1px solid ${isMatch?'rgba(59,109,17,0.2)':'rgba(204,153,0,0.3)'}`;
+  const varSign = variance >= 0 ? '+' : '';
   banner.innerHTML = `
-    <div style="font-weight:600;font-size:12px;color:var(--blue);margin-bottom:5px">📊 Schedule of Values detected in contract</div>
-    <div style="font-size:12px;color:#333;margin-bottom:10px">${sovLines.length} line items · Total: ${fmt(total)}</div>
-    <div style="max-height:160px;overflow-y:auto;margin-bottom:10px;border:1px solid rgba(24,95,165,0.15);border-radius:6px;background:#fff">
-      ${sovLines.slice(0,15).map((l,i)=>`<div style="padding:5px 10px;font-size:11px;border-bottom:1px solid rgba(0,0,0,0.06);display:flex;justify-content:space-between;gap:8px"><span>${l.item_id} — ${l.description}</span><span style="white-space:nowrap;color:var(--blue)">${fmt(l.scheduled_value)}</span></div>`).join('')}
-      ${sovLines.length>15?`<div style="padding:5px 10px;font-size:10px;color:var(--text3)">…and ${sovLines.length-15} more lines</div>`:''}
+    <div style="font-weight:600;font-size:12px;color:${isMatch?'var(--green)':'#7A4F00'};margin-bottom:8px">
+      ${isMatch ? '✅ SOV matches contract sum' : '⚠️ SOV vs contract variance detected'}
     </div>
-    <div style="display:flex;gap:8px;align-items:center">
-      <button class="btn btn-primary btn-sm" onclick="replaceSOVFromContract(${projectId}, window._contractSOVLines)">Use this SOV for project</button>
-      <button class="btn btn-sm" onclick="document.getElementById('sov-from-contract-banner').remove()">Keep current SOV</button>
-    </div>`;
-  window._contractSOVLines = sovLines;
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:11px">
+      <div style="background:rgba(255,255,255,0.7);border-radius:6px;padding:8px 10px">
+        <div style="font-size:10px;color:var(--text2);margin-bottom:2px">CONTRACT SUM</div>
+        <div style="font-weight:600">${fmt(cmp.contract_sum)}</div>
+      </div>
+      <div style="background:rgba(255,255,255,0.7);border-radius:6px;padding:8px 10px">
+        <div style="font-size:10px;color:var(--text2);margin-bottom:2px">YOUR SOV TOTAL (${cmp.sov_line_count} lines)</div>
+        <div style="font-weight:600">${fmt(cmp.sov_total)}</div>
+      </div>
+      <div style="background:rgba(255,255,255,0.7);border-radius:6px;padding:8px 10px">
+        <div style="font-size:10px;color:var(--text2);margin-bottom:2px">VARIANCE</div>
+        <div style="font-weight:600;color:${isMatch?'var(--green)':Math.abs(pct)<2?'var(--amber)':'var(--red)'}">${varSign}${fmt(variance)} (${varSign}${pct.toFixed(2)}%)</div>
+      </div>
+    </div>
+    ${!isMatch ? `<div style="margin-top:8px;font-size:11px;color:#7A4F00">Your SOV total differs from the contract sum by ${fmt(Math.abs(variance))}. Review your SOV line items to ensure they add up to the contract amount.</div>` : ''}`;
   el.appendChild(banner);
-}
-
-async function replaceSOVFromContract(projectId, sovLines) {
-  if (!sovLines || !sovLines.length) return;
-  if (!confirm(`Replace the project Schedule of Values with ${sovLines.length} lines extracted from the contract (total ${fmt(sovLines.reduce((s,l)=>s+l.scheduled_value,0))})?\n\nThis will overwrite the existing SOV. Pay apps already created are not affected.`)) return;
-  try {
-    await api('POST', `/projects/${projectId}/sov`, { lines: sovLines });
-    document.getElementById('sov-from-contract-banner').remove();
-    // Reload project to reflect new SOV
-    loadProject(projectId);
-    alert('✓ Schedule of Values updated from contract.');
-  } catch(e) { alert('Error updating SOV: '+e.message); }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -3315,6 +3315,8 @@ async function submitLienDoc() {
     });
     closeLienDocModal();
     await loadLienDocs(projectId);
+    // Refresh lien status badge on the pay app preview if we're on a pay app
+    if (window._lienPayAppId && currentPAId) renderPayAppLienStatus(currentPAId);
     // Auto-open PDF
     window.open(`/api/lien-docs/${doc.id}/pdf?token=${getToken()}`, '_blank');
   } catch(e) {
