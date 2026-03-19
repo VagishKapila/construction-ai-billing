@@ -9,6 +9,12 @@ const path = require('path');
 const fs = require('fs');
 const { pool, initDB } = require('./db');
 
+// ── Email API helper — wraps fetch with a 10s timeout so a slow Resend call
+//    never hangs the entire HTTP request indefinitely ────────────────────────
+function fetchEmail(url, opts) {
+  return fetch(url, { ...opts, signal: AbortSignal.timeout(10000) });
+}
+
 // ── Security middleware ────────────────────────────────────────────────────
 let helmet, rateLimit;
 try { helmet    = require('helmet');           } catch(e) { console.warn('helmet not installed — run: npm install helmet'); }
@@ -178,7 +184,7 @@ app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
     if (!apiKey) {
       console.log(`[DEV] Password reset for ${email}: ${resetUrl}`);
     } else {
-      const resp = await fetch('https://api.resend.com/emails', {
+      const resp = await fetchEmail('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({
@@ -304,7 +310,7 @@ async function sendVerificationEmail(email, name, token) {
       : { personalizations:[{to:[{email}]}], from:{email:fromEmail},
           subject:'Verify your email — Construction AI Billing',
           content:[{type:'text/html',value:verifyEmailHtml(name,verifyUrl)}] };
-    const resp = await fetch(isResend ? 'https://api.resend.com/emails' : 'https://api.sendgrid.com/v3/mail/send', {
+    const resp = await fetchEmail(isResend ? 'https://api.resend.com/emails' : 'https://api.sendgrid.com/v3/mail/send', {
       method: 'POST',
       headers: { 'Content-Type':'application/json', Authorization:`Bearer ${apiKey}` },
       body: JSON.stringify(payload),
@@ -1562,7 +1568,7 @@ app.post('/api/admin/test-email', adminAuth, async (req, res) => {
   const appUrl    = process.env.APP_URL || 'https://constructinv.varshyl.com';
   if (!apiKey) return res.status(503).json({ error: 'RESEND_API_KEY not set', env: { FROM_EMAIL: fromEmail, APP_URL: appUrl } });
   try {
-    const resp = await fetch('https://api.resend.com/emails', {
+    const resp = await fetchEmail('https://api.resend.com/emails', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
@@ -1699,7 +1705,7 @@ app.post('/api/support/request', async (req, res) => {
     const fromEmail = process.env.FROM_EMAIL || 'noreply@constructai.app';
     const adminEmail = (process.env.ADMIN_EMAILS||'').split(',')[0].trim() || 'vaakapila@gmail.com';
     if (apiKey) {
-      await fetch('https://api.resend.com/emails', {
+      await fetchEmail('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({
@@ -1902,7 +1908,7 @@ async function sendTeamInviteEmail(toEmail, toName, inviter, token) {
     : { personalizations:[{to:[{email:toEmail}]}], from:{email:fromEmail},
         subject:`${inviter.name} invited you to Construction AI Billing`,
         content:[{type:'text/html',value:html}] };
-  await fetch(isResend ? 'https://api.resend.com/emails' : 'https://api.sendgrid.com/v3/mail/send', {
+  await fetchEmail(isResend ? 'https://api.resend.com/emails' : 'https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
     headers: { 'Content-Type':'application/json', Authorization:`Bearer ${apiKey}` },
     body: JSON.stringify(payload),
@@ -2822,7 +2828,7 @@ setInterval(async () => {
         : { personalizations:[{to:[{email:digestTo}]}], from:{email:fromEmail},
             subject:`[Weekly Digest] ${r.rows.length} new feedback item${r.rows.length!==1?'s':''} — ${today}`,
             content:[{type:'text/html',value:html}] };
-      await fetch(isResend ? 'https://api.resend.com/emails' : 'https://api.sendgrid.com/v3/mail/send', {
+      await fetchEmail(isResend ? 'https://api.resend.com/emails' : 'https://api.sendgrid.com/v3/mail/send', {
         method:'POST', headers:{'Content-Type':'application/json',Authorization:`Bearer ${apiKey}`},
         body:JSON.stringify(payload),
       });
@@ -2857,7 +2863,7 @@ async function sendReminderEmail({ to, cc, replyTo, subject, html, attachments }
     if (cc) payload.cc = Array.isArray(cc) ? cc : [cc];
     if (replyTo) payload.reply_to = replyTo;
     if (attachments && attachments.length) payload.attachments = attachments;
-    const r = await fetch('https://api.resend.com/emails', {
+    const r = await fetchEmail('https://api.resend.com/emails', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
