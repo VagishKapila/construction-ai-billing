@@ -2035,8 +2035,9 @@ function setAuth(data){
   document.getElementById('landing-screen').classList.add('hidden');
   document.getElementById('auth-screen').classList.add('hidden');
   document.getElementById('app-screen').classList.remove('hidden');
-  document.getElementById('user-name-display').textContent=currentUser.name;
-  document.getElementById('user-avatar').textContent=currentUser.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+  const _displayName=currentUser.name||currentUser.email.split('@')[0];
+  document.getElementById('user-name-display').textContent=_displayName;
+  document.getElementById('user-avatar').textContent=_displayName.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
   loadSettings();
   // Show AI avatar assistant now that user is logged in
   const aiWrap = document.getElementById('ai-avatar-wrap');

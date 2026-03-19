@@ -388,7 +388,9 @@ app.get('/api/auth/google/callback', async (req, res) => {
       await logEvent(user.id, 'user_registered', { email: user.email, method: 'google' });
     }
     await logEvent(user.id, 'user_login', { method: 'google' });
-    const tok = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
+    // Include name + email_verified in the Google JWT — frontend decodes this directly
+    // (unlike email/password login which returns a separate user object in JSON)
+    const tok = jwt.sign({ id: user.id, email: user.email, name: user.name, email_verified: user.email_verified }, JWT_SECRET, { expiresIn: '30d' });
     // Use URL fragment (#) instead of query string — fragments are NOT sent to servers,
     // NOT logged in access logs, and NOT included in Referer headers. This prevents
     // the JWT from leaking through browser history, server logs, or third-party referers.
@@ -1638,9 +1640,19 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// ── SUPER ADMIN: User management ───────────────────────────────────────────
+// Helper: is this email in the admin whitelist?
+function isAdminEmail(email) {
+  const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase());
+  return adminEmails.includes((email || '').toLowerCase());
+}
+
+// ── SUPER ADMIN: User management ────────────────────────────────────────────
 app.post('/api/admin/users/:id/block', adminAuth, async (req, res) => {
   const { reason } = req.body;
+  const target = (await pool.query('SELECT email FROM users WHERE id=$1', [req.params.id])).rows[0];
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  if (isAdminEmail(target.email))
+    return res.status(403).json({ error: 'Admin accounts cannot be blocked.' });
   await pool.query('UPDATE users SET blocked=TRUE, blocked_reason=$1 WHERE id=$2', [reason||'Blocked by admin', req.params.id]);
   await logEvent(req.user.id, 'admin_user_blocked', { target_user_id: parseInt(req.params.id), reason });
   res.json({ ok: true });
@@ -1724,6 +1736,8 @@ app.delete('/api/admin/users/:id', adminAuth, async (req, res) => {
   // Cascade deletes all projects/payapps via FK ON DELETE CASCADE
   const user = (await pool.query('SELECT email FROM users WHERE id=$1', [req.params.id])).rows[0];
   if (!user) return res.status(404).json({ error: 'User not found' });
+  if (isAdminEmail(user.email))
+    return res.status(403).json({ error: 'Admin accounts cannot be deleted.' });
   await pool.query('DELETE FROM users WHERE id=$1', [req.params.id]);
   await logEvent(req.user.id, 'admin_user_deleted', { target_email: user.email });
   res.json({ ok: true });
