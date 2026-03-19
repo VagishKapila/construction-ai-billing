@@ -1636,14 +1636,19 @@ function signInWithGoogle(){
 }
 // ── Handle URL params on page load (Google OAuth return, email verification) ──
 (function handleURLParams(){
+  // Google OAuth token comes back in the URL fragment (#) to prevent it from appearing
+  // in server logs, browser history query strings, or Referer headers.
+  const hash=new URLSearchParams(window.location.hash.slice(1));
   const p=new URLSearchParams(window.location.search);
-  const gTok=p.get('google_token');
+  const gTok=hash.get('google_token');  // token is in fragment, not query string
   const verified=p.get('verified');
   const authErr=p.get('auth_error');
   // Strip params from URL without a page reload
-  if(gTok||verified||authErr){
-    const clean=window.location.pathname;
-    window.history.replaceState({},'',clean);
+  if(gTok){
+    window.history.replaceState({},'',window.location.pathname);  // clear the hash
+  }
+  if(verified||authErr){
+    window.history.replaceState({},'',window.location.pathname);
   }
   if(gTok){
     // Google OAuth success — decode user from JWT payload (base64 middle segment)

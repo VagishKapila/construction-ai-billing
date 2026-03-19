@@ -29,13 +29,45 @@ if (!process.env.JWT_SECRET) {
 // Security headers (helmet) — hides X-Powered-By, adds CSP, HSTS, X-Frame-Options etc.
 if (helmet) app.use(helmet({ contentSecurityPolicy: false })); // CSP off to allow inline scripts in SPA
 
-app.use(cors({ origin: process.env.ALLOWED_ORIGIN || '*' }));
+// CORS: Set ALLOWED_ORIGIN env var in Railway (e.g. https://constructinv.varshyl.com)
+// Falls back to '*' only in local dev — never ship without the env var set in production
+const corsOrigin = process.env.ALLOWED_ORIGIN;
+if (!corsOrigin && process.env.NODE_ENV === 'production') {
+  console.warn('[SECURITY] WARNING: ALLOWED_ORIGIN is not set in production. Defaulting to wildcard CORS — set this env var immediately.');
+}
+app.use(cors({ origin: corsOrigin || '*' }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 const upload = multer({
   dest: 'uploads/',
   limits: { fileSize: 25 * 1024 * 1024 } // 25 MB max per file
 });
+
+// ── MIME type whitelists — used to reject unexpected file types on upload ────
+const MIME_IMAGE   = ['image/jpeg','image/png','image/gif','image/webp','image/svg+xml'];
+const MIME_SOV     = ['application/pdf','application/msword',
+                      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                      'application/vnd.ms-excel',
+                      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                      'text/csv','text/plain'];
+const MIME_CONTRACT= ['application/pdf','application/msword',
+                      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+const MIME_ATTACH  = [...MIME_IMAGE, ...MIME_CONTRACT,
+                      'application/vnd.ms-excel',
+                      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                      'text/csv','text/plain'];
+const MIME_SCREENSHOT = [...MIME_IMAGE];
+
+function rejectFile(req, res, allowedTypes, label) {
+  if (!req.file) return false;
+  // Check MIME type; also cross-check file extension for extra safety
+  if (!allowedTypes.includes(req.file.mimetype)) {
+    try { fs.unlinkSync(req.file.path); } catch(_) {}
+    res.status(400).json({ error: `Invalid file type for ${label}. Accepted types: ${allowedTypes.join(', ')}` });
+    return true;
+  }
+  return false;
+}
 const fmt = n => '$' + parseFloat(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 
 function auth(req, res, next) {
@@ -99,7 +131,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     res.json({token:tok,user:{...r.rows[0],email_verified:false}});
   } catch(e) {
     if(e.code==='23505') return res.status(400).json({error:'Email already registered'});
-    res.status(500).json({error:e.message});
+    console.error('[API Error]', e.message); res.status(500).json({error:'Internal server error'});
   }
 });
 
@@ -122,7 +154,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     const tok = jwt.sign({id:user.id,email:email},JWT_SECRET,{expiresIn:'30d'});
     await logEvent(user.id, 'user_login', { method: 'email' });
     res.json({token:tok,user:{id:user.id,name:user.name,email:user.email,email_verified:user.email_verified}});
-  } catch(e) { res.status(500).json({error:e.message}); }
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({error:'Internal server error'}); }
 });
 
 // ── Public config (PostHog key, Google client ID — safe to expose) ─────────
@@ -230,8 +262,10 @@ app.get('/api/auth/google/callback', async (req, res) => {
     }
     await logEvent(user.id, 'user_login', { method: 'google' });
     const tok = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
-    // Redirect back to app with token in URL hash (frontend picks it up)
-    res.redirect(`/?google_token=${tok}`);
+    // Use URL fragment (#) instead of query string — fragments are NOT sent to servers,
+    // NOT logged in access logs, and NOT included in Referer headers. This prevents
+    // the JWT from leaking through browser history, server logs, or third-party referers.
+    res.redirect(`/#google_token=${tok}`);
   } catch(e) {
     console.error('Google OAuth error:', e.message);
     res.redirect('/?auth_error=google_failed');
@@ -367,10 +401,13 @@ app.post('/oauth/token', express.json(), express.urlencoded({ extended: false })
 app.get('/api/auth/verify/:token', async (req, res) => {
   try {
     const r = await pool.query(
-      'UPDATE users SET email_verified=TRUE, verification_token=NULL WHERE verification_token=$1 RETURNING id,name,email',
+      `UPDATE users SET email_verified=TRUE, verification_token=NULL
+       WHERE verification_token=$1
+         AND verification_sent_at > NOW() - INTERVAL '48 hours'
+       RETURNING id,name,email`,
       [req.params.token]
     );
-    if (!r.rows[0]) return res.redirect('/?verify_error=invalid_token');
+    if (!r.rows[0]) return res.redirect('/?verify_error=invalid_or_expired_token');
     await logEvent(r.rows[0].id, 'email_verified', {});
     res.redirect('/?verified=1');
   } catch(e) { res.redirect('/?verify_error=server_error'); }
@@ -384,7 +421,7 @@ app.post('/api/auth/resend-verification', auth, async (req, res) => {
     await pool.query('UPDATE users SET verification_token=$1, verification_sent_at=NOW() WHERE id=$2', [token, user.id]);
     await sendVerificationEmail(user.email, user.name, token);
     res.json({ ok: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── DASHBOARD STATS — single query for all billing totals
@@ -402,7 +439,7 @@ app.get('/api/stats', auth, async (req,res) => {
         AND pa.status = 'submitted'
     `, [req.user.id]);
     res.json(r.rows[0] || { total_billed: 0, total_retainage: 0 });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // PROJECTS
@@ -587,6 +624,12 @@ app.put('/api/payapps/:id/lines', auth, async (req,res) => {
 
 // CHANGE ORDERS
 app.post('/api/payapps/:id/changeorders', auth, async (req,res) => {
+  // Verify user owns this pay app before adding change orders
+  const own = await pool.query(
+    'SELECT pa.id FROM pay_apps pa JOIN projects p ON p.id=pa.project_id WHERE pa.id=$1 AND p.user_id=$2',
+    [req.params.id, req.user.id]
+  );
+  if (!own.rows[0]) return res.status(403).json({ error: 'Forbidden' });
   const {co_number,description,amount,status} = req.body;
   const r = await pool.query(
     'INSERT INTO change_orders(pay_app_id,co_number,description,amount,status) VALUES($1,$2,$3,$4,$5) RETURNING *',
@@ -621,6 +664,25 @@ app.delete('/api/changeorders/:id', auth, async (req,res) => {
 
 // ATTACHMENTS
 app.post('/api/payapps/:id/attachments', auth, upload.single('file'), async (req,res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  // Verify user owns this pay app before attaching files
+  const own = await pool.query(
+    'SELECT pa.id FROM pay_apps pa JOIN projects p ON p.id=pa.project_id WHERE pa.id=$1 AND p.user_id=$2',
+    [req.params.id, req.user.id]
+  );
+  if (!own.rows[0]) {
+    try { fs.unlinkSync(req.file.path); } catch(_) {}
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  // MIME type whitelist for attachments
+  const allowedMime = ['application/pdf','image/jpeg','image/png','image/gif','image/webp',
+    'application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/plain','text/csv'];
+  if (!allowedMime.includes(req.file.mimetype)) {
+    try { fs.unlinkSync(req.file.path); } catch(_) {}
+    return res.status(400).json({ error: 'File type not allowed. Accepted: PDF, images, Word, Excel, CSV.' });
+  }
   const {originalname,filename,size,mimetype} = req.file;
   const r = await pool.query(
     'INSERT INTO attachments(pay_app_id,filename,original_name,file_size,mime_type) VALUES($1,$2,$3,$4,$5) RETURNING *',
@@ -888,6 +950,7 @@ async function parseSOVFromText(filePath, ext) {
 
 app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  if (rejectFile(req, res, MIME_SOV, 'SOV')) return;
   const cleanup = () => { try { if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); } catch(_){} };
   try {
     const ext = path.extname(req.file.originalname).toLowerCase();
@@ -925,7 +988,7 @@ app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
     res.json(result);
   } catch(e) {
     cleanup();
-    res.status(500).json({ error: e.message });
+    console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1129,6 +1192,7 @@ app.post('/api/settings', auth, async (req,res) => {
 
 app.post('/api/settings/logo', auth, upload.single('file'), async (req,res) => {
   if(!req.file) return res.status(400).json({error:'No file'});
+  if (rejectFile(req, res, MIME_IMAGE, 'logo')) return;
   // Delete old logo if exists
   const old = await pool.query('SELECT logo_filename FROM company_settings WHERE user_id=$1',[req.user.id]);
   if(old.rows[0]?.logo_filename) {
@@ -1159,6 +1223,7 @@ app.get('/api/settings/logo', auth, async (req,res) => {
 
 app.post('/api/settings/signature', auth, upload.single('file'), async (req,res) => {
   if(!req.file) return res.status(400).json({error:'No file'});
+  if (rejectFile(req, res, MIME_IMAGE, 'signature')) return;
   const r = await pool.query(
     `INSERT INTO company_settings(user_id,signature_filename)
      VALUES($1,$2)
@@ -1234,7 +1299,7 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
       dailySignups:  dailySignups.rows,
       featureUsage:  featureUsage.rows,
     });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 app.get('/api/admin/errors', adminAuth, async (req, res) => {
@@ -1243,7 +1308,7 @@ app.get('/api/admin/errors', adminAuth, async (req, res) => {
       `SELECT event, meta, created_at FROM analytics_events WHERE event IN ('server_error','login_failed') ORDER BY created_at DESC LIMIT 100`
     );
     res.json(r.rows);
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 app.get('/api/admin/users', adminAuth, async (req, res) => {
@@ -1262,7 +1327,7 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
       GROUP BY u.id ORDER BY u.created_at DESC LIMIT 200
     `);
     res.json(r.rows);
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── SUPER ADMIN: User management ───────────────────────────────────────────
@@ -1356,7 +1421,7 @@ Answer the following question based on this data. Be specific, actionable, and d
     const aiData = await aiRes.json();
     if (aiData.error) throw new Error(aiData.error.message);
     res.json({ answer: aiData.content?.[0]?.text || 'No response' });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Weekly insight summary ──────────────────────────────────────────────────
@@ -1396,7 +1461,7 @@ app.post('/api/team', auth, async (req, res) => {
     res.json(r.rows[0]);
   } catch(e) {
     if (e.code === '23505') return res.status(400).json({ error: 'This email is already on your team' });
-    res.status(500).json({ error: e.message });
+    console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1421,10 +1486,13 @@ app.delete('/api/team/:id', auth, async (req, res) => {
 app.get('/api/auth/accept-invite/:token', async (req, res) => {
   try {
     const r = await pool.query(
-      'UPDATE team_members SET invite_accepted=TRUE WHERE invite_token=$1 RETURNING *',
+      `UPDATE team_members SET invite_accepted=TRUE
+       WHERE invite_token=$1 AND invite_accepted=FALSE
+         AND created_at > NOW() - INTERVAL '7 days'
+       RETURNING *`,
       [req.params.token]
     );
-    if (!r.rows[0]) return res.redirect('/?invite_error=invalid');
+    if (!r.rows[0]) return res.redirect('/?invite_error=invalid_or_expired');
     res.redirect('/?invite_accepted=1');
   } catch(e) { res.redirect('/?invite_error=server'); }
 });
@@ -1498,13 +1566,14 @@ app.get('/api/settings/job-number/next', auth, async (req, res) => {
       jobNumber = `${cityCode}-${stateCode}-${String(seq).padStart(4,'0')}`;
     }
     res.json({ job_number: jobNumber, seq });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── CONTRACT UPLOAD + SMART EXTRACTION ────────────────────────────────────
 // Accepts PDF or DOCX; extracts key billing fields via text heuristics (no AI API cost)
 app.post('/api/projects/:id/contract', auth, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  if (rejectFile(req, res, MIME_CONTRACT, 'contract')) return;
   // Verify project ownership
   const proj = await pool.query('SELECT id FROM projects WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
   if (!proj.rows[0]) { fs.unlinkSync(req.file.path); return res.status(403).json({ error: 'Forbidden' }); }
@@ -1567,7 +1636,7 @@ app.post('/api/projects/:id/contract', auth, upload.single('file'), async (req, 
     res.json({ ...r.rows[0], extracted, sov_comparison });
   } catch(e) {
     try { fs.unlinkSync(req.file.path); } catch(_) {}
-    res.status(500).json({ error: e.message });
+    console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1779,7 +1848,7 @@ app.post('/api/projects/:id/lien-docs', auth, async (req, res) => {
     res.json(r.rows[0]);
   } catch(e) {
     try { if (fs.existsSync(fpath)) fs.unlinkSync(fpath); } catch(_) {}
-    res.status(500).json({ error: e.message });
+    console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -2094,6 +2163,7 @@ async function generateLienDocPDF({ fpath, doc_type, project, through_date, amou
 app.post('/api/feedback', auth, upload.single('screenshot'), async (req, res) => {
   const { category, message, page_context } = req.body;
   if (!message && !req.file) return res.status(400).json({ error: 'Message or screenshot required' });
+  if (rejectFile(req, res, MIME_SCREENSHOT, 'screenshot')) return;
   try {
     const screenshotFilename = req.file ? req.file.filename : null;
     const r = await pool.query(
@@ -2102,7 +2172,7 @@ app.post('/api/feedback', auth, upload.single('screenshot'), async (req, res) =>
     );
     await logEvent(req.user.id, 'feedback_submitted', { category: category||'other' });
     res.json({ ok: true, id: r.rows[0].id });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 app.get('/api/admin/feedback', adminAuth, async (req, res) => {
@@ -2115,7 +2185,7 @@ app.get('/api/admin/feedback', adminAuth, async (req, res) => {
       LIMIT 200
     `);
     res.json(r.rows);
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Weekly feedback digest — every Monday at 7am, only if new items exist ──
