@@ -157,6 +157,86 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({error:'Internal server error'}); }
 });
 
+// ── Forgot password — sends a reset link via email ──────────────────────────
+app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email required' });
+  try {
+    const r = await pool.query('SELECT id, name, email FROM users WHERE email=$1', [email.toLowerCase().trim()]);
+    // Always respond OK — never reveal whether email exists (security best practice)
+    if (!r.rows[0]) return res.json({ ok: true });
+    const user = r.rows[0];
+    const resetToken = require('crypto').randomBytes(32).toString('hex');
+    await pool.query(
+      'UPDATE users SET reset_token=$1, reset_token_sent_at=NOW() WHERE id=$2',
+      [resetToken, user.id]
+    );
+    const appUrl = process.env.APP_URL || 'https://constructinv.varshyl.com';
+    const resetUrl = `${appUrl}/?reset=${resetToken}`;
+    const apiKey   = process.env.RESEND_API_KEY;
+    const fromEmail = process.env.FROM_EMAIL || 'noreply@constructai.app';
+    if (!apiKey) {
+      console.log(`[DEV] Password reset for ${email}: ${resetUrl}`);
+    } else {
+      const resp = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          from: fromEmail,
+          to: [user.email],
+          subject: 'Reset your password — Construction AI Billing',
+          html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">
+            <h2 style="color:#185FA5">Reset your password</h2>
+            <p>Hi ${user.name},</p>
+            <p>We received a request to reset your password for your Construction AI Billing account.</p>
+            <p style="margin:24px 0">
+              <a href="${resetUrl}" style="background:#185FA5;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block">
+                Reset Password
+              </a>
+            </p>
+            <p style="color:#64748b;font-size:13px">This link expires in <strong>1 hour</strong>. If you didn't request this, you can safely ignore this email — your password won't change.</p>
+            <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0"/>
+            <p style="color:#94a3b8;font-size:11px">Construction AI Billing · <a href="${appUrl}" style="color:#94a3b8">${appUrl}</a></p>
+          </div>`,
+        }),
+      });
+      if (!resp.ok) {
+        const errBody = await resp.text().catch(() => '');
+        console.error(`[Reset Email] Resend error ${resp.status}: ${errBody}`);
+      } else {
+        console.log(`[Reset Email] Sent to ${user.email}`);
+      }
+    }
+    await logEvent(user.id, 'password_reset_requested', { email: user.email });
+    res.json({ ok: true });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── Reset password — validates token and saves new password ─────────────────
+app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
+  const { token, password } = req.body;
+  if (!token || !password) return res.status(400).json({ error: 'Token and new password required' });
+  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  try {
+    const r = await pool.query(
+      `SELECT id, email, name FROM users
+       WHERE reset_token=$1 AND reset_token_sent_at > NOW() - INTERVAL '1 hour'`,
+      [token]
+    );
+    if (!r.rows[0]) return res.status(400).json({ error: 'This reset link has expired or is invalid. Please request a new one.' });
+    const user = r.rows[0];
+    const hash = await bcrypt.hash(password, 10);
+    await pool.query(
+      'UPDATE users SET password_hash=$1, reset_token=NULL, reset_token_sent_at=NULL WHERE id=$2',
+      [hash, user.id]
+    );
+    // Issue a fresh JWT so they're logged in immediately after reset
+    const tok = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
+    await logEvent(user.id, 'password_reset_completed', { email: user.email });
+    res.json({ ok: true, token: tok, user: { id: user.id, name: user.name, email: user.email } });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // ── Public config (PostHog key, Google client ID — safe to expose) ─────────
 app.get('/api/config', (req, res) => {
   res.json({
