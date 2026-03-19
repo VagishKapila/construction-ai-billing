@@ -1045,6 +1045,58 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
   const ty=doc.y+2;
   ['','GRAND TOTAL',fmt(tSV2),fmt(tPrev2),'',fmt(tThis2),fmt(tComp2),'',fmt(tRet2),fmt(tSV2-tComp2)]
     .forEach((v,i)=>doc.text(v,cx[i],ty,{width:cw[i],align:i>1?'right':'left'}));
+
+  // ── Append lien waiver if one is linked to this pay app ─────────────────
+  try {
+    const lienRes = await pool.query(
+      `SELECT ld.*, p.name, p.owner, p.contractor, p.location, p.city, p.state, p.contact as location_contact,
+              cs.logo_filename, cs.company_name
+       FROM lien_documents ld
+       JOIN projects p ON p.id = ld.project_id
+       LEFT JOIN company_settings cs ON cs.user_id = p.user_id
+       WHERE ld.pay_app_id=$1
+       ORDER BY ld.created_at DESC LIMIT 1`,
+      [req.params.id]
+    );
+    if (lienRes.rows[0]) {
+      const lien = lienRes.rows[0];
+      doc.addPage();
+      // Thin separator note at top of page
+      doc.fontSize(7.5).font('Helvetica').fillColor('#888888')
+         .text('ATTACHMENT — LIEN WAIVER', 45, 45, { align: 'center', width: 522 });
+      doc.moveTo(45, 55).lineTo(567, 55).lineWidth(0.3).stroke('#CCCCCC');
+      doc.fillColor('#000000');
+      doc.y = 65;
+
+      const project = {
+        name: lien.name,
+        owner: lien.owner,
+        contractor: lien.contractor || lien.company_name,
+        company_name: lien.company_name,
+        location: lien.location_contact,
+        city: lien.city,
+        state: lien.state,
+        logo_filename: lien.logo_filename,
+      };
+      renderLienWaiverContent(doc, {
+        doc_type: lien.doc_type,
+        project,
+        through_date: lien.through_date,
+        amount: lien.amount,
+        maker_of_check: lien.maker_of_check,
+        check_payable_to: lien.check_payable_to,
+        signatory_name: lien.signatory_name,
+        signatory_title: lien.signatory_title,
+        signedAt: new Date(lien.signed_at),
+        ip: lien.signatory_ip || 'on file',
+        jurisdiction: lien.jurisdiction || 'california',
+        pay_app_ref: `Pay App #${pa.app_number}${pa.period_label ? ' — ' + pa.period_label : ''}`,
+        startX: 45,
+        pageW: 522
+      });
+    }
+  } catch(lienErr) { console.error('Lien append error:', lienErr.message); }
+
   doc.end();
 });
 
@@ -1477,7 +1529,6 @@ app.post('/api/projects/:id/contract', auth, upload.single('file'), async (req, 
 
     const extracted = extractContractFields(text);
     const contractType = detectContractType(text);
-    const sovLines = extractSOVFromContract(text); // may be null
 
     // Delete any previous contract for this project (replace with new upload)
     const old = await pool.query('SELECT filename FROM contracts WHERE project_id=$1', [req.params.id]);
@@ -1491,8 +1542,29 @@ app.post('/api/projects/:id/contract', auth, upload.single('file'), async (req, 
       'INSERT INTO contracts(project_id,filename,original_name,file_size,contract_type,extracted) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',
       [req.params.id, req.file.filename, req.file.originalname, req.file.size, contractType, JSON.stringify(extracted)]
     );
+
+    // SOV comparison: get the project's SOV total and compare against extracted contract sum
+    let sov_comparison = null;
+    if (extracted.contract_sum) {
+      const sovRes = await pool.query('SELECT SUM(scheduled_value) as total, COUNT(*) as count FROM sov_lines WHERE project_id=$1', [req.params.id]);
+      if (sovRes.rows[0] && parseFloat(sovRes.rows[0].total) > 0) {
+        const sovTotal = parseFloat(sovRes.rows[0].total);
+        const contractSum = parseFloat(extracted.contract_sum);
+        const variance = sovTotal - contractSum;
+        const variancePct = Math.abs(variance / contractSum * 100);
+        sov_comparison = {
+          sov_total: sovTotal,
+          contract_sum: contractSum,
+          variance,
+          variance_pct: variancePct,
+          match: variancePct < 0.5, // within 0.5% is a match
+          sov_line_count: parseInt(sovRes.rows[0].count),
+        };
+      }
+    }
+
     await logEvent(req.user.id, 'contract_uploaded', { project_id: parseInt(req.params.id), contract_type: contractType });
-    res.json({ ...r.rows[0], extracted, sov_lines: sovLines });
+    res.json({ ...r.rows[0], extracted, sov_comparison });
   } catch(e) {
     try { fs.unlinkSync(req.file.path); } catch(_) {}
     res.status(500).json({ error: e.message });
@@ -1683,9 +1755,15 @@ app.post('/api/projects/:id/lien-docs', auth, async (req, res) => {
   const fpath = path.join(__dirname, 'uploads', fname);
 
   try {
+    // If linked to a pay app, include a reference line on the document
+    let pay_app_ref = null;
+    if (pay_app_id) {
+      const paRow = await pool.query('SELECT app_number, period_label FROM pay_apps WHERE id=$1', [pay_app_id]);
+      if (paRow.rows[0]) pay_app_ref = `Pay App #${paRow.rows[0].app_number}${paRow.rows[0].period_label ? ' — ' + paRow.rows[0].period_label : ''}`;
+    }
     await generateLienDocPDF({
       fpath, doc_type, project, through_date, amount, maker_of_check,
-      check_payable_to, signatory_name, signatory_title, signedAt, ip, jurisdiction
+      check_payable_to, signatory_name, signatory_title, signedAt, ip, jurisdiction, pay_app_ref
     });
 
     const r = await pool.query(
@@ -1723,217 +1801,291 @@ app.get('/api/lien-docs/:id/pdf', async (req, res) => {
   res.sendFile(fp);
 });
 
-async function generateLienDocPDF({ fpath, doc_type, project, through_date, amount,
-  maker_of_check, check_payable_to, signatory_name, signatory_title, signedAt, ip, jurisdiction }) {
+// ── Shared helper: render a lien waiver into an open PDFDocument at current position ──
+function renderLienWaiverContent(doc, { doc_type, project, through_date, amount,
+  maker_of_check, check_payable_to, signatory_name, signatory_title,
+  signedAt, ip, jurisdiction, pay_app_ref, startX, pageW }) {
 
+  const L = startX || 45;
+  const W = pageW || 522;
+  const R = L + W;
+
+  const fmtAmt = n => n ? '$' + parseFloat(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '[AMOUNT]';
+  const fmtDate = d => {
+    if (!d) return '[DATE]';
+    const dt = new Date(d);
+    // compensate for UTC offset to prevent off-by-one day
+    const local = new Date(dt.getTime() + dt.getTimezoneOffset() * 60000);
+    return local.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+  };
+  const projectName = project.name || '[Project Name]';
+  const ownerName = project.owner || '[Owner]';
+  const contractorName = project.contractor || project.company_name || '[Contractor]';
+  const loc = project.location || [project.city, project.state].filter(Boolean).join(', ') || projectName;
+
+  // ── HEADER BAND ─────────────────────────────────────────────────────────
+  const BLUE = '#0C3B6B';
+  const bandTop = doc.y;
+  const bandH = 66;
+  doc.rect(L, bandTop, W, bandH).fill(BLUE);
+
+  // Logo in header band (left side)
+  let logoPlaced = false;
+  if (project.logo_filename) {
+    const logoPath = path.join(__dirname, 'uploads', project.logo_filename);
+    if (fs.existsSync(logoPath)) {
+      try {
+        doc.image(logoPath, L + 10, bandTop + 8, { fit: [100, 50], align: 'left', valign: 'center' });
+        logoPlaced = true;
+      } catch(_) {}
+    }
+  }
+
+  // Document title in header band
+  let titleLine1 = '', titleLine2 = '', statuteRef = '';
+  if (doc_type === 'preliminary_notice') {
+    titleLine1 = jurisdiction === 'california' ? 'PRELIMINARY NOTICE' : 'NOTICE TO OWNER';
+    titleLine2 = '';
+    statuteRef = jurisdiction === 'california' ? 'California Civil Code §8200–8216'
+                 : jurisdiction === 'virginia'  ? 'Virginia Code §43-4' : '';
+  } else if (doc_type === 'conditional_waiver') {
+    titleLine1 = 'CONDITIONAL WAIVER AND RELEASE';
+    titleLine2 = 'ON PROGRESS PAYMENT';
+    statuteRef = jurisdiction === 'california' ? 'Civil Code §8132' : '';
+  } else if (doc_type === 'unconditional_waiver') {
+    titleLine1 = 'UNCONDITIONAL WAIVER AND RELEASE';
+    titleLine2 = 'ON PROGRESS PAYMENT';
+    statuteRef = jurisdiction === 'california' ? 'Civil Code §8134' : '';
+  } else if (doc_type === 'conditional_final_waiver') {
+    titleLine1 = 'CONDITIONAL WAIVER AND RELEASE';
+    titleLine2 = 'ON FINAL PAYMENT';
+    statuteRef = jurisdiction === 'california' ? 'Civil Code §8136' : '';
+  } else if (doc_type === 'unconditional_final_waiver') {
+    titleLine1 = 'UNCONDITIONAL WAIVER AND RELEASE';
+    titleLine2 = 'ON FINAL PAYMENT';
+    statuteRef = jurisdiction === 'california' ? 'Civil Code §8138' : '';
+  }
+
+  const titleX = logoPlaced ? L + 120 : L + 10;
+  const titleW = R - titleX - 10;
+  doc.fillColor('#FFFFFF').fontSize(12.5).font('Helvetica-Bold')
+     .text(titleLine1, titleX, bandTop + 12, { width: titleW, align: logoPlaced ? 'center' : 'left' });
+  if (titleLine2) {
+    doc.fontSize(12.5).font('Helvetica-Bold')
+       .text(titleLine2, titleX, doc.y, { width: titleW, align: logoPlaced ? 'center' : 'left' });
+  }
+  if (statuteRef) {
+    doc.fontSize(8).font('Helvetica')
+       .text(statuteRef, titleX, doc.y + 1, { width: titleW, align: logoPlaced ? 'center' : 'left' });
+  }
+  doc.fillColor('#000000');
+  doc.y = bandTop + bandH + 10;
+
+  // ── INFO GRID (2-column box) ─────────────────────────────────────────────
+  const col1W = W * 0.56, col2W = W * 0.44;
+  const rowH = 20;
+  const infoLeft = [
+    ['Project Name', projectName],
+    ['Property Owner', ownerName],
+    ['General Contractor', contractorName],
+    ['Project Location', loc],
+    ...(pay_app_ref ? [['Pay Application', pay_app_ref]] : []),
+  ];
+  const infoRight = [
+    ['Through Date', fmtDate(through_date)],
+    ['Amount', fmtAmt(amount)],
+    ['Maker of Check', maker_of_check || '—'],
+    ['Check Payable To', check_payable_to || contractorName],
+    ['Jurisdiction', jurisdiction ? jurisdiction.charAt(0).toUpperCase()+jurisdiction.slice(1) : '—'],
+  ];
+
+  const gridTop = doc.y;
+  const rows = Math.max(infoLeft.length, infoRight.length);
+  const gridH = rows * rowH;
+
+  // Draw outer border
+  doc.rect(L, gridTop, W, gridH).lineWidth(0.5).stroke('#AAAAAA');
+  // Vertical divider
+  doc.moveTo(L + col1W, gridTop).lineTo(L + col1W, gridTop + gridH).lineWidth(0.5).stroke('#AAAAAA');
+
+  for (let i = 0; i < rows; i++) {
+    const rowY = gridTop + i * rowH;
+    // Horizontal divider (not after last row)
+    if (i < rows - 1) doc.moveTo(L, rowY + rowH).lineTo(R, rowY + rowH).lineWidth(0.3).stroke('#DDDDDD');
+    // Left column
+    if (infoLeft[i]) {
+      doc.fontSize(7).font('Helvetica-Bold').fillColor('#555555')
+         .text(infoLeft[i][0].toUpperCase(), L + 5, rowY + 4, { width: col1W - 70 });
+      doc.fontSize(8.5).font('Helvetica').fillColor('#000000')
+         .text(infoLeft[i][1], L + 5 + 85, rowY + 3.5, { width: col1W - 95, lineBreak: false });
+    }
+    // Right column
+    if (infoRight[i]) {
+      doc.fontSize(7).font('Helvetica-Bold').fillColor('#555555')
+         .text(infoRight[i][0].toUpperCase(), L + col1W + 5, rowY + 4, { width: col2W - 70 });
+      doc.fontSize(8.5).font('Helvetica').fillColor('#000000')
+         .text(infoRight[i][1], L + col1W + 5 + 82, rowY + 3.5, { width: col2W - 90, lineBreak: false });
+    }
+  }
+  doc.fillColor('#000000');
+  doc.y = gridTop + gridH + 12;
+
+  // ── STATUTORY BODY TEXT ──────────────────────────────────────────────────
+  doc.fontSize(9).font('Helvetica').fillColor('#000000');
+
+  // NOTICE box (shaded background) for waiver types
+  const isWaiver = doc_type !== 'preliminary_notice';
+  if (isWaiver) {
+    let noticeText = '';
+    if (doc_type === 'conditional_waiver' || doc_type === 'conditional_final_waiver') {
+      noticeText = 'NOTICE: This document waives and releases lien and payment bond rights and stop payment notice rights based on a contract. Read it before signing.';
+    } else if (doc_type === 'unconditional_waiver' || doc_type === 'unconditional_final_waiver') {
+      noticeText = 'NOTICE: This document waives and releases lien and payment bond rights and stop payment notice rights unconditionally and states that you have been paid for giving up those rights. This document is enforceable against you if you sign it, even if you have not been paid. Read it before signing.';
+    }
+    if (noticeText) {
+      const noticeY = doc.y;
+      const noticeH = 32;
+      doc.rect(L, noticeY, W, noticeH).fill('#FFF3CD');
+      doc.rect(L, noticeY, W, noticeH).lineWidth(0.5).stroke('#CC9900');
+      doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#7A4F00')
+         .text(noticeText, L + 8, noticeY + 6, { width: W - 16, lineBreak: true });
+      doc.fillColor('#000000');
+      doc.y = noticeY + noticeH + 10;
+    }
+  }
+
+  // Body text (full statutory language)
+  doc.fontSize(9).font('Helvetica').text('', L, doc.y); // reset x
+  if (doc_type === 'preliminary_notice' && jurisdiction === 'california') {
+    doc.font('Helvetica-Bold').text('NOTICE TO PROPERTY OWNER', L, doc.y, { align: 'center', width: W });
+    doc.moveDown(0.3);
+    doc.font('Helvetica').text(
+      'If bills are not paid in full for the labor, services, equipment, or materials furnished or to be furnished, ' +
+      'a mechanic\'s lien leading to the loss, through court foreclosure proceedings, of all or part of your property ' +
+      'being so improved may be placed against the property even though you have paid your contractor in full. You may ' +
+      'wish to protect yourself against this consequence by (1) requiring your contractor to furnish a signed release by ' +
+      'the person or firm giving you this notice before making payment to your contractor, or (2) any other method or ' +
+      'device that is appropriate under the circumstances.',
+      L, doc.y, { width: W, align: 'justify' }
+    );
+    doc.moveDown(0.5);
+    doc.font('Helvetica-Bold').text('NOTICE IS HEREBY GIVEN THAT:', L, doc.y, { width: W });
+    doc.moveDown(0.2);
+    doc.font('Helvetica').list([
+      `The undersigned, ${contractorName}, has furnished or will furnish labor, services, equipment, or materials of the following type: General Construction Services`,
+      `To: ${ownerName} (Owner) and ${contractorName} (General Contractor)`,
+      `For the improvement of property located at: ${loc}`,
+      `Project: ${projectName}`,
+    ], L, doc.y, { bulletRadius: 2, textIndent: 15, indent: 10, width: W });
+  } else if (doc_type === 'conditional_waiver' && jurisdiction === 'california') {
+    doc.text(
+      `Upon receipt by the undersigned of a check from ${maker_of_check || '[Maker of Check]'} in the sum of ${fmtAmt(amount)} ` +
+      `payable to ${check_payable_to || contractorName} and when the check has been properly endorsed and has been paid by the bank ` +
+      `upon which it is drawn, this document shall become effective to release any mechanic's lien, stop payment notice, or bond right ` +
+      `the undersigned has on the job of ${ownerName} located at ${loc} to the following extent. This release covers a progress ` +
+      `payment for all labor, services, equipment, or materials furnished to ${ownerName} through ${fmtDate(through_date)}, ` +
+      `and does not cover any retention or items, conditions, or obligations for which the claimant has separately secured payment ` +
+      `in full. Before any recipient of this document relies on it, the recipient should verify evidence of payment to the undersigned.`,
+      L, doc.y, { width: W, align: 'justify' }
+    );
+  } else if (doc_type === 'unconditional_waiver' && jurisdiction === 'california') {
+    doc.text(
+      `The undersigned has been paid and has received a progress payment in the sum of ${fmtAmt(amount)} for all labor, services, ` +
+      `equipment, or materials furnished to ${ownerName} through ${fmtDate(through_date)} and does hereby release any mechanic's ` +
+      `lien, stop payment notice, or bond right the undersigned has on the job of ${ownerName} located at ${loc}. A payment of ` +
+      `${fmtAmt(amount)} was received on ${fmtDate(through_date)}.`,
+      L, doc.y, { width: W, align: 'justify' }
+    );
+  } else if (doc_type === 'conditional_final_waiver' && jurisdiction === 'california') {
+    doc.text(
+      `Upon receipt by the undersigned of a check from ${maker_of_check || '[Maker of Check]'} in the sum of ${fmtAmt(amount)} ` +
+      `payable to ${check_payable_to || contractorName} and when the check has been properly endorsed and has been paid by the bank ` +
+      `upon which it is drawn, this document shall become effective to release any mechanic's lien, stop payment notice, or bond right ` +
+      `the undersigned has on the job of ${ownerName} located at ${loc}. This release covers the final payment for all labor, ` +
+      `services, equipment, or materials furnished on the job, except for disputed claims for additional work in the amount of ` +
+      `$______________. Before any recipient of this document relies on it, the recipient should verify evidence of payment to the undersigned.`,
+      L, doc.y, { width: W, align: 'justify' }
+    );
+  } else if (doc_type === 'unconditional_final_waiver' && jurisdiction === 'california') {
+    doc.text(
+      `The undersigned has been paid and has received final payment in the sum of ${fmtAmt(amount)} for all labor, services, ` +
+      `equipment, or materials furnished to ${ownerName} on the job of ${ownerName} located at ${loc} and does hereby release ` +
+      `any mechanic's lien, stop payment notice, or bond right the undersigned has on the job. A payment of ${fmtAmt(amount)} ` +
+      `was received on ${fmtDate(through_date)}. The claimant releases and waives all rights under this title irrespective of payment.`,
+      L, doc.y, { width: W, align: 'justify' }
+    );
+  } else if (doc_type === 'preliminary_notice' && jurisdiction === 'virginia') {
+    doc.font('Helvetica-Bold').text('NOTICE TO OWNER PURSUANT TO VIRGINIA CODE §43-4', L, doc.y, { width: W });
+    doc.moveDown(0.3);
+    doc.font('Helvetica').text(
+      `You are hereby notified that the undersigned, ${contractorName}, has performed or will perform labor, ` +
+      `services, or furnish materials, machinery, tools, or equipment for improvement of the property described below. ` +
+      `This notice is given pursuant to the Virginia Mechanics Lien Law, Title 43 of the Code of Virginia. ` +
+      `The owner is advised that the undersigned may, unless paid, have a right to file a memorandum of lien against ` +
+      `the property described below within 150 days after the last day materials were furnished or work was performed.`,
+      L, doc.y, { width: W, align: 'justify' }
+    );
+  } else {
+    doc.text(
+      `The undersigned hereby certifies and declares that all labor, services, equipment, and materials ` +
+      `furnished to ${projectName} (the "Project") located at ${loc} for the period through ${fmtDate(through_date)} ` +
+      `have been paid in full (or upon payment in the case of a conditional waiver), and hereby releases ` +
+      `any and all lien rights, stop notice rights, and payment bond rights for work performed through said date.`,
+      L, doc.y, { width: W, align: 'justify' }
+    );
+  }
+
+  // ── SIGNATURE BLOCK (bordered box) ──────────────────────────────────────
+  doc.moveDown(1.2);
+  const sigBoxY = doc.y;
+  const sigBoxH = 90;
+  doc.rect(L, sigBoxY, W, sigBoxH).lineWidth(0.5).stroke('#AAAAAA');
+
+  // Left column — signature
+  const sigColW = W * 0.55;
+  doc.moveTo(L + sigColW, sigBoxY).lineTo(L + sigColW, sigBoxY + sigBoxH).lineWidth(0.5).stroke('#AAAAAA');
+
+  doc.fontSize(7).font('Helvetica-Bold').fillColor('#555555')
+     .text('AUTHORIZED SIGNATURE', L + 6, sigBoxY + 8, { width: sigColW - 12 });
+  // Signature line
+  doc.moveTo(L + 6, sigBoxY + 32).lineTo(L + sigColW - 8, sigBoxY + 32).lineWidth(0.5).stroke('#999999');
+  doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000')
+     .text(signatory_name || '', L + 6, sigBoxY + 35, { width: sigColW - 12 });
+  doc.fontSize(7.5).font('Helvetica').fillColor('#333333')
+     .text((signatory_title ? signatory_title + '  ·  ' : '') + contractorName, L + 6, sigBoxY + 50, { width: sigColW - 12 });
+  doc.fontSize(7.5).text(`Date: ${signedAt.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}`, L + 6, sigBoxY + 65, { width: sigColW - 12 });
+
+  // Right column — metadata
+  const rX = L + sigColW + 6;
+  const rW = W - sigColW - 12;
+  doc.fontSize(7).font('Helvetica-Bold').fillColor('#555555').text('ELECTRONIC SIGNATURE DETAILS', rX, sigBoxY + 8, { width: rW });
+  doc.fontSize(7.5).font('Helvetica').fillColor('#333333');
+  doc.text(`Signed: ${signedAt.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit',timeZoneName:'short'})}`, rX, sigBoxY + 22, { width: rW });
+  doc.text(`IP: ${ip}`, rX, sigBoxY + 35, { width: rW });
+  doc.fontSize(6.5).text('By signing, the signatory agrees this electronic signature is the legal equivalent of a handwritten signature.', rX, sigBoxY + 48, { width: rW });
+  doc.fillColor('#000000');
+  doc.y = sigBoxY + sigBoxH + 10;
+
+  // ── FOOTER ───────────────────────────────────────────────────────────────
+  doc.fontSize(7).fillColor('#999999')
+     .text(`Generated by Construction AI Billing — constructinv.varshyl.com  |  ${new Date().toISOString().slice(0,10)}`,
+       L, 730, { width: W, align: 'center' });
+  doc.fillColor('#000000');
+}
+
+async function generateLienDocPDF({ fpath, doc_type, project, through_date, amount,
+  maker_of_check, check_payable_to, signatory_name, signatory_title, signedAt, ip, jurisdiction, pay_app_ref }) {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'LETTER', margin: 60 });
+    const doc = new PDFDocument({ size: 'LETTER', margin: 45 });
     const stream = fs.createWriteStream(fpath);
     doc.pipe(stream);
     stream.on('finish', resolve);
     stream.on('error', reject);
-
-    const fmtAmt = n => n ? '$' + parseFloat(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '[AMOUNT]';
-    const fmtDate = d => d ? new Date(d).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : '[DATE]';
-    const projectName = project.name || '[Project Name]';
-    const ownerName = project.owner || '[Owner]';
-    const contractorName = project.contractor || project.company_name || '[Contractor]';
-    const loc = [project.contact, project.city, project.state].filter(Boolean).join(', ') || '[Project Location]';
-
-    // ── Company logo (top-right) ────────────────────────────────────────────
-    if (project.logo_filename) {
-      const logoPath = path.join(__dirname, 'uploads', project.logo_filename);
-      if (fs.existsSync(logoPath)) {
-        try { doc.image(logoPath, 400, 50, { width: 120, height: 60, fit: [120,60] }); } catch(_) {}
-      }
-    }
-
-    // ── Document title ──────────────────────────────────────────────────────
-    let title = '';
-    if (doc_type === 'preliminary_notice') {
-      title = jurisdiction === 'california'
-        ? 'PRELIMINARY NOTICE (California Civil Code §8200–8216)'
-        : jurisdiction === 'virginia'
-          ? 'NOTICE TO OWNER (Virginia Code §43-4)'
-          : 'NOTICE TO OWNER / NOTICE OF CONTRACT';
-    } else if (doc_type === 'conditional_waiver') {
-      title = jurisdiction === 'california'
-        ? 'CONDITIONAL WAIVER AND RELEASE ON PROGRESS PAYMENT\n(Civil Code Section 8132)'
-        : 'CONDITIONAL WAIVER AND RELEASE ON PROGRESS PAYMENT';
-    } else if (doc_type === 'unconditional_waiver') {
-      title = jurisdiction === 'california'
-        ? 'UNCONDITIONAL WAIVER AND RELEASE ON PROGRESS PAYMENT\n(Civil Code Section 8134)'
-        : 'UNCONDITIONAL WAIVER AND RELEASE ON PROGRESS PAYMENT';
-    } else if (doc_type === 'conditional_final_waiver') {
-      title = 'CONDITIONAL WAIVER AND RELEASE ON FINAL PAYMENT\n(Civil Code Section 8136)';
-    } else if (doc_type === 'unconditional_final_waiver') {
-      title = 'UNCONDITIONAL WAIVER AND RELEASE ON FINAL PAYMENT\n(Civil Code Section 8138)';
-    }
-
-    doc.fontSize(13).font('Helvetica-Bold').text(title, { align: 'center' });
-    doc.moveDown(0.5);
-    doc.moveTo(60, doc.y).lineTo(552, doc.y).lineWidth(0.75).stroke();
-    doc.moveDown(0.5);
-
-    // ── Project info block ──────────────────────────────────────────────────
-    doc.fontSize(9).font('Helvetica');
-    const infoRows = [
-      ['Project Name:', projectName],
-      ['Property Owner:', ownerName],
-      ['General Contractor:', contractorName],
-      ['Project Location:', loc],
-      ...(through_date ? [['Through Date:', fmtDate(through_date)]] : []),
-    ];
-    for (const [label, value] of infoRows) {
-      const y = doc.y;
-      doc.font('Helvetica-Bold').text(label, 60, y, { width: 140, continued: false });
-      doc.font('Helvetica').text(value, 205, y, { width: 340 });
-    }
-    doc.moveDown(0.8);
-
-    // ── Statutory body text ─────────────────────────────────────────────────
-    doc.fontSize(9).font('Helvetica');
-
-    if (doc_type === 'preliminary_notice' && jurisdiction === 'california') {
-      doc.font('Helvetica-Bold').text('NOTICE TO PROPERTY OWNER', { align: 'center' });
-      doc.moveDown(0.3);
-      doc.font('Helvetica').text(
-        'If bills are not paid in full for the labor, services, equipment, or materials furnished or to be furnished, ' +
-        'a mechanic\'s lien leading to the loss, through court foreclosure proceedings, of all or part of your property ' +
-        'being so improved may be placed against the property even though you have paid your contractor in full. You may ' +
-        'wish to protect yourself against this consequence by (1) requiring your contractor to furnish a signed release by ' +
-        'the person or firm giving you this notice before making payment to your contractor, or (2) any other method or ' +
-        'device that is appropriate under the circumstances.',
-        { align: 'justify' }
-      );
-      doc.moveDown(0.5);
-      doc.font('Helvetica-Bold').text('NOTICE IS HEREBY GIVEN THAT:');
-      doc.moveDown(0.2);
-      doc.font('Helvetica').list([
-        `The undersigned, ${contractorName}, has furnished or will furnish labor, services, equipment, or materials of the following type: General Construction Services`,
-        `To: ${ownerName} (Owner) and ${contractorName} (General Contractor)`,
-        `For the improvement of property located at: ${loc}`,
-        `Project: ${projectName}`,
-      ], { bulletRadius: 2, textIndent: 15, indent: 10 });
-    } else if (doc_type === 'conditional_waiver' && jurisdiction === 'california') {
-      // Civil Code 8132 exact statutory language
-      doc.text(
-        `NOTICE: This document waives and releases lien and payment bond rights and stop payment notice rights based on a contract. ` +
-        `Read it before signing.`,
-        { align: 'justify' }
-      );
-      doc.moveDown(0.5);
-      doc.text(
-        `Upon receipt by the undersigned of a check from ${maker_of_check || '[Maker of Check]'} in the sum of ${fmtAmt(amount)} ` +
-        `payable to ${check_payable_to || contractorName} and when the check has been properly endorsed and has been paid by the bank ` +
-        `upon which it is drawn, this document shall become effective to release any mechanic's lien, stop payment notice, or bond right ` +
-        `the undersigned has on the job of ${ownerName} located at ${loc} to the following extent. This release covers a progress ` +
-        `payment for all labor, services, equipment, or materials furnished to ${ownerName} through ${fmtDate(through_date)}, ` +
-        `and does not cover any retention or items, conditions, or obligations for which the claimant has separately secured payment ` +
-        `in full. Before any recipient of this document relies on it, the recipient should verify evidence of payment to the undersigned.`,
-        { align: 'justify' }
-      );
-    } else if (doc_type === 'unconditional_waiver' && jurisdiction === 'california') {
-      // Civil Code 8134 exact statutory language
-      doc.text(
-        `NOTICE: This document waives and releases lien and payment bond rights and stop payment notice rights unconditionally and states ` +
-        `that you have been paid for giving up those rights. This document is enforceable against you if you sign it, even if you have ` +
-        `not been paid. Read it before signing.`,
-        { align: 'justify' }
-      );
-      doc.moveDown(0.5);
-      doc.text(
-        `The undersigned has been paid and has received a progress payment in the sum of ${fmtAmt(amount)} for all labor, services, ` +
-        `equipment, or materials furnished to ${ownerName} through ${fmtDate(through_date)} and does hereby release any mechanic's ` +
-        `lien, stop payment notice, or bond right the undersigned has on the job of ${ownerName} located at ${loc}. A payment of ` +
-        `${fmtAmt(amount)} was received on ${fmtDate(through_date)}.`,
-        { align: 'justify' }
-      );
-    } else if (doc_type === 'conditional_final_waiver' && jurisdiction === 'california') {
-      // Civil Code 8136
-      doc.text(
-        `NOTICE: This document waives and releases lien and payment bond rights and stop payment notice rights based on a final payment. ` +
-        `Read it before signing.`,
-        { align: 'justify' }
-      );
-      doc.moveDown(0.5);
-      doc.text(
-        `Upon receipt by the undersigned of a check from ${maker_of_check || '[Maker of Check]'} in the sum of ${fmtAmt(amount)} ` +
-        `payable to ${check_payable_to || contractorName} and when the check has been properly endorsed and has been paid by the bank ` +
-        `upon which it is drawn, this document shall become effective to release any mechanic's lien, stop payment notice, or bond right ` +
-        `the undersigned has on the job of ${ownerName} located at ${loc}. This release covers the final payment for all labor, ` +
-        `services, equipment, or materials furnished on the job, except for disputed claims for additional work in the amount of ` +
-        `$______________. Before any recipient of this document relies on it, the recipient should verify evidence of payment to the undersigned.`,
-        { align: 'justify' }
-      );
-    } else if (doc_type === 'unconditional_final_waiver' && jurisdiction === 'california') {
-      // Civil Code 8138
-      doc.text(
-        `NOTICE: This document waives and releases lien and payment bond rights and stop payment notice rights unconditionally and states ` +
-        `that you have been paid for giving up those rights. This document is enforceable against you if you sign it, even if you have ` +
-        `not been paid. Read it before signing.`,
-        { align: 'justify' }
-      );
-      doc.moveDown(0.5);
-      doc.text(
-        `The undersigned has been paid and has received final payment in the sum of ${fmtAmt(amount)} for all labor, services, ` +
-        `equipment, or materials furnished to ${ownerName} on the job of ${ownerName} located at ${loc} and does hereby release ` +
-        `any mechanic's lien, stop payment notice, or bond right the undersigned has on the job. A payment of ${fmtAmt(amount)} ` +
-        `was received on ${fmtDate(through_date)}. The claimant releases and waives all rights under this title irrespective of payment.`,
-        { align: 'justify' }
-      );
-    } else if (doc_type === 'preliminary_notice' && jurisdiction === 'virginia') {
-      doc.font('Helvetica-Bold').text('NOTICE TO OWNER PURSUANT TO VIRGINIA CODE §43-4');
-      doc.moveDown(0.3);
-      doc.font('Helvetica').text(
-        `You are hereby notified that the undersigned, ${contractorName}, has performed or will perform labor, ` +
-        `services, or furnish materials, machinery, tools, or equipment for improvement of the property described below. ` +
-        `This notice is given pursuant to the Virginia Mechanics Lien Law, Title 43 of the Code of Virginia. ` +
-        `The owner is advised that the undersigned may, unless paid, have a right to file a memorandum of lien against ` +
-        `the property described below within 150 days after the last day materials were furnished or work was performed.`,
-        { align: 'justify' }
-      );
-    } else {
-      // Generic
-      doc.text(
-        `The undersigned hereby certifies and declares that all labor, services, equipment, and materials ` +
-        `furnished to ${projectName} (the "Project") located at ${loc} for the period through ${fmtDate(through_date)} ` +
-        `have been paid in full (or upon payment in the case of a conditional waiver), and hereby releases ` +
-        `any and all lien rights, stop notice rights, and payment bond rights for work performed through said date.`,
-        { align: 'justify' }
-      );
-    }
-
-    // ── Signature block ─────────────────────────────────────────────────────
-    doc.moveDown(1.5);
-    doc.moveTo(60, doc.y).lineTo(350, doc.y).lineWidth(0.5).stroke();
-    doc.moveDown(0.2);
-    doc.fontSize(9).font('Helvetica').text(signatory_name || '_____________________________', 60, doc.y);
-    if (signatory_title) doc.text(signatory_title, 60, doc.y);
-    doc.text(`${contractorName}`, 60, doc.y);
-    doc.moveDown(0.5);
-
-    // ── Digital signature certification block ──────────────────────────────
-    doc.fontSize(7.5).font('Helvetica').fillColor('#555555');
-    doc.text(
-      `ELECTRONIC SIGNATURE: This document was electronically signed by ${signatory_name} ` +
-      `on ${signedAt.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})} ` +
-      `at ${signedAt.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZoneName:'short'})}. ` +
-      `IP Address: ${ip}. ` +
-      `By typing their name above, the signatory expressly agrees this electronic signature is the legal equivalent ` +
-      `of a handwritten signature and intends to be legally bound by the contents of this document.`,
-      { align: 'left' }
-    );
-    doc.fillColor('#000000');
-
-    // ── Footer ──────────────────────────────────────────────────────────────
-    doc.fontSize(7).fillColor('#888888');
-    doc.text(
-      `Generated by Construction AI Billing — constructinv.varshyl.com | ${new Date().toISOString().slice(0,10)}`,
-      60, 730, { align: 'center', width: 492 }
-    );
-    doc.fillColor('#000000');
-
+    renderLienWaiverContent(doc, {
+      doc_type, project, through_date, amount, maker_of_check, check_payable_to,
+      signatory_name, signatory_title, signedAt, ip, jurisdiction, pay_app_ref,
+      startX: 45, pageW: 522
+    });
     doc.end();
   });
 }

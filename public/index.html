@@ -1373,11 +1373,13 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
 
         <!-- PREVIEW & EXPORT -->
         <div class="tp" id="tp4">
-          <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
-            <button class="btn btn-primary" onclick="downloadPDF()">⬇ Download PDF</button>
+          <div style="display:flex;gap:10px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
+            <button class="btn btn-primary" onclick="downloadPDF()">⬇ Download Pay App PDF</button>
+            <button class="btn btn-success" id="btn-download-with-lien" onclick="downloadPDFWithLien()" style="display:none">⬇ Download + Lien Waiver</button>
             <button class="btn" onclick="copyShareLink()">Copy shareable link</button>
             <span style="font-size:11px;color:var(--text2)">Browser will open a print dialog — choose <strong>Save as PDF</strong></span>
           </div>
+          <div id="pa-lien-status" style="margin-bottom:12px"></div>
 
           <!-- AIA G702 PREVIEW -->
           <div class="aia-preview" id="aia-preview">
@@ -2031,8 +2033,10 @@ async function newPayApp(){
     const now=new Date();
     const pa=await api('POST','/projects/'+currentProjectId+'/payapps',{app_number:num,period_label:months[now.getMonth()]+' '+now.getFullYear(),period_start:null,period_end:null});
     loadPayApp(pa.id);
-    // Non-blocking prompt to generate conditional lien waiver
+    // Non-blocking prompt to generate conditional lien waiver — pass pay_app_id so it gets linked
     showLienToast(currentProjectId, pa);
+    // Also update pay app preview area to show lien waiver status
+    if(typeof renderPayAppLienStatus === 'function') renderPayAppLienStatus(pa.id);
   }catch(e){alert('Error: '+e.message);}
   finally{_creatingPA=false;}
 }
@@ -2048,7 +2052,7 @@ function showLienToast(projectId, pa) {
       <div style="font-weight:600;font-size:12px;margin-bottom:4px">Pay App #${pa.app_number} created</div>
       <div style="font-size:11px;color:var(--text2);margin-bottom:10px">Generate a conditional lien waiver to accompany this pay application?</div>
       <div style="display:flex;gap:6px">
-        <button class="btn btn-primary btn-sm" onclick="dismissLienToast();openLienDocModal(${projectId},{doc_type:'conditional_waiver'})">Generate waiver</button>
+        <button class="btn btn-primary btn-sm" onclick="dismissLienToast();openLienDocModal(${projectId},{doc_type:'conditional_waiver',pay_app_id:${pa.id}})">Generate waiver</button>
         <button class="btn btn-sm" onclick="dismissLienToast()">Not now</button>
       </div>
     </div>
@@ -2057,6 +2061,45 @@ function showLienToast(projectId, pa) {
   setTimeout(dismissLienToast, 18000);
 }
 function dismissLienToast(){const t=document.getElementById('lien-toast');if(t)t.remove();}
+
+async function renderPayAppLienStatus(paId) {
+  const el = document.getElementById('pa-lien-status');
+  const btnWithLien = document.getElementById('btn-download-with-lien');
+  if (!el) return;
+  try {
+    // Get lien docs for this project and check if any are linked to this pay app
+    const allDocs = await api('GET', `/projects/${currentProjectId}/lien-docs`);
+    const linked = allDocs.filter(d => d.pay_app_id == paId);
+    if (!linked.length) {
+      el.innerHTML = `<div style="display:inline-flex;align-items:center;gap:8px;padding:7px 12px;background:var(--amber-light);border-radius:var(--radius);font-size:11px;border:1px solid rgba(133,79,11,0.2)">
+        <span>📋 No lien waiver linked.</span>
+        <button class="btn btn-sm" onclick="openLienDocModal(${currentProjectId},{doc_type:'conditional_waiver',pay_app_id:${paId}})">Generate conditional waiver</button>
+      </div>`;
+      if (btnWithLien) btnWithLien.style.display = 'none';
+      return;
+    }
+    const typeLabels = {conditional_waiver:'Conditional Waiver (Progress)',unconditional_waiver:'Unconditional Waiver (Progress)',conditional_final_waiver:'Conditional Waiver (Final)',unconditional_final_waiver:'Unconditional Waiver (Final)',preliminary_notice:'Preliminary Notice'};
+    const d = linked[0];
+    el.innerHTML = `<div style="display:inline-flex;align-items:center;gap:10px;padding:7px 12px;background:var(--green-light);border-radius:var(--radius);font-size:11px;border:1px solid rgba(59,109,17,0.2)">
+      <span>✅ <strong>${typeLabels[d.doc_type]||d.doc_type}</strong> linked · signed by ${d.signatory_name||'—'}</span>
+      <a href="/api/lien-docs/${d.id}/pdf?token=${getToken()}" target="_blank" class="btn btn-sm">Download waiver</a>
+      <button class="btn btn-sm" onclick="openLienDocModal(${currentProjectId},{doc_type:'conditional_waiver',pay_app_id:${paId}})">+ New</button>
+    </div>`;
+    if (btnWithLien) btnWithLien.style.display = '';
+  } catch(e) { el.innerHTML = ''; }
+}
+
+function downloadPDFWithLien() {
+  // The server-side PDF already appends the lien waiver automatically — just use the normal PDF endpoint
+  const url = `/api/payapps/${currentPAId}/pdf?token=${getToken()}`;
+  window.open(url, '_blank');
+}
+
+function downloadPDF(){
+  ph('pdf_downloaded',{pay_app_id:currentPAId,project_id:currentPAData?.project_id});
+  const url = `/api/payapps/${currentPAId}/pdf?token=${getToken()}`;
+  window.open(url, '_blank');
+}
 async function loadPayApp(id,tab=1){
   currentPAId=id;showPage('payapp');paTab(tab);
   try{
@@ -2506,11 +2549,6 @@ async function markSubmitted(){
     }
   }
   catch(e){alert('Error: '+e.message);}
-}
-function downloadPDF(){
-  ph('pdf_downloaded',{pay_app_id:currentPAId,project_id:currentPAData?.project_id});
-  if(currentPAData) renderAIAPreview(currentPAData);
-  setTimeout(()=>window.print(),150);
 }
 function copyShareLink(){const url=window.location.origin+'/share/'+currentPAId;navigator.clipboard.writeText(url).then(()=>alert('Link copied!\n'+url)).catch(()=>alert('Share link: '+url));}
 async function sendEmail(){alert('Email: In production this sends via SMTP/SendGrid.\n\nTo: '+document.getElementById('email-to').value);}
@@ -3234,6 +3272,7 @@ async function loadLienDocs(projectId) {
 function openLienDocModal(projectId, opts) {
   opts = opts || {};
   window._lienProjectId = projectId;
+  window._lienPayAppId = opts.pay_app_id || null;  // link to pay app if provided
   document.getElementById('lien-doc-modal').classList.remove('hidden');
   document.getElementById('lien-doc-err').classList.add('hidden');
   // Apply pre-fill values if provided, else clear
@@ -3271,7 +3310,8 @@ async function submitLienDoc() {
   try {
     const doc = await api('POST', `/projects/${projectId}/lien-docs`, {
       doc_type, through_date, amount: amount ? parseFloat(amount) : null,
-      maker_of_check, check_payable_to, signatory_name, signatory_title, jurisdiction
+      maker_of_check, check_payable_to, signatory_name, signatory_title, jurisdiction,
+      pay_app_id: window._lienPayAppId || null
     });
     closeLienDocModal();
     await loadLienDocs(projectId);
