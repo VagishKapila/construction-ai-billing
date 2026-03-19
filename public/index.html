@@ -1001,7 +1001,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
           </div>
         </div>
         <div class="card">
-          <div class="ct">Contact information</div>
+          <div class="ct">Your company contact <span style="font-size:11px;font-weight:400;color:var(--text2);margin-left:6px">— who prepared this application</span></div>
           <div class="fg3">
             <div class="field"><label>Contact name</label><input type="text" id="ep-contact-name"/></div>
             <div class="field"><label>Contact phone</label><input type="tel" id="ep-contact-phone"/></div>
@@ -1065,7 +1065,8 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
             </div>
           </div>
           <div class="card">
-            <div class="ct">Contact information</div>
+            <div class="ct">Your company contact <span style="font-size:11px;font-weight:400;color:var(--text2);margin-left:6px">— who prepared this application</span></div>
+            <p style="font-size:12px;color:var(--text2);margin:0 0 10px">This is your (the GC's) contact info that appears on the pay app, not the owner's.</p>
             <div class="fg3">
               <div class="field"><label>Contact name</label><input type="text" id="np-contact-name" placeholder="Full name"/></div>
               <div class="field"><label>Contact phone</label><input type="tel" id="np-contact-phone" placeholder="408-410-6151"/></div>
@@ -1317,6 +1318,16 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
         <div class="psub">Usage, performance &amp; error monitoring</div>
         <div id="admin-loading" style="padding:32px;color:var(--text2);text-align:center">Loading analytics...</div>
         <div id="admin-content" class="hidden">
+          <!-- Email / system health tools -->
+          <div class="card" style="margin-bottom:16px;border-left:4px solid var(--accent)">
+            <div class="ct">Email & System Tools</div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px">
+              <input type="email" id="admin-test-email-addr" placeholder="Send test email to..." style="flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text1);font-size:13px"/>
+              <button class="btn" onclick="adminSendTestEmail()" style="white-space:nowrap">Send Test Email</button>
+              <span id="admin-email-result" style="font-size:12px;color:var(--text2)"></span>
+            </div>
+            <div style="font-size:11px;color:var(--text3);margin-top:6px">Tests Resend API key, FROM_EMAIL, and domain verification on the live server.</div>
+          </div>
           <!-- KPI row -->
           <div class="mg" id="admin-kpis"></div>
           <!-- Feature usage + errors -->
@@ -3029,6 +3040,19 @@ function showAdmin(){
 }
 
 let adminUsersAll=[];
+
+async function adminSendTestEmail(){
+  const addr = document.getElementById('admin-test-email-addr').value.trim();
+  const el = document.getElementById('admin-email-result');
+  if(!addr){el.textContent='Enter an email address first';el.style.color='var(--error)';return;}
+  el.textContent='Sending...';el.style.color='var(--text2)';
+  try {
+    const r = await api('POST','/admin/test-email',{to:addr});
+    el.textContent=`✅ Sent! From: ${r.from} → ${r.to}`;el.style.color='#22c55e';
+  } catch(e){
+    el.textContent=`❌ Failed: ${e.message}`;el.style.color='var(--error)';
+  }
+}
 
 async function loadAdminDash(){
   document.getElementById('admin-loading').classList.remove('hidden');

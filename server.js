@@ -183,11 +183,17 @@ async function sendVerificationEmail(email, name, token) {
       : { personalizations:[{to:[{email}]}], from:{email:fromEmail},
           subject:'Verify your email — Construction AI Billing',
           content:[{type:'text/html',value:verifyEmailHtml(name,verifyUrl)}] };
-    await fetch(isResend ? 'https://api.resend.com/emails' : 'https://api.sendgrid.com/v3/mail/send', {
+    const resp = await fetch(isResend ? 'https://api.resend.com/emails' : 'https://api.sendgrid.com/v3/mail/send', {
       method: 'POST',
       headers: { 'Content-Type':'application/json', Authorization:`Bearer ${apiKey}` },
       body: JSON.stringify(payload),
     });
+    if (!resp.ok) {
+      const errBody = await resp.text().catch(() => '');
+      console.error(`[Email] Resend API error ${resp.status}: ${errBody}`);
+    } else {
+      console.log(`[Email] Verification email sent to ${email}`);
+    }
   } catch(e) { console.error('Email send failed:', e.message); }
 }
 
@@ -1327,6 +1333,38 @@ function adminAuth(req, res, next) {
     next();
   } catch(e) { res.status(401).json({ error: 'Invalid token' }); }
 }
+
+// ── Admin: test email deliverability ─────────────────────────────────────────
+app.post('/api/admin/test-email', adminAuth, async (req, res) => {
+  const { to } = req.body;
+  if (!to) return res.status(400).json({ error: 'to email required' });
+  const apiKey    = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.FROM_EMAIL || 'noreply@constructai.app';
+  const appUrl    = process.env.APP_URL || 'https://constructinv.varshyl.com';
+  if (!apiKey) return res.status(503).json({ error: 'RESEND_API_KEY not set', env: { FROM_EMAIL: fromEmail, APP_URL: appUrl } });
+  try {
+    const resp = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [to],
+        subject: 'Email Test — Construction AI Billing',
+        html: `<div style="font-family:sans-serif;padding:24px"><h2>Email is working!</h2><p>Sent from: <b>${fromEmail}</b><br>App URL: ${appUrl}<br>Time: ${new Date().toISOString()}</p></div>`,
+      }),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      console.error('[Test Email] Resend error:', resp.status, JSON.stringify(body));
+      return res.status(resp.status).json({ error: 'Resend rejected', status: resp.status, detail: body, from: fromEmail });
+    }
+    console.log('[Test Email] Sent OK to', to);
+    res.json({ ok: true, id: body.id, from: fromEmail, to, appUrl });
+  } catch(e) {
+    console.error('[Test Email] fetch failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
 
 app.get('/api/admin/stats', adminAuth, async (req, res) => {
   try {
