@@ -415,6 +415,85 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
   .lp-hero h1{font-size:24px}
   .lp-hero p{font-size:14px}
 }
+
+/* ──────────────────────────────────────────────
+   APP SHELL — MOBILE (≤ 768px)
+   Sidebar becomes an overlay panel; content goes
+   full-width; modals go full-screen.
+   ────────────────────────────────────────────── */
+@media(max-width:768px){
+  /* Hamburger button — show on mobile */
+  .hamburger{display:flex!important}
+
+  /* Sidebar: hidden off-screen left by default */
+  .sidebar{
+    position:fixed;left:-220px;top:0;height:100vh;
+    width:210px;z-index:850;
+    transition:left 0.22s ease;
+    box-shadow:none;
+  }
+  .sidebar.sb-open{
+    left:0;
+    box-shadow:4px 0 24px rgba(0,0,0,0.18);
+  }
+
+  /* Backdrop — shown when sidebar is open */
+  #sb-backdrop{
+    display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);
+    z-index:840;
+  }
+  #sb-backdrop.sb-open{display:block}
+
+  /* Content fills full width */
+  .main{flex-direction:column}
+  .content{padding:14px}
+
+  /* Topbar: tighter on mobile */
+  .topbar{padding:8px 12px}
+  .topbar .logo{font-size:13px}
+  .topbar-right .user-name{display:none}
+  .topbar-right .btn{font-size:10px;padding:4px 8px}
+
+  /* Cards and metrics grids: single column */
+  .mg{grid-template-columns:1fr 1fr}
+  .card{padding:13px}
+
+  /* Project tabs: scroll horizontally, no wrapping */
+  .tabs{gap:0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tab{padding:8px 13px;font-size:12px}
+
+  /* Modals: full-screen on mobile */
+  .modal-box{
+    max-width:100%!important;width:100%!important;
+    max-height:95vh;
+    border-radius:12px 12px 0 0;
+    position:fixed;bottom:0;left:0;right:0;top:auto;
+  }
+  .modal-overlay{align-items:flex-end}
+
+  /* AIA G702/G703 table — horizontal scroll (already in tbl-wrap) */
+  .tbl-wrap{-webkit-overflow-scrolling:touch}
+
+  /* Feedback FAB — move left so it clears mobile browser chrome */
+  .feedback-fab{bottom:80px;right:16px}
+
+  /* Settings: stack form rows */
+  .settings-row{flex-direction:column;gap:8px}
+
+  /* New project wizard steps */
+  #new-proj-steps{flex-wrap:wrap;gap:6px}
+
+  /* Auth card — full width on small screens */
+  .auth-card{padding:20px 16px;max-width:100%}
+}
+
+@media(max-width:480px){
+  /* Very small phones */
+  .mg{grid-template-columns:1fr}
+  .topbar-right .btn[onclick="showSettings()"]{display:none} /* settings via sidebar instead */
+  .content{padding:10px}
+  .ptitle{font-size:16px}
+}
 </style>
 </head>
 <body>
@@ -680,7 +759,8 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
 
 <div id="app-screen" class="shell hidden">
   <div class="topbar">
-    <div style="display:flex;align-items:center;gap:12px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="hamburger btn btn-sm" onclick="toggleSidebar()" title="Menu" style="display:none;font-size:16px;padding:5px 8px;line-height:1">☰</button>
       <div class="logo">Construction <span>AI</span> Billing</div>
       <button class="btn btn-sm" onclick="showLanding()" title="Back to homepage" style="font-size:11px;color:var(--text2)">🏠 Home</button>
     </div>
@@ -700,7 +780,8 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
     </div>
   </div>
   <div class="main">
-    <div class="sidebar">
+    <div id="sb-backdrop" onclick="closeSidebar()"></div>
+    <div class="sidebar" id="app-sidebar">
       <div class="sl">Menu</div>
       <div class="ni active" id="nav-dash" onclick="showDash()">Dashboard</div>
       <div class="ni" id="nav-new-proj" onclick="showNewProject()">+ New project</div>
@@ -1420,6 +1501,18 @@ function showAuthFromLanding(tab){
   authTab(tab||'login');
   window.scrollTo(0,0);
 }
+// ── Mobile sidebar toggle ────────────────────────────────────────────────────
+function toggleSidebar(){
+  const sb=document.getElementById('app-sidebar');
+  const bd=document.getElementById('sb-backdrop');
+  const open=sb.classList.toggle('sb-open');
+  bd.classList.toggle('sb-open',open);
+}
+function closeSidebar(){
+  document.getElementById('app-sidebar').classList.remove('sb-open');
+  document.getElementById('sb-backdrop').classList.remove('sb-open');
+}
+
 function showLanding(){
   document.getElementById('landing-screen').classList.remove('hidden');
   document.getElementById('auth-screen').classList.add('hidden');
@@ -1551,6 +1644,7 @@ function logout(){
 }
 function showPage(id){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));document.getElementById('pg-'+id).classList.add('on');}
 function showDash(){
+  closeSidebar();
   showPage('dash');
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
   document.getElementById('nav-dash').classList.add('active');
@@ -1790,6 +1884,7 @@ function toggleSidebarProj(id){
   buildSidebarProjects(currentProjects, currentProjectId);
 }
 async function loadProject(id){
+  closeSidebar();
   currentProjectId=id;showPage('project');
   try{
     const[payapps,projects]=await Promise.all([api('GET','/projects/'+id+'/payapps'),api('GET','/projects')]);
@@ -2349,7 +2444,7 @@ function paTab(n){
 
 // ===== SETTINGS =====
 let companySettings = {};
-function showSettings() { showPage('settings'); loadSettings(); }
+function showSettings() { closeSidebar(); showPage('settings'); loadSettings(); }
 
 async function loadSettings() {
   try {
