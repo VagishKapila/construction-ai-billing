@@ -1477,6 +1477,7 @@ app.post('/api/projects/:id/contract', auth, upload.single('file'), async (req, 
 
     const extracted = extractContractFields(text);
     const contractType = detectContractType(text);
+    const sovLines = extractSOVFromContract(text); // may be null
 
     // Delete any previous contract for this project (replace with new upload)
     const old = await pool.query('SELECT filename FROM contracts WHERE project_id=$1', [req.params.id]);
@@ -1491,7 +1492,7 @@ app.post('/api/projects/:id/contract', auth, upload.single('file'), async (req, 
       [req.params.id, req.file.filename, req.file.originalname, req.file.size, contractType, JSON.stringify(extracted)]
     );
     await logEvent(req.user.id, 'contract_uploaded', { project_id: parseInt(req.params.id), contract_type: contractType });
-    res.json({ ...r.rows[0], extracted });
+    res.json({ ...r.rows[0], extracted, sov_lines: sovLines });
   } catch(e) {
     try { fs.unlinkSync(req.file.path); } catch(_) {}
     res.status(500).json({ error: e.message });
@@ -1586,6 +1587,64 @@ function extractContractFields(text) {
   if (popM) fields.period_of_performance = popM[1].trim();
 
   return fields;
+}
+
+// ── SOV extraction from contract text ──────────────────────────────────────
+function extractSOVFromContract(text) {
+  // Find "Schedule of Values" section header in the text
+  const sovMatch = text.search(/schedule\s+of\s+values/i);
+  if (sovMatch === -1) return null;
+
+  // Work with the slice starting at SOV header (up to 6000 chars)
+  const section = text.slice(sovMatch, sovMatch + 6000);
+  const lines = section.split('\n');
+
+  const items = [];
+  let seenHeader = false;
+  let consecutiveEmpty = 0;
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+
+    // Skip blank lines (but stop if too many in a row after we have items)
+    if (!trimmed) {
+      if (items.length > 2) consecutiveEmpty++;
+      if (consecutiveEmpty > 4) break;
+      continue;
+    }
+    consecutiveEmpty = 0;
+
+    // Skip the SOV title line itself
+    if (/schedule\s+of\s+values/i.test(trimmed) && !seenHeader) { seenHeader = true; continue; }
+
+    // Skip column header rows
+    if (/(?:item|no\.?|description|amount|scheduled\s+value|work\s+item)/i.test(trimmed) && trimmed.length < 80) continue;
+
+    // Stop at signature / total section after we have items
+    if (items.length > 2 && /^\s*(?:total|subtotal|grand\s+total|signature|contractor|owner|date\s*:)/i.test(trimmed)) break;
+
+    // Match: optional item id, description, dollar amount at end
+    // Amount can be: 45,000 | 45,000.00 | $45,000 | $ 45,000.00
+    const amtMatch = trimmed.match(/\$?\s*([\d,]{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*$/);
+    if (!amtMatch) continue;
+
+    const amt = parseFloat(amtMatch[1].replace(/,/g, ''));
+    if (amt < 50) continue; // ignore tiny/zero amounts
+
+    const descPart = trimmed.slice(0, trimmed.length - amtMatch[0].length).trim();
+    if (!descPart || descPart.length < 3 || descPart.length > 120) continue;
+
+    // Strip leading item number (e.g. "1." "A." "01" "A1.")
+    const itemM = descPart.match(/^([A-Z]?\d{1,3}\.?\d*\.?)\s+(.+)/i);
+    const description = itemM ? itemM[2].trim() : descPart;
+    const item_id = itemM ? itemM[1].replace(/\.$/, '') : String(items.length + 1);
+
+    if (description.length < 3) continue;
+
+    items.push({ item_id, description, scheduled_value: amt });
+  }
+
+  return items.length >= 2 ? items : null;
 }
 
 // ── LIEN DOCUMENTS (California + Virginia + DC) ────────────────────────────

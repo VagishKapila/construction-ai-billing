@@ -955,6 +955,8 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
           <div class="step-dot" id="si2"><div class="step-num">2</div>&nbsp;Upload SOV</div>
           <div class="step-line"></div>
           <div class="step-dot" id="si3"><div class="step-num">3</div>&nbsp;Review &amp; save</div>
+          <div class="step-line"></div>
+          <div class="step-dot" id="si4"><div class="step-num">4</div>&nbsp;Contract <span style="font-size:10px;opacity:0.7">(optional)</span></div>
         </div>
 
         <div id="np-step1">
@@ -1108,7 +1110,30 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
           <div id="np-err-final" class="err hidden"></div>
           <div class="br">
             <button class="btn" onclick="npBackTo2()">← Back</button>
-            <button class="btn btn-success" onclick="createProject()">Save project and SOV →</button>
+            <button class="btn btn-success" onclick="createProjectAndNext()">Save project →</button>
+          </div>
+        </div>
+
+        <!-- STEP 4 — Optional contract upload -->
+        <div id="np-step4" class="hidden">
+          <div class="card">
+            <div class="ct">Upload your contract <span style="font-size:10px;font-weight:400;color:var(--text2)">(optional)</span></div>
+            <p style="font-size:12px;color:var(--text2);margin-bottom:14px">
+              Upload your AIA, subcontract, or government contract. We'll automatically extract billing terms, retainage %, and — if present — a Schedule of Values you can compare against what you entered.
+            </p>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+              <label class="btn btn-primary btn-sm" style="cursor:pointer" id="np-contract-upload-label">
+                📎 Upload contract (PDF or Word)
+                <input type="file" id="np-contract-file" accept=".pdf,.docx,.doc" style="display:none"
+                  onchange="handleNewProjectContractUpload(this)"/>
+              </label>
+              <span id="np-contract-upload-status" style="font-size:11px;color:var(--text2)"></span>
+            </div>
+            <div id="np-contract-intel" style="font-size:12px;color:var(--text3)">No contract uploaded.</div>
+          </div>
+          <div class="br">
+            <button class="btn" onclick="npBackTo3()">← Back</button>
+            <button class="btn btn-primary btn-sm" onclick="npFinish()">Finish — Go to project →</button>
           </div>
         </div>
       </div>
@@ -1191,6 +1216,7 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
           <div class="tab on" onclick="projTab(0)">Pay Applications</div>
           <div class="tab" onclick="projTab(1)">Contract &amp; Docs</div>
           <div class="tab" onclick="projTab(2)">Lien Documents</div>
+          <div class="tab" onclick="projTab(3)">Federal Billing</div>
         </div>
         <!-- Pay Apps tab -->
         <div class="tp on" id="proj-tp0">
@@ -1232,6 +1258,23 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
               <button class="btn btn-primary btn-sm" onclick="openLienDocModal(currentProjectId)">+ New document</button>
             </div>
             <div id="lien-docs-list"><div class="loading">Loading…</div></div>
+          </div>
+        </div>
+        <!-- Federal Billing tab — Coming Soon -->
+        <div class="tp" id="proj-tp3">
+          <div class="card" style="text-align:center;padding:48px 32px">
+            <div style="font-size:40px;margin-bottom:16px">🏛️</div>
+            <div style="font-size:18px;font-weight:700;color:#0a1f3c;margin-bottom:10px">Federal Billing — Coming Soon</div>
+            <p style="font-size:13px;color:var(--text2);max-width:480px;margin:0 auto 20px">Support for federal government invoice formats including <strong>SF-1034</strong> (Public Voucher) and <strong>SF-1035</strong> (Continuation Sheet), Army Corps, NAVFAC, and AFCEC contract billing.</p>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-bottom:24px">
+              <div style="background:var(--bg3);border-radius:var(--radius);padding:12px 20px;font-size:12px;color:var(--text2);border:1px solid var(--border)"><strong style="color:var(--text)">SF-1034</strong><br>Public Voucher for Purchases</div>
+              <div style="background:var(--bg3);border-radius:var(--radius);padding:12px 20px;font-size:12px;color:var(--text2);border:1px solid var(--border)"><strong style="color:var(--text)">SF-1035</strong><br>Continuation Sheet</div>
+              <div style="background:var(--bg3);border-radius:var(--radius);padding:12px 20px;font-size:12px;color:var(--text2);border:1px solid var(--border)"><strong style="color:var(--text)">WAWF / IPP</strong><br>Electronic invoice portals</div>
+              <div style="background:var(--bg3);border-radius:var(--radius);padding:12px 20px;font-size:12px;color:var(--text2);border:1px solid var(--border)"><strong style="color:var(--text)">CAGE / PIID</strong><br>Federal contract identifiers</div>
+            </div>
+            <div style="background:var(--blue-light);border-radius:var(--radius);padding:14px 20px;font-size:12px;color:#1a3a5c;max-width:440px;margin:0 auto">
+              <strong>Note:</strong> If you've uploaded a federal contract in the Contract &amp; Docs tab, key fields like Contract Number, CAGE Code, and Period of Performance are already being extracted automatically.
+            </div>
           </div>
         </div>
       </div>
@@ -1700,12 +1743,10 @@ function showNewProject(){
   }
 }
 function npShowStep(n){
-  document.getElementById('np-step1').classList.toggle('hidden',n!==1);
-  document.getElementById('np-step2').classList.toggle('hidden',n!==2);
-  document.getElementById('np-step3').classList.toggle('hidden',n!==3);
-  [1,2,3].forEach(i=>{
+  [1,2,3,4].forEach(i=>document.getElementById('np-step'+i).classList.toggle('hidden',i!==n));
+  [1,2,3,4].forEach(i=>{
     const el=document.getElementById('si'+i);
-    el.className='step-dot'+(i===n?' on':i<n?' done':'');
+    if(el) el.className='step-dot'+(i===n?' on':i<n?' done':'');
   });
 }
 function npStep1Next(){
@@ -1990,9 +2031,32 @@ async function newPayApp(){
     const now=new Date();
     const pa=await api('POST','/projects/'+currentProjectId+'/payapps',{app_number:num,period_label:months[now.getMonth()]+' '+now.getFullYear(),period_start:null,period_end:null});
     loadPayApp(pa.id);
+    // Non-blocking prompt to generate conditional lien waiver
+    showLienToast(currentProjectId, pa);
   }catch(e){alert('Error: '+e.message);}
   finally{_creatingPA=false;}
 }
+
+function showLienToast(projectId, pa) {
+  dismissLienToast();
+  const toast = document.createElement('div');
+  toast.id = 'lien-toast';
+  toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#fff;border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 18px;box-shadow:0 4px 24px rgba(0,0,0,0.14);z-index:600;display:flex;align-items:flex-start;gap:12px;max-width:360px';
+  toast.innerHTML = `
+    <div style="font-size:20px;flex-shrink:0;margin-top:1px">📋</div>
+    <div style="flex:1">
+      <div style="font-weight:600;font-size:12px;margin-bottom:4px">Pay App #${pa.app_number} created</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">Generate a conditional lien waiver to accompany this pay application?</div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-primary btn-sm" onclick="dismissLienToast();openLienDocModal(${projectId},{doc_type:'conditional_waiver'})">Generate waiver</button>
+        <button class="btn btn-sm" onclick="dismissLienToast()">Not now</button>
+      </div>
+    </div>
+    <button onclick="dismissLienToast()" style="border:none;background:none;cursor:pointer;color:var(--text3);font-size:16px;line-height:1;flex-shrink:0">✕</button>`;
+  document.body.appendChild(toast);
+  setTimeout(dismissLienToast, 18000);
+}
+function dismissLienToast(){const t=document.getElementById('lien-toast');if(t)t.remove();}
 async function loadPayApp(id,tab=1){
   currentPAId=id;showPage('payapp');paTab(tab);
   try{
@@ -2425,6 +2489,21 @@ async function markSubmitted(){
     if(currentProjects.length){
       try{const allPAs=await api('GET','/projects/'+currentPAData.project_id+'/payapps');sidebarPACache[currentPAData.project_id]=allPAs;buildSidebarProjects(currentProjects,currentPAData.project_id);}catch(e){}
     }
+    // Check if this is the final payment (≥98% of contract sum complete)
+    const t=calcTotals(currentPAData);
+    const isFinal=t.contract>0 && t.tComp>=t.contract*0.98;
+    if(isFinal){
+      setTimeout(()=>{
+        if(confirm('🎉 This appears to be the final payment ('+Math.round(t.tComp/t.contract*100)+'% complete).\n\nWould you like to generate an Unconditional Final Lien Release?')){
+          const periodEnd=(document.getElementById('pa-period-end').value)||'';
+          openLienDocModal(currentPAData.project_id,{
+            doc_type:'unconditional_final_waiver',
+            through_date:periodEnd,
+            amount:t.due>0?t.due.toFixed(2):''
+          });
+        }
+      },400);
+    }
   }
   catch(e){alert('Error: '+e.message);}
 }
@@ -2462,6 +2541,81 @@ async function createProject(){
     ph('project_created',{sov_line_count:validRows.length,contract_value:parseFloat(document.getElementById('np-contract').value.replace(/,/g,''))});
     loadProject(proj.id);
   }catch(e){document.getElementById('np-err-final').textContent=e.message;document.getElementById('np-err-final').classList.remove('hidden');}
+}
+
+// Creates project/SOV then moves to Step 4 (optional contract upload)
+let _newProjId = null;
+async function createProjectAndNext(){
+  if(!sovRows.length){document.getElementById('np-err-final').textContent='Please upload an SOV file first';document.getElementById('np-err-final').classList.remove('hidden');return;}
+  const validRows=sovRows.filter(r=>r.description&&r.scheduled_value>0);
+  if(!validRows.length){document.getElementById('np-err-final').textContent='SOV lines need a description and amount greater than zero';document.getElementById('np-err-final').classList.remove('hidden');return;}
+  const contactName=document.getElementById('np-contact-name').value;
+  const contactPhone=document.getElementById('np-contact-phone').value;
+  const contactEmail=document.getElementById('np-contact-email').value;
+  const contact=[contactName,contactPhone,contactEmail].filter(Boolean).join(' · ');
+  try{
+    const proj=await api('POST','/projects',{
+      name:document.getElementById('np-name').value.trim(),
+      number:document.getElementById('np-number').value,
+      owner:document.getElementById('np-owner').value,
+      contractor:document.getElementById('np-contractor').value,
+      architect:document.getElementById('np-architect').value,
+      contact,contact_name:contactName,contact_phone:contactPhone,contact_email:contactEmail,
+      building_area:document.getElementById('np-area').value,
+      original_contract:parseFloat(document.getElementById('np-contract').value.replace(/,/g,'')),
+      contract_date:document.getElementById('np-contract-date').value||null,
+      est_date:document.getElementById('np-est-date').value||null,
+      default_retainage:parseFloat(document.getElementById('np-retainage').value)||0
+    });
+    await api('POST','/projects/'+proj.id+'/sov',{lines:validRows});
+    ph('project_created',{sov_line_count:validRows.length,contract_value:parseFloat(document.getElementById('np-contract').value.replace(/,/g,''))});
+    _newProjId = proj.id;
+    // Reset step 4 state
+    document.getElementById('np-contract-upload-status').textContent='';
+    document.getElementById('np-contract-intel').innerHTML='<div style="color:var(--text3);font-size:12px">No contract uploaded.</div>';
+    document.getElementById('np-contract-file').value='';
+    npShowStep(4);
+  }catch(e){document.getElementById('np-err-final').textContent=e.message;document.getElementById('np-err-final').classList.remove('hidden');}
+}
+function npBackTo3(){ npShowStep(3); }
+function npFinish(){ if(_newProjId) loadProject(_newProjId); }
+
+async function handleNewProjectContractUpload(input) {
+  if (!input.files[0] || !_newProjId) return;
+  const statusEl = document.getElementById('np-contract-upload-status');
+  const intelEl = document.getElementById('np-contract-intel');
+  statusEl.textContent = 'Uploading and extracting…';
+  try {
+    const data = await uploadContract(_newProjId, input.files[0]);
+    statusEl.textContent = '✓ Contract extracted';
+    const ext = data.extracted || {};
+    const rows=[
+      ['Contract type', data.contract_type ? data.contract_type.replace('_',' ').toUpperCase() : '—'],
+      ['Contract sum', ext.contract_sum ? fmt(ext.contract_sum) : '—'],
+      ['Retainage %', ext.retainage_pct != null ? ext.retainage_pct+'%' : '—'],
+      ['Owner', ext.owner||'—'],
+      ['Contractor', ext.contractor||'—'],
+      ['Contract date', ext.contract_date||'—'],
+      ['Completion date', ext.completion_date||'—'],
+    ].filter(([,v])=>v&&v!=='—');
+    intelEl.innerHTML = rows.length
+      ? rows.map(([l,v])=>`<div class="contract-field"><label>${l}</label><span>${v}</span></div>`).join('')
+      : '<div style="color:var(--text2);font-size:12px">Contract uploaded — key fields not detected automatically.</div>';
+    // If SOV found, offer to replace
+    if (data.sov_lines && data.sov_lines.length >= 2) {
+      const total=data.sov_lines.reduce((s,l)=>s+(l.scheduled_value||0),0);
+      const sovBanner=document.createElement('div');
+      sovBanner.style.cssText='margin-top:12px;padding:12px 14px;background:var(--blue-light);border-radius:var(--radius);border:1px solid rgba(24,95,165,0.2)';
+      sovBanner.innerHTML=`<div style="font-weight:600;font-size:12px;color:var(--blue);margin-bottom:4px">📊 SOV detected in contract (${data.sov_lines.length} lines · ${fmt(total)})</div>
+        <div style="font-size:11px;color:#333;margin-bottom:8px">Would you like to replace your uploaded SOV with the one in the contract?</div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-primary btn-sm" onclick="replaceSOVFromContract(${_newProjId},window._contractSOVLines)">Use contract SOV</button>
+          <button class="btn btn-sm" onclick="this.parentElement.parentElement.remove()">Keep current</button>
+        </div>`;
+      window._contractSOVLines=data.sov_lines;
+      intelEl.appendChild(sovBanner);
+    }
+  } catch(e) { statusEl.textContent = 'Error: '+e.message; }
 }
 
 function paTab(n){
@@ -3004,7 +3158,45 @@ async function handleContractUpload(input, projectId) {
     const data = await uploadContract(projectId, input.files[0]);
     statusEl.textContent = '✓ Contract uploaded';
     await loadContractIntel(projectId);
+    // If SOV lines found in contract, offer to use them
+    if (data.sov_lines && data.sov_lines.length >= 2) {
+      showSOVFromContractBanner(projectId, data.sov_lines);
+    }
   } catch(e) { statusEl.textContent = 'Error: '+e.message; }
+}
+
+function showSOVFromContractBanner(projectId, sovLines) {
+  const el = document.getElementById('contract-intel-body');
+  if (!el) return;
+  const total = sovLines.reduce((s,l)=>s+(l.scheduled_value||0),0);
+  const banner = document.createElement('div');
+  banner.id = 'sov-from-contract-banner';
+  banner.style.cssText = 'margin-top:14px;padding:14px 16px;background:var(--blue-light);border-radius:var(--radius);border:1px solid rgba(24,95,165,0.2)';
+  banner.innerHTML = `
+    <div style="font-weight:600;font-size:12px;color:var(--blue);margin-bottom:5px">📊 Schedule of Values detected in contract</div>
+    <div style="font-size:12px;color:#333;margin-bottom:10px">${sovLines.length} line items · Total: ${fmt(total)}</div>
+    <div style="max-height:160px;overflow-y:auto;margin-bottom:10px;border:1px solid rgba(24,95,165,0.15);border-radius:6px;background:#fff">
+      ${sovLines.slice(0,15).map((l,i)=>`<div style="padding:5px 10px;font-size:11px;border-bottom:1px solid rgba(0,0,0,0.06);display:flex;justify-content:space-between;gap:8px"><span>${l.item_id} — ${l.description}</span><span style="white-space:nowrap;color:var(--blue)">${fmt(l.scheduled_value)}</span></div>`).join('')}
+      ${sovLines.length>15?`<div style="padding:5px 10px;font-size:10px;color:var(--text3)">…and ${sovLines.length-15} more lines</div>`:''}
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn btn-primary btn-sm" onclick="replaceSOVFromContract(${projectId}, window._contractSOVLines)">Use this SOV for project</button>
+      <button class="btn btn-sm" onclick="document.getElementById('sov-from-contract-banner').remove()">Keep current SOV</button>
+    </div>`;
+  window._contractSOVLines = sovLines;
+  el.appendChild(banner);
+}
+
+async function replaceSOVFromContract(projectId, sovLines) {
+  if (!sovLines || !sovLines.length) return;
+  if (!confirm(`Replace the project Schedule of Values with ${sovLines.length} lines extracted from the contract (total ${fmt(sovLines.reduce((s,l)=>s+l.scheduled_value,0))})?\n\nThis will overwrite the existing SOV. Pay apps already created are not affected.`)) return;
+  try {
+    await api('POST', `/projects/${projectId}/sov`, { lines: sovLines });
+    document.getElementById('sov-from-contract-banner').remove();
+    // Reload project to reflect new SOV
+    loadProject(projectId);
+    alert('✓ Schedule of Values updated from contract.');
+  } catch(e) { alert('Error updating SOV: '+e.message); }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -3039,16 +3231,23 @@ async function loadLienDocs(projectId) {
   } catch(e) { el.innerHTML = '<div style="color:var(--red)">'+e.message+'</div>'; }
 }
 
-function openLienDocModal(projectId) {
+function openLienDocModal(projectId, opts) {
+  opts = opts || {};
   window._lienProjectId = projectId;
   document.getElementById('lien-doc-modal').classList.remove('hidden');
   document.getElementById('lien-doc-err').classList.add('hidden');
-  document.getElementById('lien-doc-through-date').value = '';
-  document.getElementById('lien-doc-amount').value = '';
-  document.getElementById('lien-doc-maker').value = '';
-  document.getElementById('lien-doc-payable-to').value = '';
-  document.getElementById('lien-doc-signatory').value = '';
-  document.getElementById('lien-doc-title').value = '';
+  // Apply pre-fill values if provided, else clear
+  document.getElementById('lien-doc-type').value = opts.doc_type || 'conditional_waiver';
+  document.getElementById('lien-doc-through-date').value = opts.through_date || '';
+  document.getElementById('lien-doc-amount').value = opts.amount != null ? opts.amount : '';
+  document.getElementById('lien-doc-maker').value = opts.maker || '';
+  document.getElementById('lien-doc-payable-to').value = opts.payable_to || '';
+  document.getElementById('lien-doc-signatory').value = opts.signatory || '';
+  document.getElementById('lien-doc-title').value = opts.title || '';
+  if (opts.jurisdiction) document.getElementById('lien-doc-jurisdiction').value = opts.jurisdiction;
+  // Re-enable submit button in case it was disabled from a prior attempt
+  const btn = document.getElementById('lien-doc-submit-btn');
+  btn.disabled = false; btn.textContent = 'Generate & Sign Document';
 }
 function closeLienDocModal() {
   document.getElementById('lien-doc-modal').classList.add('hidden');
