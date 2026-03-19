@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Pay Application - ConstructAI Billing</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 min-h-screen">
+  <header class="bg-white shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div>
+        <div class="mb-2 flex items-center gap-2">
+          <span class="inline-flex rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">ConstructAI Billing</span>
+          <span class="inline-flex rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-600">powered by Varshyl Inc.</span>
+        </div>
+        <h1 class="text-3xl font-bold tracking-tight text-slate-900">Project Billing Workspace</h1>
+        <p id="payAppMeta" class="mt-1 text-sm text-slate-500">Loading pay application...</p>
+      </div>
+      <div class="flex gap-3">
+        <a id="backToProject" href="#" class="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+          ← Back to Project
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-6 space-y-6">
+
+    <section class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div class="rounded-3xl bg-white p-5 shadow-sm">
+        <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Contract Sum</div>
+        <div id="contractSum" class="mt-2 text-2xl font-bold text-slate-900">$0.00</div>
+      </div>
+      <div class="rounded-3xl bg-white p-5 shadow-sm">
+        <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Completed To Date</div>
+        <div id="completedToDate" class="mt-2 text-2xl font-bold text-slate-900">$0.00</div>
+      </div>
+      <div class="rounded-3xl bg-white p-5 shadow-sm">
+        <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Retainage Held</div>
+        <div id="retainageTotal" class="mt-2 text-2xl font-bold text-slate-900">$0.00</div>
+      </div>
+      <div class="rounded-3xl bg-white p-5 shadow-sm">
+        <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Current Payment Due</div>
+        <div id="currentDue" class="mt-2 text-2xl font-bold text-emerald-700">$0.00</div>
+      </div>
+    </section>
+
+    <section class="rounded-3xl bg-white shadow-sm">
+      <div class="border-b px-5 py-5">
+        <h2 class="text-xl font-semibold text-slate-900">Continuation Sheet (G703-style)</h2>
+        <p class="mt-1 text-sm text-slate-500">
+          Edit “This Period”, “Stored Materials”, and “Retainage %”. Totals update automatically.
+        </p>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-slate-50 text-slate-600">
+            <tr>
+              <th class="px-3 py-3 text-left font-semibold whitespace-nowrap">Code</th>
+              <th class="px-3 py-3 text-left font-semibold whitespace-nowrap">Description</th>
+              <th class="px-3 py-3 text-right font-semibold whitespace-nowrap">Scheduled</th>
+              <th class="px-3 py-3 text-right font-semibold whitespace-nowrap">Prev</th>
+              <th class="px-3 py-3 text-right font-semibold whitespace-nowrap">This Period</th>
+              <th class="px-3 py-3 text-right font-semibold whitespace-nowrap">Stored</th>
+              <th class="px-3 py-3 text-right font-semibold whitespace-nowrap">Completed</th>
+              <th class="px-3 py-3 text-right font-semibold whitespace-nowrap">Ret. %</th>
+              <th class="px-3 py-3 text-right font-semibold whitespace-nowrap">Retainage</th>
+              <th class="px-3 py-3 text-right font-semibold whitespace-nowrap">Balance</th>
+            </tr>
+          </thead>
+          <tbody id="payAppRows" class="bg-white"></tbody>
+          <tfoot class="bg-slate-50 font-semibold text-slate-900">
+            <tr>
+              <td colspan="2" class="px-3 py-3">Totals</td>
+              <td id="tfootScheduled" class="px-3 py-3 text-right">$0.00</td>
+              <td class="px-3 py-3 text-right">$0.00</td>
+              <td id="tfootThis" class="px-3 py-3 text-right">$0.00</td>
+              <td id="tfootStored" class="px-3 py-3 text-right">$0.00</td>
+              <td id="tfootCompleted" class="px-3 py-3 text-right">$0.00</td>
+              <td class="px-3 py-3 text-right">—</td>
+              <td id="tfootRetainage" class="px-3 py-3 text-right">$0.00</td>
+              <td id="tfootBalance" class="px-3 py-3 text-right">$0.00</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
+
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="rounded-3xl bg-white p-5 shadow-sm">
+        <h2 class="text-xl font-semibold text-slate-900">Application Summary (G702-style)</h2>
+        <p class="mt-1 text-sm text-slate-500">Executive summary for the current pay application.</p>
+
+        <div class="mt-4 space-y-3">
+          <div class="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+            <span class="text-slate-600">Original Contract Sum</span>
+            <strong id="summaryContract" class="text-slate-900">$0.00</strong>
+          </div>
+          <div class="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+            <span class="text-slate-600">Completed & Stored To Date</span>
+            <strong id="summaryCompleted" class="text-slate-900">$0.00</strong>
+          </div>
+          <div class="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+            <span class="text-slate-600">Retainage Held</span>
+            <strong id="summaryRetainage" class="text-slate-900">$0.00</strong>
+          </div>
+          <div class="flex items-center justify-between rounded-2xl bg-emerald-50 px-4 py-3">
+            <span class="font-semibold text-emerald-800">Current Payment Due</span>
+            <strong id="summaryDue" class="text-emerald-800">$0.00</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="rounded-3xl bg-white p-5 shadow-sm">
+        <h2 class="text-xl font-semibold text-slate-900">Status</h2>
+        <p id="statusBox" class="mt-3 text-sm text-slate-600">Ready.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="/static/pay_app_new.js"></script>
+</body>
+</html>

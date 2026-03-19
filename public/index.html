@@ -263,12 +263,16 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
 
 /* ── LANDING PAGE ─────────────────────────────────────────────────────────── */
 .lp{font-family:system-ui,-apple-system,sans-serif;color:#1a1a1a;background:#fff}
-.lp-nav{display:flex;align-items:center;justify-content:space-between;padding:14px 40px;background:#fff;border-bottom:1px solid rgba(0,0,0,0.08);position:sticky;top:0;z-index:100}
-.lp-nav-logo{display:flex;align-items:center;gap:12px}
-.lp-nav-logo img{height:36px;width:auto}
+.lp-nav{display:flex;align-items:center;justify-content:space-between;padding:12px 40px;background:#fff;border-bottom:1px solid rgba(0,0,0,0.08);position:sticky;top:0;z-index:100;gap:16px}
+.lp-nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;flex-shrink:0}
+.lp-nav-logo img{height:40px;width:auto}
 .lp-nav-brand{font-size:15px;font-weight:600;color:#1a1a1a}
 .lp-nav-brand span{color:#185FA5}
-.lp-nav-right{display:flex;gap:10px;align-items:center}
+.lp-nav-links{display:flex;gap:4px;align-items:center;flex:1;justify-content:center}
+.lp-nav-link{font-size:13px;color:#555;padding:6px 12px;border-radius:6px;text-decoration:none;transition:all .15s;white-space:nowrap}
+.lp-nav-link:hover{background:#f5f4f0;color:#1a1a1a}
+.lp-nav-right{display:flex;gap:8px;align-items:center;flex-shrink:0}
+.lp-nav-user{font-size:13px;color:#333;font-weight:500}
 .lp-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 20px;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;text-decoration:none;border:none;transition:all .15s}
 .lp-btn-primary{background:#185FA5;color:#fff}.lp-btn-primary:hover{background:#0C447C}
 .lp-btn-outline{background:transparent;color:#185FA5;border:1.5px solid #185FA5}.lp-btn-outline:hover{background:#E6F1FB}
@@ -340,13 +344,12 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
 
   /* NAV */
   .lp-nav{padding:10px 16px;gap:8px}
-  .lp-nav-logo img{height:28px}
-  .lp-nav-brand{font-size:13px}
+  .lp-nav-logo img{height:32px}
+  .lp-nav-brand{display:none}
+  .lp-nav-links{display:none}
   .lp-nav-right{gap:6px}
   .lp-btn{padding:8px 14px;font-size:13px}
   .lp-btn-lg{padding:13px 24px;font-size:15px}
-  /* hide brand text in nav to save space */
-  .lp-nav-brand{display:none}
 
   /* HERO */
   .lp-hero{padding:44px 20px 52px}
@@ -510,10 +513,16 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
 <div id="landing-screen" class="lp">
 
   <!-- NAV -->
-  <nav class="lp-nav">
-    <div class="lp-nav-logo">
+  <nav class="lp-nav" aria-label="Main navigation">
+    <a href="#lp-top" class="lp-nav-logo" aria-label="Construction AI Billing home">
       <img src="/varshyl-logo.png" alt="Varshyl Inc." onerror="this.style.display='none'">
-      <div class="lp-nav-brand">Construction <span>AI</span> Billing</div>
+      <span class="lp-nav-brand">Construction <span>AI</span> Billing</span>
+    </a>
+    <div class="lp-nav-links" role="list">
+      <a href="#lp-how" class="lp-nav-link" role="listitem">How It Works</a>
+      <a href="#lp-features" class="lp-nav-link" role="listitem">Features</a>
+      <a href="#lp-who" class="lp-nav-link" role="listitem">Who It's For</a>
+      <a href="#lp-contact" class="lp-nav-link" role="listitem">Contact</a>
     </div>
     <div class="lp-nav-right" id="lp-nav-btns">
       <!-- Filled dynamically: Sign in + Get Started, OR Go to Dashboard if already logged in -->
@@ -523,12 +532,12 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
   </nav>
 
   <!-- HERO -->
-  <section class="lp-hero">
+  <section class="lp-hero" id="lp-top">
     <h1>Stop Doing AIA Billing<br><em>by Hand.</em></h1>
     <p>Construction AI Billing automates your G702/G703 pay applications — from Schedule of Values to a signed, print-ready PDF — in minutes, not hours.</p>
     <div class="lp-hero-cta" id="lp-hero-cta">
-      <button class="lp-btn lp-btn-primary lp-btn-lg" onclick="token&&currentUser?resumeSession():showAuthFromLanding('register')">Get Started Free →</button>
-      <button class="lp-btn lp-btn-outline lp-btn-lg" style="color:#fff;border-color:rgba(255,255,255,0.5);background:rgba(255,255,255,0.08)" onclick="token&&currentUser?resumeSession():showAuthFromLanding('login')">Sign In</button>
+      <button class="lp-btn lp-btn-lg" style="background:#fff;color:#0a1f3c;border:none;font-weight:600" onclick="token&&currentUser?resumeSession():showAuthFromLanding('register')">Get Started Free →</button>
+      <button class="lp-btn lp-btn-lg" style="color:#fff;border:1.5px solid rgba(255,255,255,0.5);background:rgba(255,255,255,0.1)" onclick="token&&currentUser?resumeSession():showAuthFromLanding('login')">Sign In</button>
     </div>
     <div class="lp-hero-note">No credit card. No strings. Just scroll down first.</div>
   </section>
@@ -544,7 +553,7 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
   </div>
 
   <!-- HOW IT WORKS -->
-  <div class="lp-section-wide">
+  <div class="lp-section-wide" id="lp-how">
     <div>
       <div style="text-align:center;margin-bottom:48px">
         <div class="lp-label">How it works</div>
@@ -573,7 +582,7 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
   </div>
 
   <!-- FEATURES -->
-  <div class="lp-section">
+  <div class="lp-section" id="lp-features">
     <div style="text-align:center;margin-bottom:48px">
       <div class="lp-label">Features</div>
       <h2 class="lp-h2">Everything You Need. Nothing You Don't.</h2>
@@ -673,7 +682,7 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
   </div>
 
   <!-- WHO IT'S FOR -->
-  <div class="lp-section">
+  <div class="lp-section" id="lp-who">
     <div class="lp-label">Who it's for</div>
     <h2 class="lp-h2">Built for Contractors Who Build Real Things</h2>
     <div class="lp-for-list">
@@ -697,7 +706,7 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
   </div>
 
   <!-- FOOTER -->
-  <footer class="lp-footer" role="contentinfo">
+  <footer class="lp-footer" role="contentinfo" id="lp-contact">
     <div class="lp-footer-logo">
       <img src="/varshyl-logo.png" alt="Varshyl Inc." onerror="this.style.display='none'">
       <div class="lp-footer-brand">Construction <span>AI</span> Billing</div>
@@ -1541,7 +1550,7 @@ function updateLandingNav(){
   if (token && currentUser) {
     // Already logged in — show their name and a dashboard button
     navBtns.innerHTML = `
-      <span style="font-size:13px;color:rgba(255,255,255,0.85)">${currentUser.name}</span>
+      <span class="lp-nav-user">${currentUser.name}</span>
       <button class="lp-btn lp-btn-primary" onclick="resumeSession()">Go to Dashboard →</button>`;
   } else {
     navBtns.innerHTML = `
