@@ -1464,7 +1464,7 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
   res.setHeader('Content-Disposition',`attachment; filename="PayApp_${pa.app_number}_${(pa.pname||'').replace(/\s+/g,'_')}.pdf"`);
   doc.pipe(res);
 
-  doc.fontSize(15).font('Helvetica-Bold').text('AIA Document G702',{align:'center'});
+  doc.fontSize(15).font('Helvetica-Bold').text('Document G702',{align:'center'});
   doc.fontSize(10).font('Helvetica').text('Application and Certificate for Payment',{align:'center'});
   doc.moveDown(0.4);
   doc.moveTo(45,doc.y).lineTo(567,doc.y).lineWidth(0.5).stroke();
@@ -1505,7 +1505,7 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
   });
 
   doc.addPage();
-  doc.fontSize(13).font('Helvetica-Bold').text('AIA Document G703 - Continuation Sheet',{align:'center'});
+  doc.fontSize(13).font('Helvetica-Bold').text('Document G703 - Continuation Sheet',{align:'center'});
   doc.fontSize(9).font('Helvetica').text('Application #'+pa.app_number+'  -  '+(pa.period_label||'')+'  -  '+(pa.pname||''),{align:'center'});
   doc.moveDown(0.5);
   const cx=[45,90,160,235,293,340,393,448,488,532];

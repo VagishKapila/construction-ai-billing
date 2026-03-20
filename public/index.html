@@ -297,7 +297,8 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
   /* Hide every piece of app chrome */
   .topbar,.sidebar,#pa-header,#pa-tabs,
   .tp:not(.on),
-  #tp4>div:first-child,
+  .pa-step-nav,.pa-step-nav-top,
+  #tp5>div:first-child,
   .aia-sig-box>div:last-child,
   .aia-logo-box>span,
   input[type=file],
@@ -311,6 +312,9 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
   .pg.on{display:block!important;}
   .tp{display:none!important;}
   .tp.on{display:block!important;}
+
+  /* Hide action buttons and lien status bar above the preview */
+  #pa-lien-status{display:none!important;}
 
   /* AIA preview fills the page — no chrome */
   .aia-preview{border:none!important;border-radius:0!important;max-width:100%!important;padding:0!important;box-shadow:none!important;}
@@ -623,7 +627,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
   <div class="lp-section">
     <div class="lp-problem">
       <strong>Sound familiar?</strong> It's the end of the month. You've done the work. Your crew showed up. The job is moving.
-      And now you're staring at an AIA spreadsheet at 10pm, rechecking formulas, hoping the retainage math is right.
+      And now you're staring at a billing spreadsheet at 10pm, rechecking formulas, hoping the retainage math is right.
       One wrong number. One missed change order. One transposed digit — and your payment is delayed by weeks.
       <br><br><strong>That's not how it should work. You already did the hard part.</strong>
     </div>
@@ -667,7 +671,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
     <div class="lp-grid">
       <div class="lp-feature">
         <div class="lp-feature-icon">🧮</div>
-        <h3>Exact AIA Math</h3>
+        <h3>Exact Billing Math</h3>
         <p>G702/G703 computed line by line. Previous certified, this period, stored materials, retainage — all automatic and correct every time.</p>
       </div>
       <div class="lp-feature">
@@ -767,7 +771,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
       <div class="lp-for-item"><div class="lp-for-check">✓</div><p><strong>General contractors</strong> coordinating billing across multiple subs</p></div>
       <div class="lp-for-item"><div class="lp-for-check">✓</div><p><strong>Specialty trades</strong> who want accurate, dispute-proof pay application records</p></div>
       <div class="lp-for-item"><div class="lp-for-check">✓</div><p><strong>Project managers</strong> tired of reformatting spreadsheets every billing cycle</p></div>
-      <div class="lp-for-item"><div class="lp-for-check">✓</div><p><strong>Any contractor</strong> working on AIA-format commercial construction contracts in the US</p></div>
+      <div class="lp-for-item"><div class="lp-for-check">✓</div><p><strong>Any contractor</strong> working on G702/G703 commercial construction contracts in the US</p></div>
     </div>
   </div>
 
@@ -1755,7 +1759,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               <input type="file" id="logo-file-input-pa" accept="image/*" style="display:none" onchange="previewLogoPa(this)"/>
               <div class="aia-title">
                 <h1>Application and Certificate for Payment</h1>
-                <h2>AIA Document G702</h2>
+                <h2>Document G702</h2>
                 <p>TO OWNER: <span id="prev-owner"></span> &nbsp;&nbsp; PROJECT: <span id="prev-project"></span></p>
                 <p>FROM CONTRACTOR: <span id="prev-contractor"></span> &nbsp;&nbsp; ARCHITECT: <span id="prev-architect"></span></p>
               </div>
@@ -1818,7 +1822,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
 
             <!-- G703 PREVIEW -->
             <div class="aia-g703-section" style="margin-top:14px;border-top:2px solid #000;padding-top:8px">
-              <div style="font-size:11pt;font-weight:bold;text-align:center;margin-bottom:4px">Continuation Sheet — AIA Document G703</div>
+              <div style="font-size:11pt;font-weight:bold;text-align:center;margin-bottom:4px">Continuation Sheet — Document G703</div>
               <div style="overflow-x:auto">
               <table style="width:100%;border-collapse:collapse;font-size:7.5pt;font-family:'Times New Roman',serif">
                 <thead>
@@ -2686,15 +2690,13 @@ async function renderPayAppLienStatus(paId) {
 }
 
 function downloadPDFWithLien() {
-  // The server-side PDF already appends the lien waiver automatically — just use the normal PDF endpoint
-  const url = `/api/payapps/${currentPAId}/pdf?token=${getToken()}`;
-  window.open(url, '_blank');
+  // Use browser print — matches the on-screen preview exactly (includes logo, lien waiver status, etc.)
+  downloadPDF();
 }
 
 function downloadPDF(){
   ph('pdf_downloaded',{pay_app_id:currentPAId,project_id:currentPAData?.project_id});
-  const url = `/api/payapps/${currentPAId}/pdf?token=${getToken()}`;
-  window.open(url, '_blank');
+  window.print();
 }
 async function loadPayApp(id,tab=0){
   currentPAId=id;showPage('payapp');paTab(tab);
@@ -2792,7 +2794,7 @@ function renderG702(pa){
     <div class="ir"><span style="color:var(--text2)">App number</span><span>${pa.app_number}</span></div>
     <div class="ir"><span style="color:var(--text2)">Period</span><span>${pa.period_label||'—'}</span></div>`;
   document.getElementById('g702-summary').innerHTML=`
-    <div style="font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">AIA G702 Summary</div>
+    <div style="font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">G702 Summary</div>
     <div class="ir"><span style="color:var(--text2)">A. Original contract sum</span><span>${fmt(pa.original_contract)}</span></div>
     <div class="ir"><span style="color:var(--text2)">B. Net change orders</span><span>${fmt(t.tCO)}</span></div>
     <div class="ir"><span style="color:var(--text2)">C. Contract sum to date</span><span>${fmt(t.contract)}</span></div>
@@ -2981,7 +2983,7 @@ function updateG702Live(){
   const due=Math.max(0,earned-tPrev);
   const el=document.getElementById('g702-summary');
   if(el) el.innerHTML=`
-    <div style="font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">AIA G702 Summary</div>
+    <div style="font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">G702 Summary</div>
     <div class="ir"><span style="color:var(--text2)">A. Original contract sum</span><span>${fmt(currentPAData.original_contract)}</span></div>
     <div class="ir"><span style="color:var(--text2)">B. Net change orders</span><span>${fmt(tCO)}</span></div>
     <div class="ir"><span style="color:var(--text2)">C. Contract sum to date</span><span>${fmt(contract)}</span></div>
@@ -3887,12 +3889,12 @@ let aiScreenshotFile = null;
 // Smart response library — keyword → response
 const ARIA_SCRIPTS = [
   {keys:['hello','hi','hey','howdy','hola'],reply:"Hey! 👋 I'm Aria, your Construction AI assistant. I can help you with pay apps, lien waivers, uploading your SOV, or anything else. What can I do for you today?"},
-  {keys:['create','new','start','begin','how do i'],sub:['pay app','application','invoice','billing'],reply:"To create a pay app: open your project from the Dashboard, go to the Pay Apps tab, and click '+ New Pay App'. Fill in the period dates, adjust % complete per line, and hit Save. Your AIA G702/G703 will be ready to download. 📄"},
+  {keys:['create','new','start','begin','how do i'],sub:['pay app','application','invoice','billing'],reply:"To create a pay app: open your project from the Dashboard, go to the Pay Apps tab, and click '+ New Pay App'. Fill in the period dates, adjust % complete per line, and hit Save. Your G702/G703 will be ready to download. 📄"},
   {keys:['sov','schedule of values','upload','import'],reply:"You can upload your Schedule of Values as Excel (.xlsx/.xls), CSV, PDF, or Word. In the New Project wizard, go to Step 2 and drag-and-drop your file. The parser handles messy contractor files — it auto-detects the amount and description columns. 💪"},
   {keys:['lien','waiver','release','prelim','preliminary'],reply:"We support all 5 California lien document types: Preliminary Notice, Conditional Progress Waiver, Unconditional Progress Waiver, Conditional Final, and Unconditional Final. After submitting a pay app, tap 'Generate waiver' from the notification or the Preview tab. The PDF is signed with your name, timestamp, and IP. ✅"},
   {keys:['retention','retainage'],reply:"Retainage is tracked per line item in your pay app. Your default retainage % is set in Settings. When the project reaches final payment (≥98% complete), Aria will prompt you to generate an Unconditional Final Release. Remember: retention is often forgotten — that's why we built automatic reminders! 🔔"},
-  {keys:['pdf','download','print','export'],reply:"Click 'Download PDF' on the Preview & Export tab. You'll get a real AIA-formatted G702/G703 PDF — not a browser print screenshot. If you've generated a lien waiver, it's automatically attached as Page 3. ✨"},
-  {keys:['contract','aia','agreement','upload contract'],reply:"In the New Project wizard (Step 4), you can upload your AIA contract PDF or Word doc. We extract the contract sum and compare it against your SOV total — so you catch mismatches before billing. 📋"},
+  {keys:['pdf','download','print','export'],reply:"Click 'Download PDF' on the Preview & Send tab. Your browser print dialog will open — choose Save as PDF to get a formatted G702/G703 that looks exactly like the on-screen preview, including your logo and signature. ✨"},
+  {keys:['contract','agreement','upload contract'],reply:"In the New Project wizard (Step 4), you can upload your contract PDF or Word doc. We extract the contract sum and compare it against your SOV total — so you catch mismatches before billing. 📋"},
   {keys:['federal','government','wawf','ipp','sf-1034'],reply:"Federal billing (SF-1034, SF-1035, WAWF/IPP) is coming soon! We're building it as a separate tab. If you work on federal or military contracts, let me know your specific forms and I'll pass it to the team. 🏛️"},
   {keys:['email','remind','reminder','follow','follow-up','notification'],reply:"Check the Revenue tab — you can set up automatic email reminders: 7 days before payment due, day-of, 7 days overdue, and retention release alerts. Enter your email address there and toggle on what you need. 📬"},
   {keys:['revenue','history','analytics','report','accounting'],reply:"The Revenue tab (sidebar) shows all your pay apps across every project — total billed, retention held, net received — filtered by month, quarter, or year. You can also export to CSV for your accountant. 📊"},
@@ -3900,13 +3902,13 @@ const ARIA_SCRIPTS = [
   {keys:['bug','broken','not working','error','issue','problem','crash','fail'],reply:"Ugh, I'm sorry that's happening! 😔 Please describe what went wrong and I'll send it straight to our engineering team. You can also attach a screenshot with the 📎 button. We usually fix critical bugs within 24 hours."},
   {keys:['feature','idea','suggestion','request','wish','add','missing'],reply:"Love hearing ideas! 💡 Tell me what you're envisioning — even a rough description helps. I'll log it in our product backlog with your account info so the team can follow up. What would make your billing life easier?"},
   {keys:['slow','performance','loading','lag'],reply:"Noticed some sluggishness? Thanks for flagging it. Most slowness happens on large SOV files or when generating multi-page PDFs. Try refreshing, and if it persists please let me know the project size and I'll escalate to our infra team. ⚡"},
-  {keys:['price','pricing','cost','charge','subscription','free','pay'],reply:"Construction AI Billing is currently free to use! We're focused on building the best AIA billing tool for contractors. No credit card required. If you run into any limits just let me know. 🎉"},
+  {keys:['price','pricing','cost','charge','subscription','free','pay'],reply:"Construction AI Billing is currently free to use! We're focused on building the best billing tool for contractors. No credit card required. If you run into any limits just let me know. 🎉"},
   {keys:['account','login','password','sign in','register','verify'],reply:"For account issues — login problems, verification emails, or password resets — try the login page first. If you're stuck, describe the issue here and I'll escalate it to our support team right away. 🔐"},
   {keys:['team','invite','member','role','accountant','executive','field'],reply:"You can invite team members from your Settings page — assign roles like Accountant, Executive, PM, or Field. They'll get an email invite. The Accountant role gets access to the Revenue & billing history view. 👥"},
-  {keys:['g702','g703','aia form','format','standard'],reply:"G702 is the Application and Certificate for Payment cover sheet — it shows your total contract, % complete, and amount due. G703 is the Continuation Sheet with the full Schedule of Values breakdown. We generate both automatically from your SOV. 📐"},
+  {keys:['g702','g703','format','standard'],reply:"G702 is the Application and Certificate for Payment cover sheet — it shows your total contract, % complete, and amount due. G703 is the Continuation Sheet with the full Schedule of Values breakdown. We generate both automatically from your SOV. 📐"},
   {keys:['change order','change','co','extra work','additional'],reply:"Add change orders on the Pay App editor — you'll see a '+ Change Order' section. Each CO gets its own line, and the math rolls up into the G702 totals automatically. Keep your original SOV clean and track all extras separately. 🔧"},
   {keys:['csv','excel','xlsx','xls','word','docx','pdf upload'],reply:"SOV file formats accepted: Excel (.xlsx, .xls), CSV, PDF, and Word (.docx, .doc). The parser auto-detects your column layout — no template required. If it misses rows or amounts, send me your file and we'll tune it. 📂"},
-  {keys:['how','what is','explain','tell me','help'],reply:"Happy to help! I can explain any part of the app — pay apps, lien waivers, SOV parsing, PDF exports, or AIA formats. What topic are you curious about?"},
+  {keys:['how','what is','explain','tell me','help'],reply:"Happy to help! I can explain any part of the app — pay apps, lien waivers, SOV parsing, PDF exports, or billing formats. What topic are you curious about?"},
   {keys:['thank','thanks','great','awesome','perfect','love it','nice'],reply:"You're so welcome! 😊 That's exactly why we built this. Anything else I can help with? If you have a moment, I'd love to hear what features would make your workflow even better."},
   {keys:['bye','goodbye','close','done'],reply:"Sounds good! I'll be right here whenever you need me. Good luck with billing! 🏗️"},
 ];
