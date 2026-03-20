@@ -2974,20 +2974,22 @@ app.get('/api/revenue/summary', auth, async (req, res) => {
     const year = parseInt(req.query.year) || new Date().getFullYear();
     const period = req.query.period || 'monthly'; // monthly | quarterly | yearly
 
-    // All pay apps for this user in the selected year
-    // Compute amount_due live from pay_app_lines (don't rely on stored snapshot which may be stale)
+    // All pay apps for this user in the selected year.
+    // COALESCE(period_end, created_at) so apps without a period_end still get a chart bucket.
     const paRes = await pool.query(`
-      SELECT pa.id, pa.app_number AS pay_app_number, pa.period_end AS period_end, pa.status,
-             pa.payment_received,
+      SELECT pa.id, pa.project_id,
+             pa.app_number AS pay_app_number,
+             pa.period_end AS period_end,
+             pa.status, pa.payment_received,
              p.name AS project_name, p.address, p.job_number,
              p.original_contract AS contract_amount,
-             EXTRACT(MONTH FROM pa.period_end) AS month,
-             EXTRACT(QUARTER FROM pa.period_end) AS quarter,
-             -- Live amount_due = this-period net (this_pct earnings minus full retainage increment)
+             EXTRACT(MONTH   FROM COALESCE(pa.period_end, pa.created_at::date)) AS month,
+             EXTRACT(QUARTER FROM COALESCE(pa.period_end, pa.created_at::date)) AS quarter,
+             -- Live amount_due (H = F - G) computed from actual line percentages
              COALESCE((
                SELECT SUM(sl.scheduled_value * pal.this_pct / 100
-                          - sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100
-                          + sl.scheduled_value * pal.prev_pct / 100 * pal.retainage_pct / 100)
+                        - sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100
+                        + sl.scheduled_value * pal.prev_pct  / 100 * pal.retainage_pct / 100)
                FROM pay_app_lines pal
                JOIN sov_lines sl ON sl.id = pal.sov_line_id
                WHERE pal.pay_app_id = pa.id
@@ -3001,9 +3003,9 @@ app.get('/api/revenue/summary', auth, async (req, res) => {
       FROM pay_apps pa
       JOIN projects p ON p.id = pa.project_id
       WHERE p.user_id = $1
-        AND (pa.period_end IS NULL OR EXTRACT(YEAR FROM pa.period_end) = $2)
+        AND EXTRACT(YEAR FROM COALESCE(pa.period_end, pa.created_at::date)) = $2
         AND pa.deleted_at IS NULL
-      ORDER BY pa.period_end DESC NULLS LAST
+      ORDER BY COALESCE(pa.period_end, pa.created_at::date) DESC
     `, [uid, year]);
 
     const rows = paRes.rows;
@@ -3028,13 +3030,19 @@ app.get('/api/revenue/summary', auth, async (req, res) => {
         amount: billedRows.filter(r => parseInt(r.quarter) === i+1).reduce((s,r)=>s+parseFloat(r.amount_due||0),0)
       }));
     } else {
-      // Yearly — show last 5 years
+      // Yearly — compute live amounts so we don't rely on stale snapshots
       const yRes = await pool.query(`
-        SELECT EXTRACT(YEAR FROM pa.period_end_date) as yr,
-               SUM(pa.amount_due) as amount
+        SELECT EXTRACT(YEAR FROM COALESCE(pa.period_end, pa.created_at::date)) AS yr,
+               SUM(COALESCE((
+                 SELECT SUM(sl.scheduled_value * pal.this_pct / 100
+                          - sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100
+                          + sl.scheduled_value * pal.prev_pct / 100 * pal.retainage_pct / 100)
+                 FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id
+                 WHERE pal.pay_app_id=pa.id
+               ), 0)) AS amount
         FROM pay_apps pa JOIN projects p ON p.id=pa.project_id
-        WHERE p.user_id=$1 AND pa.status IN ('submitted','approved')
-          AND pa.period_end_date IS NOT NULL
+        WHERE p.user_id=$1
+          AND pa.status IN ('submitted','approved')
           AND pa.deleted_at IS NULL
         GROUP BY yr ORDER BY yr
       `, [uid]);
