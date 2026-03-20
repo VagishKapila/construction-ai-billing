@@ -180,7 +180,7 @@ app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
     const appUrl = process.env.APP_URL || 'https://constructinv.varshyl.com';
     const resetUrl = `${appUrl}/?reset=${resetToken}`;
     const apiKey   = process.env.RESEND_API_KEY;
-    const fromEmail = process.env.FROM_EMAIL || 'noreply@constructai.app';
+    const fromEmail = process.env.FROM_EMAIL || 'noreply@varshyl.com';
     if (!apiKey) {
       console.log(`[DEV] Password reset for ${email}: ${resetUrl}`);
     } else {
@@ -296,7 +296,7 @@ app.get('/api/config', (req, res) => {
 async function sendVerificationEmail(email, name, token) {
   const verifyUrl = `${process.env.APP_URL || 'http://localhost:3000'}/api/auth/verify/${token}`;
   const apiKey    = process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY;
-  const fromEmail = process.env.FROM_EMAIL || 'noreply@constructai.app';
+  const fromEmail = process.env.FROM_EMAIL || 'noreply@varshyl.com';
   if (!apiKey) {
     console.log(`[DEV] Verify email for ${email}: ${verifyUrl}`);
     return; // dev mode — just log it
@@ -1564,7 +1564,7 @@ app.post('/api/admin/test-email', adminAuth, async (req, res) => {
   const { to } = req.body;
   if (!to) return res.status(400).json({ error: 'to email required' });
   const apiKey    = process.env.RESEND_API_KEY;
-  const fromEmail = process.env.FROM_EMAIL || 'noreply@constructai.app';
+  const fromEmail = process.env.FROM_EMAIL || 'noreply@varshyl.com';
   const appUrl    = process.env.APP_URL || 'https://constructinv.varshyl.com';
   if (!apiKey) return res.status(503).json({ error: 'RESEND_API_KEY not set', env: { FROM_EMAIL: fromEmail, APP_URL: appUrl } });
   try {
@@ -1702,7 +1702,7 @@ app.post('/api/support/request', async (req, res) => {
     await logEvent(null, 'support_request', { email, name: name||'', issue: issue.slice(0, 500) });
     // Notify admin via email
     const apiKey = process.env.RESEND_API_KEY;
-    const fromEmail = process.env.FROM_EMAIL || 'noreply@constructai.app';
+    const fromEmail = process.env.FROM_EMAIL || 'noreply@varshyl.com';
     const adminEmail = (process.env.ADMIN_EMAILS||'').split(',')[0].trim() || 'vaakapila@gmail.com';
     if (apiKey) {
       await fetchEmail('https://api.resend.com/emails', {
@@ -1889,7 +1889,7 @@ app.get('/api/auth/accept-invite/:token', async (req, res) => {
 
 async function sendTeamInviteEmail(toEmail, toName, inviter, token) {
   const apiKey = process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY;
-  const fromEmail = process.env.FROM_EMAIL || 'noreply@constructai.app';
+  const fromEmail = process.env.FROM_EMAIL || 'noreply@varshyl.com';
   const appUrl = process.env.APP_URL || 'http://localhost:3000';
   if (!apiKey) {
     console.log(`[DEV] Team invite for ${toEmail}: ${appUrl}/api/auth/accept-invite/${token}`);
@@ -2820,7 +2820,7 @@ setInterval(async () => {
 
     const apiKey = process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY;
     const digestTo = process.env.DIGEST_EMAIL || 'vaakapila@gmail.com';
-    const fromEmail = process.env.FROM_EMAIL || 'noreply@constructai.app';
+    const fromEmail = process.env.FROM_EMAIL || 'noreply@varshyl.com';
     if (apiKey) {
       const isResend = !!process.env.RESEND_API_KEY;
       const payload = isResend
@@ -2848,7 +2848,7 @@ setInterval(async () => {
 async function sendReminderEmail({ to, cc, replyTo, subject, html, attachments }) {
   const apiKey = process.env.RESEND_API_KEY;
   const fromName = process.env.FROM_NAME || 'Construction AI Billing';
-  const fromEmail = process.env.FROM_EMAIL || 'reminders@constructai.app';
+  const fromEmail = process.env.FROM_EMAIL || 'reminders@varshyl.com';
   if (!apiKey) {
     console.log(`[DEV Reminder] TO: ${to} CC: ${cc||'-'} | ${subject}`);
     return true;

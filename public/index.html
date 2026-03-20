@@ -559,6 +559,11 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
 
   /* Auth card — full width on small screens */
   .auth-card{padding:20px 16px;max-width:100%}
+  /* Auth wrap — top-align on mobile so form isn't buried below fold */
+  .auth-wrap{align-items:flex-start;padding:32px 16px 20px}
+  /* Slightly larger touch targets on mobile */
+  .auth-card input[type="password"],.auth-card input[type="email"],.auth-card input[type="text"]{font-size:16px;padding:10px 12px}
+  .auth-card .btn-primary{font-size:15px;padding:12px}
 }
 
 @media(max-width:480px){
@@ -882,13 +887,13 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
     <div id="reset-form">
       <div class="field"><label>New password</label>
         <div class="pass-wrap">
-          <input type="password" id="reset-pass" placeholder="At least 8 characters" onkeydown="if(event.key==='Enter')doResetPassword()"/>
+          <input type="password" id="reset-pass" placeholder="At least 8 characters" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" onkeydown="if(event.key==='Enter')doResetPassword()"/>
           <button type="button" class="eye-btn" onclick="togglePass('reset-pass',this)" tabindex="-1" aria-label="Show password"></button>
         </div>
       </div>
       <div class="field"><label>Confirm new password</label>
         <div class="pass-wrap">
-          <input type="password" id="reset-pass2" placeholder="Re-enter password" onkeydown="if(event.key==='Enter')doResetPassword()"/>
+          <input type="password" id="reset-pass2" placeholder="Re-enter password" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" onkeydown="if(event.key==='Enter')doResetPassword()"/>
           <button type="button" class="eye-btn" onclick="togglePass('reset-pass2',this)" tabindex="-1" aria-label="Show password"></button>
         </div>
       </div>
@@ -1798,6 +1803,21 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.querySelectorAll('.eye-btn').forEach(b=>b.innerHTML=_eyeShow);
   // If user has a saved session, show "Go to Dashboard" on the landing nav
   updateLandingNav();
+  // Google OAuth fallback — the IIFE above runs synchronously during script execution,
+  // but Chrome extensions (e.g. SES/MetaMask lockdown) can interfere at that moment.
+  // DOMContentLoaded fires after all scripts + extension content scripts settle,
+  // so we re-check the hash here if the IIFE didn't process it (token still null).
+  if(!token){
+    const _h=new URLSearchParams(window.location.hash.slice(1));
+    const _gTok=_h.get('google_token');
+    if(_gTok){
+      window.history.replaceState({},'',window.location.pathname);
+      try{
+        const _pl=JSON.parse(atob(_gTok.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+        setAuth({token:_gTok,user:{id:_pl.id,email:_pl.email,name:_pl.name,email_verified:_pl.email_verified||false}});
+      }catch(e){showAuthErr('Google sign-in failed. Please try again.');}
+    }
+  }
 });
 const fmtR=n=>'$'+Math.round(parseFloat(n||0)).toLocaleString('en-US');
 const pf=n=>parseFloat(n||0).toFixed(1)+'%';
@@ -1939,8 +1959,8 @@ async function doForgotPassword(){
 }
 async function doResetPassword(){
   const token=window._resetToken;
-  const pass=document.getElementById('reset-pass').value;
-  const pass2=document.getElementById('reset-pass2').value;
+  const pass=document.getElementById('reset-pass').value.trim();
+  const pass2=document.getElementById('reset-pass2').value.trim();
   const errEl=document.getElementById('reset-err');
   if(!pass||pass.length<8){errEl.textContent='Password must be at least 8 characters';errEl.classList.remove('hidden');return;}
   if(pass!==pass2){errEl.textContent='Passwords do not match';errEl.classList.remove('hidden');return;}
