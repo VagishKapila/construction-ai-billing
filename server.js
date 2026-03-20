@@ -1550,8 +1550,9 @@ function adminAuth(req, res, next) {
   if (!token) return res.status(401).json({ error: 'No token' });
   try {
     const user = jwt.verify(token, JWT_SECRET);
-    const admins = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase());
-    if (!admins.includes(user.email.toLowerCase()) && admins[0] !== '') {
+    // Filter out blanks so an unset ADMIN_EMAILS env var blocks everyone (not lets everyone in)
+    const admins = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+    if (admins.length === 0 || !admins.includes(user.email.toLowerCase())) {
       return res.status(403).json({ error: 'Admin access required' });
     }
     req.user = user;

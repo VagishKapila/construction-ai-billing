@@ -217,6 +217,10 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
 .ai-chat-send:hover{background:#0C3B6B}
 .ai-chat-attach{background:transparent;border:none;cursor:pointer;font-size:18px;color:var(--text2);transition:color 0.15s;padding:4px}
 .ai-chat-attach:hover{color:#185FA5}
+.ai-chat-mic{background:transparent;border:none;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:17px;display:flex;align-items:center;justify-content:center;transition:all 0.15s;flex-shrink:0;color:var(--text2);padding:0}
+.ai-chat-mic:hover{color:#185FA5;background:rgba(24,95,165,0.08)}
+.ai-chat-mic.recording{background:rgba(239,68,68,0.1);color:#ef4444;animation:mic-ring 1s ease infinite}
+@keyframes mic-ring{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0.35)}50%{box-shadow:0 0 0 5px rgba(239,68,68,0)}}
 .ai-chat-screenshot-preview{margin:4px 12px 0;font-size:11px;color:var(--text2);display:flex;align-items:center;gap:6px}
 /* Revenue tab ──────────────────────────────────────────────────────── */
 .rev-kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}
@@ -3782,6 +3786,53 @@ function clearAIScreenshot() {
   document.getElementById('ai-screenshot-preview').classList.add('hidden');
 }
 
+// ── Aria voice input (Web Speech API) ────────────────────────────────────────
+let _ariaMicActive = false;
+let _ariaRecognition = null;
+function toggleAriaMic() {
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const btn = document.getElementById('ai-mic-btn');
+  const input = document.getElementById('ai-chat-input');
+  if (!SpeechRec) {
+    btn.title = 'Voice input not supported in this browser';
+    btn.style.opacity = '0.4';
+    return;
+  }
+  if (_ariaMicActive) {
+    if (_ariaRecognition) _ariaRecognition.stop();
+    return;
+  }
+  _ariaRecognition = new SpeechRec();
+  _ariaRecognition.continuous = false;
+  _ariaRecognition.interimResults = true;
+  _ariaRecognition.lang = 'en-US';
+  _ariaRecognition.onstart = () => {
+    _ariaMicActive = true;
+    btn.classList.add('recording');
+    btn.innerHTML = '⏹';
+    input.placeholder = 'Listening…';
+    input.value = '';
+  };
+  _ariaRecognition.onresult = (e) => {
+    input.value = Array.from(e.results).map(r => r[0].transcript).join('');
+  };
+  _ariaRecognition.onend = () => {
+    _ariaMicActive = false;
+    btn.classList.remove('recording');
+    btn.innerHTML = '🎤';
+    input.placeholder = 'Ask anything or report an issue…';
+    if (input.value.trim()) sendAIMsg();
+  };
+  _ariaRecognition.onerror = (e) => {
+    _ariaMicActive = false;
+    btn.classList.remove('recording');
+    btn.innerHTML = '🎤';
+    input.placeholder = 'Ask anything or report an issue…';
+    if (e.error !== 'no-speech') console.warn('[Aria voice]', e.error);
+  };
+  _ariaRecognition.start();
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // REVENUE & HISTORY TAB
 // ═══════════════════════════════════════════════════════════════════
@@ -4180,6 +4231,7 @@ async function removeTeamMember(id) {
       <label class="ai-chat-attach" title="Attach screenshot">
         📎<input type="file" id="ai-screenshot-input" accept="image/*" style="display:none" onchange="onAIScreenshot(this)"/>
       </label>
+      <button class="ai-chat-mic" id="ai-mic-btn" onclick="toggleAriaMic()" title="Voice input" aria-label="Voice input">🎤</button>
       <input class="ai-chat-input" id="ai-chat-input" placeholder="Ask anything or report an issue…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAIMsg()}" maxlength="600"/>
       <button class="ai-chat-send" onclick="sendAIMsg()" title="Send">➤</button>
     </div>
