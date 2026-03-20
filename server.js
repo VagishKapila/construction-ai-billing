@@ -1400,8 +1400,8 @@ app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
         headers:    parsed.headers,
         detected:   { item: parsed.iItem, desc: parsed.iDesc, amt: parsed.iAmt },
         all_rows:   parsed.allRows,
-        rows:       parsed.parentRows,
-        row_count:  parsed.parentRows.length,
+        rows:       parsed.allRows,
+        row_count:  parsed.allRows.length,
         total_rows: parsed.allRows.length,
         filename:   req.file.originalname,
         sheet_used: parsed.sheetName

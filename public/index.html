@@ -1804,6 +1804,19 @@ function togglePass(id,btn){
   btn.setAttribute('aria-label',showing?'Hide password':'Show password');
 }
 // Initialise eye icons once DOM is ready
+// Reset login panel to clean state if browser restores page from bfcache
+// (back-forward cache can restore the DOM with forgot-form visible)
+window.addEventListener('pageshow', e => {
+  if (e.persisted) {
+    const forgotForm = document.getElementById('forgot-form');
+    const loginForm  = document.getElementById('login-form');
+    if (forgotForm && !forgotForm.classList.contains('hidden')) {
+      forgotForm.classList.add('hidden');
+      if (loginForm) loginForm.classList.remove('hidden');
+    }
+  }
+});
+
 document.addEventListener('DOMContentLoaded',()=>{
   document.querySelectorAll('.eye-btn').forEach(b=>b.innerHTML=_eyeShow);
   // If user has a saved session, show "Go to Dashboard" on the landing nav
@@ -2022,9 +2035,10 @@ function signInWithGoogle(){
     }catch(e){showAuthErr('Google sign-in failed. Please try again.');}
   }
   if(verified==='1'){
-    // Show auth screen with success message
+    // Show auth screen with success message — always reset to login panel first
     document.getElementById('landing-screen').classList.add('hidden');
     document.getElementById('auth-screen').classList.remove('hidden');
+    authTab('login');
     const el=document.getElementById('auth-err');
     el.style.background='var(--green-light)';el.style.color='var(--green)';
     el.textContent='✓ Email verified! You can now sign in.';
@@ -2033,6 +2047,7 @@ function signInWithGoogle(){
   if(authErr){
     document.getElementById('landing-screen').classList.add('hidden');
     document.getElementById('auth-screen').classList.remove('hidden');
+    authTab('login');
     const msgs={access_denied:'Google sign-in was cancelled.',no_email:'Google did not return an email address.',server_error:'Authentication error. Please try again.'};
     showAuthErr(msgs[authErr]||'Authentication failed: '+authErr);
   }
