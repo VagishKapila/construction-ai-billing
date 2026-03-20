@@ -686,7 +686,7 @@ app.post('/api/projects/:id/payapps', auth, async (req,res) => {
 
 app.get('/api/payapps/:id', auth, async (req,res) => {
   const pa = await pool.query(
-    'SELECT pa.*,p.name as project_name,p.owner,p.contractor,p.architect,p.contact,p.contact_name,p.contact_phone,p.contact_email,p.original_contract,p.number as project_number,p.building_area,p.id as project_id,p.contract_date FROM pay_apps pa JOIN projects p ON p.id=pa.project_id WHERE pa.id=$1 AND p.user_id=$2 AND pa.deleted_at IS NULL',
+    'SELECT pa.*,p.name as project_name,p.owner,p.contractor,p.architect,p.contact,p.contact_name,p.contact_phone,p.contact_email,p.original_contract,p.number as project_number,p.building_area,p.id as project_id,p.contract_date,p.payment_terms FROM pay_apps pa JOIN projects p ON p.id=pa.project_id WHERE pa.id=$1 AND p.user_id=$2 AND pa.deleted_at IS NULL',
     [req.params.id, req.user.id]
   );
   if(!pa.rows[0]) return res.status(404).json({error:'Not found'});
@@ -1175,9 +1175,12 @@ function parseSOVFile(filePath) {
   const isHeaderLabel = (desc) =>
     /^(section|description|item|scope|no\.|#|trade|work\s*item|csi)/i.test(desc);
 
+  // ── Step 3: First pass — collect ALL candidate rows (including both section headers
+  //   and their sub-items) so that section-header detection can see the full picture.
+  //   Amounts of 0 / "By Others" are still excluded.  Dedup happens after filtering.
+
   const startRow = headerRowIdx >= 0 ? headerRowIdx + 1 : 0;
-  const allRows = [], parentRows = [];
-  const seen = new Set();
+  const rawRows  = [];                   // ordered, includes section headers
 
   for (let ri = startRow; ri < json.length; ri++) {
     const row    = json[ri];
@@ -1188,20 +1191,58 @@ function parseSOVFile(filePath) {
 
     if (!desc || desc.length < 2) continue;
     if (isHeaderLabel(desc)) continue;
-    if (isSummary(desc, itemId)) continue;  // skip summary rows — continue (Fee may follow)
+    if (isSummary(desc, itemId)) continue;  // skip Grand Total rows; continue so Fee after subtotal is kept
     if (isNaN(amt) || amt <= 0) continue;   // skip "By Others", blank amounts
 
-    const key = desc.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    // isParent: ends-in-000 codes, short alpha codes (GC/GL), blank code, or 4-6 digit proposal codes
-    const isParent = /000$/.test(itemId) || /^[A-Z]{1,5}$/.test(itemId)
-                   || itemId === '' || /^\d{4,6}$/.test(itemId);
-    const rowObj = { item_id: itemId, description: desc, scheduled_value: amt, is_parent: isParent };
-    allRows.push(rowObj);
-    if (isParent) parentRows.push(rowObj);
+    // isParent: ends-in-000 CSI division codes, short alpha codes (GC/GL), or blank code
+    const isParent = /000$/.test(itemId) || /^[A-Z]{1,5}$/.test(itemId) || itemId === '';
+    rawRows.push({ item_id: itemId, description: desc, scheduled_value: amt, is_parent: isParent });
   }
+
+  // ── Post-process 1: detect & remove CSI section-header rows ──────────────────
+  // A row is a section header if:
+  //   (a) its code ends in "000" (e.g. 01000, 02000, 153000), AND
+  //   (b) the rows that immediately follow it — up to (but not including) the
+  //       next "000"-ending row — sum to approximately its own amount (±5%).
+  // This handles files that list both a division total and its individual line items.
+  // Files where "000" codes are standalone items (no matching sub-item sum) are unaffected.
+  const sectionHeaderIndices = new Set();
+  for (let i = 0; i < rawRows.length; i++) {
+    const code = rawRows[i].item_id;
+    if (!/^\d{4,6}$/.test(code) || !/000$/.test(code)) continue;  // only "000" numeric codes
+
+    // Sum rows between this "000" row and the next "000"-ending row
+    let subSum = 0;
+    let hasSubRows = false;
+    for (let j = i + 1; j < rawRows.length; j++) {
+      const nextCode = rawRows[j].item_id;
+      if (/^\d{4,6}$/.test(nextCode) && /000$/.test(nextCode)) break;  // stop at next "000" row
+      subSum += rawRows[j].scheduled_value;
+      hasSubRows = true;
+    }
+
+    // If sub-items sum to ≈ section header amount (within 5%), this is a section header
+    const headerAmt = rawRows[i].scheduled_value;
+    if (hasSubRows && headerAmt > 0 && Math.abs(subSum - headerAmt) / headerAmt <= 0.05) {
+      sectionHeaderIndices.add(i);
+    }
+  }
+
+  const filteredRows = rawRows.filter((_, i) => !sectionHeaderIndices.has(i));
+
+  // ── Post-process 2: dedup by (description + amount) on the filtered rows ─────
+  // Two rows with the same description AND same amount are true duplicates (drop the
+  // second). Two rows with the same description but different amounts are separate
+  // scopes (e.g. two "Demo" items at different prices) — keep both.
+  const seen = new Set();
+  const allRows = filteredRows.filter(row => {
+    const key = row.description.toLowerCase() + '|' + row.scheduled_value;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const parentRows = allRows.filter(r => r.is_parent);
 
   return { headers: ['Item #','Description','Scheduled Value'], sheetName, allRows, parentRows, iItem, iDesc, iAmt };
 }
@@ -1401,19 +1442,22 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
   );
   const cos = await pool.query('SELECT * FROM change_orders WHERE pay_app_id=$1',[req.params.id]);
 
-  let tComp=0,tRet=0,tThis=0,tPrev=0;
+  let tComp=0,tRet=0,tThis=0,tPrev=0,tPrevCert=0;
   lines.rows.forEach(r=>{
     const sv=parseFloat(r.scheduled_value);
+    const retPct=parseFloat(r.retainage_pct)/100;
     const prev=sv*parseFloat(r.prev_pct)/100;
     const thisPer=sv*parseFloat(r.this_pct)/100;
     const comp=prev+thisPer+parseFloat(r.stored_materials||0);
     tPrev+=prev; tThis+=thisPer; tComp+=comp;
-    tRet+=comp*parseFloat(r.retainage_pct)/100;
+    tRet+=comp*retPct;
+    // G = F from previous apps = prev work less retainage held on prev work
+    tPrevCert+=prev*(1-retPct);
   });
   const tCO=cos.rows.reduce((s,c)=>s+parseFloat(c.amount||0),0);
   const contract=parseFloat(pa.original_contract)+tCO;
   const earned=tComp-tRet;
-  const due=Math.max(0,earned-tPrev);
+  const due=Math.max(0,earned-tPrevCert);
 
   const doc=new PDFDocument({size:'LETTER',margin:45});
   res.setHeader('Content-Type','application/pdf');
@@ -1449,7 +1493,7 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
     ['D.','Total Completed and Stored to Date',fmt(tComp)],
     ['E.','Retainage to Date',fmt(tRet)],
     ['F.','Total Earned Less Retainage (D-E)',fmt(earned)],
-    ['G.','Less Previous Certificates for Payment',fmt(tPrev)],
+    ['G.','Less Previous Certificates for Payment',fmt(tPrevCert)],
     ['H.','CURRENT PAYMENT DUE',fmt(due)],
     ['I.','Balance to Finish, Plus Retainage',fmt(contract-tComp+tRet)]
   ].forEach(([ltr,lbl,val])=>{

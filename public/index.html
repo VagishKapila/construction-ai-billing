@@ -2635,19 +2635,23 @@ function renderPAHeader(pa){
     </div>`;
 }
 function calcTotals(pa){
-  let tComp=0,tRet=0,tThis=0,tPrev=0;
+  let tComp=0,tRet=0,tThis=0,tPrev=0,tPrevCert=0;
   (pa.lines||[]).forEach(r=>{
     const sv=parseFloat(r.scheduled_value);
+    const retPct=parseFloat(r.retainage_pct)/100;
     const prev=sv*parseFloat(r.prev_pct)/100;
     const thisPer=sv*parseFloat(r.this_pct)/100;
     const comp=prev+thisPer+parseFloat(r.stored_materials||0);
-    tPrev+=prev;tThis+=thisPer;tComp+=comp;tRet+=comp*parseFloat(r.retainage_pct)/100;
+    tPrev+=prev; tThis+=thisPer; tComp+=comp;
+    tRet+=comp*retPct;
+    // G = F from previous apps = prev work less retainage held on prev work
+    tPrevCert+=prev*(1-retPct);
   });
   const tCO=(pa.change_orders||[]).reduce((s,c)=>s+parseFloat(c.amount||0),0);
   const contract=parseFloat(pa.original_contract)+tCO;
   const earned=tComp-tRet;
-  const due=Math.max(0,earned-tPrev);
-  return{tComp,tRet,tThis,tPrev,tCO,contract,earned,due};
+  const due=Math.max(0,earned-tPrevCert);
+  return{tComp,tRet,tThis,tPrev,tPrevCert,tCO,contract,earned,due};
 }
 async function syncContractToSOV(){
   try{
@@ -2689,7 +2693,7 @@ function renderG702(pa){
     <div class="ir"><span style="color:var(--text2)">D. Total completed to date</span><span>${fmt(t.tComp)}</span></div>
     <div class="ir"><span style="color:var(--text2)">E. Retainage to date</span><span>${fmt(t.tRet)}</span></div>
     <div class="ir"><span style="color:var(--text2)">F. Earned less retainage</span><span>${fmt(t.earned)}</span></div>
-    <div class="ir"><span style="color:var(--text2)">G. Less previous certificates</span><span>${fmt(t.tPrev)}</span></div>
+    <div class="ir"><span style="color:var(--text2)">G. Less previous certificates</span><span>${fmt(t.tPrevCert)}</span></div>
     <div class="ir tot"><span style="color:var(--text2)">H. Current payment due</span><span style="color:var(--blue);font-size:15px">${fmt(t.due)}</span></div>
     <div class="ir"><span style="color:var(--text2)">I. Balance to finish + retainage</span><span>${fmt(t.contract-t.tComp+t.tRet)}</span></div>`;
 }
@@ -2710,7 +2714,7 @@ function renderAIAPreview(pa){
   setText('prev-D',fmt(t.tComp));
   setText('prev-E',fmt(t.tRet));
   setText('prev-F',fmt(t.earned));
-  setText('prev-G',fmt(t.tPrev));
+  setText('prev-G',fmt(t.tPrevCert));
   setText('prev-H',fmt(t.due));
   setText('prev-I',fmt(t.contract-t.tComp+t.tRet));
   setText('prev-arch-cert',pa.architect_certified?fmt(pa.architect_certified):'Pending');
@@ -2726,7 +2730,7 @@ function renderAIAPreview(pa){
   _setChk('dist-box-architect', pa.dist_architect !== false);
   _setChk('dist-box-contractor', pa.dist_contractor === true);
   const ptEl=document.getElementById('prev-payment-terms');
-  if(ptEl) ptEl.innerHTML='<strong>Payment Terms:</strong> Due on receipt';
+  if(ptEl) ptEl.innerHTML='<strong>Payment Terms:</strong> '+(pa.payment_terms||companySettings.default_payment_terms||'Due on receipt');
   if(logoDataURL){
     const lb=document.getElementById('preview-logo-box');
     if(lb) lb.innerHTML=`<img src="${logoDataURL}"/>`;
