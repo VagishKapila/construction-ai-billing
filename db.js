@@ -211,6 +211,10 @@ async function initDB() {
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_email VARCHAR(300);
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_phone VARCHAR(50);
 
+    -- Contract document upload (optional signed contract attached to project)
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS contract_filename VARCHAR(300);
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS contract_original_name VARCHAR(300);
+
     CREATE TABLE IF NOT EXISTS reminder_log (
       id SERIAL PRIMARY KEY,
       user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,

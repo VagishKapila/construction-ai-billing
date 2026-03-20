@@ -625,8 +625,25 @@ app.post('/api/projects/:id/sov', auth, async (req,res) => {
       [req.params.id,line.item_id,line.description,line.scheduled_value,i]
     );
   }
+  // Auto-sync original_contract with the SOV total so G702 always matches G703
+  const sovTotal = lines.reduce((s,l)=>s+parseFloat(l.scheduled_value||0),0);
+  await pool.query('UPDATE projects SET original_contract=$1 WHERE id=$2 AND user_id=$3',[sovTotal,req.params.id,req.user.id]);
   const r = await pool.query('SELECT * FROM sov_lines WHERE project_id=$1 ORDER BY sort_order',[req.params.id]);
   res.json(r.rows);
+});
+
+// Sync original_contract to match SOV total (fixes existing projects with wrong contract sum)
+app.post('/api/projects/:id/sync-contract', auth, async (req,res) => {
+  const sov = await pool.query('SELECT scheduled_value FROM sov_lines WHERE project_id=$1',[req.params.id]);
+  if(!sov.rows.length) return res.status(400).json({error:'No SOV lines found for this project'});
+  const total = sov.rows.reduce((s,r)=>s+parseFloat(r.scheduled_value||0),0);
+  const updated = await pool.query(
+    'UPDATE projects SET original_contract=$1 WHERE id=$2 AND user_id=$3 RETURNING *',
+    [total,req.params.id,req.user.id]
+  );
+  if(!updated.rows[0]) return res.status(404).json({error:'Project not found'});
+  await logEvent(req.user.id,'contract_synced',{project_id:parseInt(req.params.id),new_total:total});
+  res.json({ok:true,original_contract:total,project:updated.rows[0]});
 });
 
 // PAY APPS
@@ -996,8 +1013,12 @@ function parseSOVFile(filePath) {
   const json = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
   const nCols = json.reduce((m, r) => Math.max(m, r.length), 0);
 
-  // ── Step 1: Scan first 30 rows for a header row with "Total" / "Description" ─
+  // ── Step 1: Scan first 30 rows for a header row with BOTH "Total" + "Description"
+  // Require BOTH columns to be found before committing — a row with only "TOTAL COST"
+  // is a section title, not a real header. Keep scanning until we find a row that has
+  // both an amount header AND a description header in the same row.
   let headerRowIdx = -1, iAmt = -1, iDesc = -1, iItem = -1;
+  let bestPartialRow = -1, bestPartialAmt = -1, bestPartialDesc = -1, bestPartialItem = -1;
 
   for (let ri = 0; ri < Math.min(json.length, 30); ri++) {
     const row = json[ri];
@@ -1005,51 +1026,88 @@ function parseSOVFile(filePath) {
     for (let ci = 0; ci < row.length; ci++) {
       const h = String(row[ci]||'').trim();
       if (!h) continue;
-      // "Total" wins highest priority — it's the clearest signal
       if (/^(total|scheduled\s*value|amount|cost|value|price|bid\s*total|contract\s*value)/i.test(h) && fAmt < 0) fAmt = ci;
       if (/^(description|scope|work|item\s*desc|name|trade|section\s*desc)/i.test(h) && fDesc < 0) fDesc = ci;
       if (/^(item\s*#?|sect(ion)?|no\.?|code|csi)/i.test(h) && fItem < 0) fItem = ci;
     }
-    if (fAmt >= 0 || fDesc >= 0) {
-      headerRowIdx = ri;
-      if (fAmt  >= 0) iAmt  = fAmt;
-      if (fDesc >= 0) iDesc = fDesc;
+    // Prefer a row that has BOTH amount + description headers
+    if (fAmt >= 0 && fDesc >= 0) {
+      headerRowIdx = ri; iAmt = fAmt; iDesc = fDesc;
       if (fItem >= 0) iItem = fItem;
       break;
     }
+    // Track best partial match (only amount OR only description) as a fallback
+    if ((fAmt >= 0 || fDesc >= 0) && bestPartialRow < 0) {
+      bestPartialRow = ri; bestPartialAmt = fAmt; bestPartialDesc = fDesc; bestPartialItem = fItem;
+    }
+  }
+  // Fall back to partial match if no row had both
+  if (headerRowIdx < 0 && bestPartialRow >= 0) {
+    headerRowIdx = bestPartialRow;
+    if (bestPartialAmt  >= 0) iAmt  = bestPartialAmt;
+    if (bestPartialDesc >= 0) iDesc = bestPartialDesc;
+    if (bestPartialItem >= 0) iItem = bestPartialItem;
   }
 
-  // ── Step 2: Scoring fallback for any column still unresolved ────────────────
+  // ── Step 2a: Desc scoring first (needed to anchor cost code detection) ────────
   const descScore = new Array(nCols).fill(0);
   const amtScore  = new Array(nCols).fill(0);
-
   for (const row of json) {
     for (let ci = 0; ci < row.length; ci++) {
       const cell = String(row[ci]||'').trim();
       if (!cell || cell.length < 2) continue;
       const n = parseFloat(cell.replace(/[$,\s]/g,''));
-      if (!isNaN(n) && n > 50) {
-        amtScore[ci]++;
-      } else if (cell.length > 5 && (isNaN(n) || /[a-zA-Z]/.test(cell))) {
-        descScore[ci]++;
-      }
+      if (cell.length > 5 && (isNaN(n) || /[a-zA-Z]/.test(cell))) descScore[ci]++;
+      else if (!isNaN(n) && n > 50) amtScore[ci]++;
     }
   }
-
   if (iDesc < 0) {
     const maxD = Math.max(...descScore);
     iDesc = maxD > 0 ? descScore.indexOf(maxD) : 1;
   }
+
+  // ── Step 2b: Pre-detect cost code columns — only LEFT of description column ──
+  // Cost codes (CSI 4-6 digit ints like 01000, 23000) are ALWAYS to the left of
+  // descriptions. Amounts are ALWAYS to the right. This prevents 4-digit dollar
+  // amounts (e.g. $6,003) from being misidentified as cost codes.
+  const costCodeCols = new Set();
+  const descAnchor = iDesc >= 0 ? iDesc : Math.floor(nCols / 2);
+  for (let ci = 0; ci < descAnchor; ci++) {
+    let total = 0, codeCount = 0;
+    for (const row of json) {
+      const v = String(row[ci]||'').trim();
+      if (!v) continue;
+      total++;
+      if (/^\d{4,6}$/.test(v)) codeCount++;
+    }
+    if (total > 3 && codeCount / total >= 0.6) costCodeCols.add(ci);
+  }
+
+  // ── Step 2c: Amount scoring — exclude known cost code columns ────────────────
   if (iAmt < 0) {
-    // Rightmost highest-count column wins — totals are almost always rightmost
+    // Re-score amounts excluding cost code cols; rightmost highest-count col wins
+    const amtScore2 = new Array(nCols).fill(0);
+    for (const row of json) {
+      for (let ci = 0; ci < row.length; ci++) {
+        if (ci === iDesc || costCodeCols.has(ci)) continue;
+        const cell = String(row[ci]||'').trim();
+        if (!cell || cell.length < 2) continue;
+        const n = parseFloat(cell.replace(/[$,\s]/g,''));
+        if (!isNaN(n) && n > 50) amtScore2[ci]++;
+      }
+    }
     let best = 0;
     for (let ci = 0; ci < nCols; ci++) {
-      if (ci === iDesc) continue;
-      if (amtScore[ci] >= best) { best = amtScore[ci]; iAmt = ci; }
+      if (ci === iDesc || costCodeCols.has(ci)) continue;
+      if (amtScore2[ci] >= best) { best = amtScore2[ci]; iAmt = ci; }
     }
   }
   if (iItem < 0) {
-    iItem = iDesc > 0 ? iDesc - 1 : 0;
+    // Prefer a detected cost code column; fall back to column before description
+    for (const ci of costCodeCols) {
+      if (ci !== iAmt && ci !== iDesc) { iItem = ci; break; }
+    }
+    if (iItem < 0) { iItem = iDesc > 0 ? iDesc - 1 : 0; }
     if (iItem === iAmt) iItem = 0;
   }
 
@@ -1269,6 +1327,8 @@ app.get('/api/projects/:id/sov/uploads', auth, async (req, res) => {
   const r = await pool.query('SELECT * FROM sov_uploads WHERE project_id=$1 ORDER BY uploaded_at DESC',[req.params.id]);
   res.json(r.rows);
 });
+
+// Contract routes handled below in Phase 1 section (lines ~2063+)
 
 // PDF
 app.get('/api/payapps/:id/pdf', async (req,res) => {

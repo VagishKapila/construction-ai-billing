@@ -1576,6 +1576,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               <div class="field"><label>Architect name</label><input type="text" id="arch-cert-name" placeholder="Architect of record" onchange="saveArchCert()"/></div>
             </div>
           </div>
+          <div id="g702-contract-warn"></div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
             <div class="ib" id="g702-proj-info"></div>
             <div class="ib" id="g702-summary"></div>
@@ -2623,8 +2624,30 @@ function calcTotals(pa){
   const due=Math.max(0,earned-tPrev);
   return{tComp,tRet,tThis,tPrev,tCO,contract,earned,due};
 }
+async function syncContractToSOV(){
+  try{
+    const r=await api('POST','/projects/'+currentPAData.project_id+'/sync-contract',{});
+    currentPAData.original_contract=r.original_contract;
+    renderG702(currentPAData);
+    renderAIAPreview(currentPAData);
+  }catch(e){alert('Sync failed: '+e.message);}
+}
 function renderG702(pa){
   const t=calcTotals(pa);
+  // Detect mismatch between stored original_contract and actual SOV sum
+  const warnEl=document.getElementById('g702-contract-warn');
+  if(warnEl){
+    const sovSum=(pa.lines||[]).reduce((s,r)=>s+parseFloat(r.scheduled_value||0),0);
+    const origContract=parseFloat(pa.original_contract||0);
+    if(Math.abs(sovSum-origContract)>1 && sovSum>0){
+      const fmtN=n=>'$'+Math.round(n).toLocaleString('en-US');
+      warnEl.innerHTML=`<div style="background:#fff8e1;border:1px solid #f59e0b;border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div><span style="font-weight:600;color:#92400e">⚠️ Contract sum mismatch</span>
+        <span style="font-size:12px;color:#78350f;margin-left:8px">Saved contract: <b>${fmtN(origContract)}</b> — SOV total: <b>${fmtN(sovSum)}</b></span></div>
+        <button class="btn btn-sm" style="background:#f59e0b;color:#fff;border:none;white-space:nowrap" onclick="syncContractToSOV()">Fix: use SOV total</button>
+      </div>`;
+    }else{warnEl.innerHTML='';}
+  }
   document.getElementById('g702-proj-info').innerHTML=`
     <div style="font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Project</div>
     <div class="ir"><span style="color:var(--text2)">Project</span><span>${pa.project_name}</span></div>
