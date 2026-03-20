@@ -2346,7 +2346,17 @@ async function loadProject(id){
   try{
     const[payapps,projects]=await Promise.all([api('GET','/projects/'+id+'/payapps'),api('GET','/projects')]);
     const p=projects.find(x=>x.id===id)||{};
-    document.getElementById('proj-header').innerHTML=`<div class="ptitle">${p.name||'Project'}</div><div class="psub">${p.building_area?p.building_area+' SF · ':''}${p.contractor||''} · Contract: ${fmt(p.original_contract)}</div>`;
+    document.getElementById('proj-header').innerHTML=`
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div>
+          <div class="ptitle" style="margin-bottom:2px">${p.name||'Project'}</div>
+          <div class="psub">${p.building_area?p.building_area+' SF · ':''}${p.contractor||''} · Contract: ${fmt(p.original_contract)}</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;margin-top:4px">
+          <button class="btn btn-sm" onclick="showEditProject(${id})" title="Edit project details">✏️ Edit</button>
+          <button class="btn btn-sm" onclick="deleteProject(${id},'${(p.name||'this project').replace(/'/g,"\\'")}')" style="border-color:var(--red);color:var(--red)" title="Delete project">🗑 Delete</button>
+        </div>
+      </div>`;
     // Only submitted pay apps count as "billed" — drafts are work in progress
     let totComp=0,totRet=0;
     for(const pa of payapps){
@@ -2402,6 +2412,21 @@ async function loadProject(id){
 function projTab(n) {
   document.querySelectorAll('#pg-project .tab').forEach((t,i)=>t.classList.toggle('on',i===n));
   document.querySelectorAll('#pg-project .tp').forEach((t,i)=>t.classList.toggle('on',i===n));
+}
+
+// ── Delete Project ──────────────────────────────────────────────────────────
+async function deleteProject(id, name){
+  const msg = `Delete project "${name}"?\n\nThis will permanently remove the project, all pay applications, SOV lines, and lien documents. This cannot be undone.`;
+  if(!confirm(msg)) return;
+  try{
+    await api('DELETE','/projects/'+id);
+    // Remove from sidebar and go back to dashboard
+    currentProjectId=null;
+    currentProjects=currentProjects.filter(p=>p.id!==id);
+    buildSidebarProjects(currentProjects, null);
+    showPage('dashboard');
+    loadDashboard();
+  }catch(e){alert('Could not delete project: '+e.message);}
 }
 
 // ── Delete / Trash ──────────────────────────────────────────────────────────

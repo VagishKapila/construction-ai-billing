@@ -780,6 +780,58 @@ app.put('/api/payapps/:id', auth, async (req,res) => {
         );
       }
     } catch(dueErr) { console.error('[Auto due date]', dueErr.message); }
+
+    // Auto-generate unconditional final waiver lien release (non-blocking)
+    try {
+      // Only create if one doesn't already exist for this pay app
+      const lienCheck = await pool.query(
+        'SELECT id FROM lien_documents WHERE pay_app_id=$1', [req.params.id]
+      );
+      if (!lienCheck.rows[0]) {
+        const projData = await pool.query(
+          `SELECT p.*, cs.company_name, cs.logo_filename, cs.contact_name
+           FROM projects p
+           LEFT JOIN company_settings cs ON cs.user_id = p.user_id
+           WHERE p.id IN (SELECT project_id FROM pay_apps WHERE id=$1)`,
+          [req.params.id]
+        );
+        if (projData.rows[0]) {
+          const proj = projData.rows[0];
+          const paRow = await pool.query('SELECT amount_due, period_end, app_number, period_label FROM pay_apps WHERE id=$1', [req.params.id]);
+          const pa = paRow.rows[0] || {};
+          const lienAmount = parseFloat(pa.amount_due || 0);
+          const through_date = pa.period_end
+            ? new Date(pa.period_end).toISOString().split('T')[0]
+            : new Date().toISOString().split('T')[0];
+          const signatory_name = proj.contact_name || proj.company_name || proj.contractor || 'Contractor';
+          const jurisdiction = proj.jurisdiction || 'california';
+          const pay_app_ref = `Pay App #${pa.app_number}${pa.period_label ? ' — ' + pa.period_label : ''}`;
+
+          const fname = `lien_unconditional_final_${req.params.id}_${Date.now()}.pdf`;
+          const fpath = path.join(__dirname, 'uploads', fname);
+          const signedAt = new Date();
+
+          await generateLienDocPDF({
+            fpath, doc_type: 'unconditional_final_waiver', project: proj,
+            through_date, amount: lienAmount,
+            maker_of_check: proj.owner || '',
+            check_payable_to: proj.company_name || proj.contractor || '',
+            signatory_name, signatory_title: null,
+            signedAt, ip: req.ip || 'auto', jurisdiction, pay_app_ref
+          });
+          await pool.query(
+            `INSERT INTO lien_documents(project_id, pay_app_id, doc_type, filename, jurisdiction,
+               through_date, amount, maker_of_check, check_payable_to,
+               signatory_name, signatory_title, signed_at, signatory_ip)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+            [proj.id, parseInt(req.params.id), 'unconditional_final_waiver', fname, jurisdiction,
+             through_date, lienAmount, proj.owner||null, proj.company_name||proj.contractor||null,
+             signatory_name, null, signedAt, req.ip || 'auto']
+          );
+          await logEvent(req.user.id, 'lien_auto_generated', { pay_app_id: parseInt(req.params.id) });
+        }
+      }
+    } catch(lienErr) { console.error('[Auto lien release]', lienErr.message); }
   }
   res.json(r.rows[0]);
 });
