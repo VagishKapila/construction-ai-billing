@@ -215,6 +215,9 @@ async function initDB() {
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS contract_filename VARCHAR(300);
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS contract_original_name VARCHAR(300);
 
+    -- Per-project payment terms (overrides company default in AIA preview)
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS payment_terms VARCHAR(100);
+
     CREATE TABLE IF NOT EXISTS reminder_log (
       id SERIAL PRIMARY KEY,
       user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
