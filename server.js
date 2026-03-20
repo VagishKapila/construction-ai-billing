@@ -5,6 +5,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const PDFDocument = require('pdfkit');
 const multer = require('multer');
+let puppeteer = null;
+try { puppeteer = require('puppeteer'); } catch(e) { console.warn('[PDF] Puppeteer not available, falling back to PDFKit'); }
 const path = require('path');
 const fs = require('fs');
 const { pool, initDB } = require('./db');
@@ -1423,6 +1425,194 @@ app.get('/api/projects/:id/sov/uploads', auth, async (req, res) => {
 
 // Contract routes handled below in Phase 1 section (lines ~2063+)
 
+// ── Generate a self-contained HTML document that mirrors the on-screen preview ──
+function generatePayAppHTML(pa, lines, cos, totals, logoBase64, sigBase64) {
+  const { tComp, tRet, tPrevCert, tCO, contract, earned, due } = totals;
+  const fmtM = n => '$' + parseFloat(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  // Build G703 rows and accumulate totals
+  let tSV=0, tPrev2=0, tThis2=0, tComp2=0, tRet2=0;
+  const g703Rows = lines.map(r => {
+    const sv   = parseFloat(r.scheduled_value);
+    const prev = sv * parseFloat(r.prev_pct) / 100;
+    const thisPer = sv * parseFloat(r.this_pct) / 100;
+    const comp = prev + thisPer;
+    const pctComp = sv > 0 ? comp / sv * 100 : 0;
+    const ret  = comp * parseFloat(r.retainage_pct) / 100;
+    const bal  = sv - comp;
+    tSV += sv; tPrev2 += prev; tThis2 += thisPer; tComp2 += comp; tRet2 += ret;
+    return `<tr>
+      <td style="border:1px solid #ccc;padding:3px 5px">${r.item_id||''}</td>
+      <td style="border:1px solid #ccc;padding:3px 5px">${r.description||''}</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(sv)}</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(prev)}</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(thisPer)}</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(comp)}</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${pctComp.toFixed(0)}%</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${parseFloat(r.retainage_pct).toFixed(0)}%</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(ret)}</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(bal)}</td>
+    </tr>`;
+  }).join('');
+
+  const today = new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
+  const contractDate = pa.contract_date ? new Date(pa.contract_date).toLocaleDateString() : '—';
+  const paymentTerms = pa.payment_terms || pa.default_payment_terms || 'Due on receipt';
+
+  const logoHtml = logoBase64
+    ? `<img src="${logoBase64}" style="max-width:110px;max-height:60px;object-fit:contain;display:block"/>`
+    : `<div style="width:110px;height:55px;border:1px dashed #bbb;display:flex;align-items:center;justify-content:center;font-size:8px;color:#aaa;border-radius:3px">Logo</div>`;
+
+  const sigHtml = sigBase64
+    ? `<img src="${sigBase64}" style="max-height:40px;max-width:180px;object-fit:contain;display:block;margin-bottom:4px"/>`
+    : '';
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"/><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Times New Roman',Times,serif;font-size:9pt;color:#000;background:#fff}
+/* G702 header */
+.aia-header{display:flex;gap:10px;align-items:flex-start;border-bottom:2.5px solid #000;padding-bottom:10px;margin-bottom:8px}
+.aia-logo-box{flex:0 0 115px}
+.aia-title{flex:1}
+.aia-title h1{font-size:12pt;font-weight:bold;margin-bottom:2px}
+.aia-title h2{font-size:9.5pt;font-weight:normal;color:#444;margin-bottom:5px}
+.aia-title p{font-size:8.5pt;margin:2px 0}
+.aia-appnum{flex:0 0 145px;text-align:right;font-size:8.5pt;line-height:1.5}
+.aia-appnum .big{font-size:15pt;font-weight:bold;display:block}
+/* Payment terms */
+.aia-payment-terms{font-size:8.5pt;background:#f5f9ff;border:1px solid #c8daf5;padding:4px 9px;border-radius:3px;margin-bottom:8px}
+/* Summary grid */
+.aia-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:10px}
+.aia-cell{border:1px solid #ccc;padding:5px 8px;display:flex;justify-content:space-between;align-items:center;font-size:8.5pt}
+.aia-cell-label{flex:1}
+.aia-cell-val{font-weight:bold;white-space:nowrap;margin-left:8px}
+.aia-cell-H{background:#fffbe6}
+.aia-cell-H .aia-cell-val{font-size:13pt;color:#185FA5}
+/* Distribution */
+.aia-distribution{margin-bottom:10px;font-size:8.5pt}
+.aia-dist-title{font-weight:bold;margin-bottom:5px}
+.aia-dist-grid{display:flex;gap:18px}
+.aia-dist-item{display:flex;align-items:center;gap:5px}
+.aia-checkbox{width:13px;height:13px;border:1.5px solid #185FA5;border-radius:2px;flex-shrink:0}
+.aia-checkbox.checked{background:#185FA5}
+/* Signature boxes */
+.aia-sig-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.aia-sig-box{border:1px solid #ccc;padding:10px;border-radius:4px}
+.aia-sig-title{font-weight:bold;font-size:9pt;margin-bottom:6px;border-bottom:1px solid #eee;padding-bottom:4px}
+.aia-sig-line{border-bottom:1px solid #333;margin:8px 0 4px}
+.aia-sig-label{font-size:7.5pt;color:#555}
+.aia-sig-note{font-size:7.5pt;color:#555;margin-bottom:8px;line-height:1.4}
+/* G703 */
+.aia-g703-section{page-break-before:always;padding-top:10px}
+.g703-title{font-size:11pt;font-weight:bold;text-align:center;margin-bottom:3px}
+.g703-sub{font-size:8pt;text-align:center;color:#555;margin-bottom:8px}
+table{width:100%;border-collapse:collapse;font-size:7.5pt}
+th{background:#f0f0f0;border:1px solid #999;padding:4px 5px;font-size:7.5pt}
+td{border:1px solid #ddd;padding:2px 5px}
+.tfoot-row td{font-weight:bold;background:#f0f0f0;border:1px solid #ccc}
+/* Branding */
+.print-branding{text-align:center;font-size:8pt;color:#aaa;margin-top:18px;padding-top:8px;border-top:0.5px solid #ddd}
+</style></head>
+<body>
+<!-- G702 PAGE -->
+<div class="aia-header">
+  <div class="aia-logo-box">${logoHtml}</div>
+  <div class="aia-title">
+    <h1>Application and Certificate for Payment</h1>
+    <h2>Document G702</h2>
+    <p>TO OWNER: <strong>${pa.owner||'—'}</strong> &nbsp;&nbsp; PROJECT: <strong>${pa.pname||'—'}</strong></p>
+    <p>FROM CONTRACTOR: <strong>${pa.contractor||'—'}</strong> &nbsp;&nbsp; ARCHITECT: <strong>${pa.architect||'—'}</strong></p>
+  </div>
+  <div class="aia-appnum">
+    <span class="big">#${pa.app_number}</span>
+    <div>Period: ${pa.period_label||'—'}</div>
+    <div>Contract date: ${contractDate}</div>
+    <div>Project No: ${pa.pnum||'—'}</div>
+  </div>
+</div>
+
+<div class="aia-payment-terms"><strong>Payment Terms:</strong> ${paymentTerms}</div>
+
+<div class="aia-grid">
+  <div class="aia-cell"><span class="aia-cell-label">A. Original Contract Sum</span><span class="aia-cell-val">${fmtM(pa.original_contract)}</span></div>
+  <div class="aia-cell"><span class="aia-cell-label">F. Total Earned Less Retainage (D-E)</span><span class="aia-cell-val">${fmtM(earned)}</span></div>
+  <div class="aia-cell"><span class="aia-cell-label">B. Net Change by Change Orders</span><span class="aia-cell-val">${fmtM(tCO)}</span></div>
+  <div class="aia-cell"><span class="aia-cell-label">G. Less Previous Certificates for Payment</span><span class="aia-cell-val">${fmtM(tPrevCert)}</span></div>
+  <div class="aia-cell"><span class="aia-cell-label">C. Contract Sum to Date (A+B)</span><span class="aia-cell-val">${fmtM(contract)}</span></div>
+  <div class="aia-cell aia-cell-H"><span class="aia-cell-label">H. CURRENT PAYMENT DUE</span><span class="aia-cell-val">${fmtM(due)}</span></div>
+  <div class="aia-cell"><span class="aia-cell-label">D. Total Completed &amp; Stored to Date</span><span class="aia-cell-val">${fmtM(tComp)}</span></div>
+  <div class="aia-cell"><span class="aia-cell-label">I. Balance to Finish, Plus Retainage</span><span class="aia-cell-val">${fmtM(contract-tComp+tRet)}</span></div>
+  <div class="aia-cell"><span class="aia-cell-label">E. Retainage to Date</span><span class="aia-cell-val">${fmtM(tRet)}</span></div>
+  <div class="aia-cell"></div>
+</div>
+
+<div class="aia-distribution">
+  <div class="aia-dist-title">Distribution to:</div>
+  <div class="aia-dist-grid">
+    <div class="aia-dist-item"><div class="aia-checkbox checked"></div><span>Owner</span></div>
+    <div class="aia-dist-item"><div class="aia-checkbox checked"></div><span>Architect</span></div>
+    <div class="aia-dist-item"><div class="aia-checkbox"></div><span>Contractor file</span></div>
+  </div>
+</div>
+
+<div class="aia-sig-grid">
+  <div class="aia-sig-box">
+    <div class="aia-sig-title">Contractor's Signed Certification</div>
+    <p class="aia-sig-note">The undersigned Contractor certifies that to the best of the Contractor's knowledge, information and belief the Work covered by this Application for Payment has been completed in accordance with the Contract Documents.</p>
+    ${sigHtml}
+    <div class="aia-sig-line"></div>
+    <div class="aia-sig-label">Authorized Signature &nbsp;&nbsp;&nbsp; Date: ${today}</div>
+  </div>
+  <div class="aia-sig-box">
+    <div class="aia-sig-title">Architect's Certificate for Payment</div>
+    <p class="aia-sig-note">In accordance with the Contract Documents, the Architect certifies to the Owner that the Work has progressed to the point indicated and the quality of the Work is in accordance with the Contract Documents.</p>
+    <div style="font-size:8pt;margin-bottom:4px">Amount Certified: <strong>${pa.architect_certified ? fmtM(pa.architect_certified) : 'Pending'}</strong></div>
+    <div class="aia-sig-line"></div>
+    <div class="aia-sig-label">Architect Signature &nbsp;&nbsp;&nbsp; Date: ${pa.architect_date ? new Date(pa.architect_date).toLocaleDateString() : ''}</div>
+  </div>
+</div>
+
+<!-- G703 PAGE (page break before) -->
+<div class="aia-g703-section">
+  <div class="g703-title">Continuation Sheet — Document G703</div>
+  <div class="g703-sub">Application #${pa.app_number} &nbsp;—&nbsp; ${pa.period_label||''} &nbsp;—&nbsp; ${pa.pname||''}</div>
+  <table>
+    <thead>
+      <tr>
+        <th style="text-align:left;width:52px">Item</th>
+        <th style="text-align:left">Description of Work</th>
+        <th style="text-align:right;width:78px">Scheduled Value</th>
+        <th style="text-align:right;width:75px">Work Prev. Billed</th>
+        <th style="text-align:right;width:72px">Work This Period</th>
+        <th style="text-align:right;width:72px">Total Completed</th>
+        <th style="text-align:right;width:44px">% Comp.</th>
+        <th style="text-align:right;width:40px">Ret.%</th>
+        <th style="text-align:right;width:70px">Retainage $</th>
+        <th style="text-align:right;width:72px">Balance to Finish</th>
+      </tr>
+    </thead>
+    <tbody>${g703Rows}</tbody>
+    <tfoot>
+      <tr class="tfoot-row">
+        <td></td>
+        <td>GRAND TOTAL</td>
+        <td style="text-align:right">${fmtM(tSV)}</td>
+        <td style="text-align:right">${fmtM(tPrev2)}</td>
+        <td style="text-align:right">${fmtM(tThis2)}</td>
+        <td style="text-align:right">${fmtM(tComp2)}</td>
+        <td style="text-align:right">${tSV>0?(tComp2/tSV*100).toFixed(0)+'%':'0%'}</td>
+        <td></td>
+        <td style="text-align:right">${fmtM(tRet2)}</td>
+        <td style="text-align:right">${fmtM(tSV-tComp2)}</td>
+      </tr>
+    </tfoot>
+  </table>
+  <div class="print-branding">Generated by <strong>Construction AI Billing</strong> · constructinv.varshyl.com</div>
+</div>
+</body></html>`;
+}
+
 // PDF
 app.get('/api/payapps/:id/pdf', async (req,res) => {
   const token = req.query.token || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
@@ -1430,7 +1620,13 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
   try { decoded = jwt.verify(token, JWT_SECRET); } catch(e) { return res.status(401).json({error:'Invalid token'}); }
 
   const paRes = await pool.query(
-    'SELECT pa.*,p.name as pname,p.owner,p.contractor,p.architect,p.original_contract,p.number as pnum FROM pay_apps pa JOIN projects p ON p.id=pa.project_id WHERE pa.id=$1 AND p.user_id=$2',
+    `SELECT pa.*,p.name as pname,p.owner,p.contractor,p.architect,p.original_contract,
+            p.number as pnum,p.payment_terms,p.contract_date,
+            cs.logo_filename,cs.signature_filename,cs.default_payment_terms
+     FROM pay_apps pa
+     JOIN projects p ON p.id=pa.project_id
+     LEFT JOIN company_settings cs ON cs.user_id=p.user_id
+     WHERE pa.id=$1 AND p.user_id=$2`,
     [req.params.id, decoded.id]
   );
   const pa = paRes.rows[0];
@@ -1459,9 +1655,60 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
   const earned=tComp-tRet;
   const due=Math.max(0,earned-tPrevCert);
 
+  // ── Load logo and signature as base64 for embedding ──────────────────────
+  let logoBase64 = null;
+  if (pa.logo_filename) {
+    try {
+      const logoPath = path.join(__dirname, 'uploads', pa.logo_filename);
+      if (fs.existsSync(logoPath)) {
+        const ext = path.extname(pa.logo_filename).toLowerCase().slice(1);
+        const mime = ext === 'jpg' ? 'jpeg' : (ext || 'png');
+        logoBase64 = `data:image/${mime};base64,${fs.readFileSync(logoPath).toString('base64')}`;
+      }
+    } catch(e) { /* ignore */ }
+  }
+  let sigBase64 = null;
+  if (pa.signature_filename) {
+    try {
+      const sigPath = path.join(__dirname, 'uploads', pa.signature_filename);
+      if (fs.existsSync(sigPath)) {
+        const ext = path.extname(pa.signature_filename).toLowerCase().slice(1);
+        const mime = ext === 'jpg' ? 'jpeg' : (ext || 'png');
+        sigBase64 = `data:image/${mime};base64,${fs.readFileSync(sigPath).toString('base64')}`;
+      }
+    } catch(e) { /* ignore */ }
+  }
+
+  const totals = { tComp, tRet, tPrevCert, tCO, contract, earned, due };
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="PayApp_${pa.app_number}_${(pa.pname||'').replace(/\s+/g,'_')}.pdf"`);
+
+  // ── Puppeteer: pixel-perfect PDF matching the on-screen preview ──────────
+  if (puppeteer) {
+    let browser;
+    try {
+      const html = generatePayAppHTML(pa, lines.rows, cos.rows, totals, logoBase64, sigBase64);
+      browser = await puppeteer.launch({
+        args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu']
+      });
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: 'networkidle0' });
+      const pdfBuffer = await page.pdf({
+        format: 'Letter',
+        printBackground: true,
+        margin: { top: '0.5in', right: '0.45in', bottom: '0.5in', left: '0.45in' }
+      });
+      res.send(pdfBuffer);
+      return;
+    } catch(puppErr) {
+      console.error('[PDF] Puppeteer error, falling back to PDFKit:', puppErr.message);
+    } finally {
+      if (browser) await browser.close().catch(()=>{});
+    }
+  }
+
+  // ── PDFKit fallback (used if Puppeteer unavailable or errored) ────────────
   const doc=new PDFDocument({size:'LETTER',margin:45});
-  res.setHeader('Content-Type','application/pdf');
-  res.setHeader('Content-Disposition',`attachment; filename="PayApp_${pa.app_number}_${(pa.pname||'').replace(/\s+/g,'_')}.pdf"`);
   doc.pipe(res);
 
   doc.fontSize(15).font('Helvetica-Bold').text('Document G702',{align:'center'});

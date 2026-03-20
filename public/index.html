@@ -1750,7 +1750,6 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
             <button class="btn btn-primary" onclick="downloadPDF()">⬇ Download Pay App PDF</button>
             <button class="btn btn-success" id="btn-download-with-lien" onclick="downloadPDFWithLien()" style="display:none">⬇ Download + Lien Waiver</button>
             <button class="btn" onclick="copyShareLink()">Copy shareable link</button>
-            <span style="font-size:11px;color:var(--text2)">In print dialog: turn off <strong>Headers &amp; footers</strong>, set margins to <strong>None</strong>, then Save as PDF</span>
           </div>
           <div id="pa-lien-status" style="margin-bottom:12px"></div>
 
@@ -2702,7 +2701,8 @@ function downloadPDFWithLien() {
 
 function downloadPDF(){
   ph('pdf_downloaded',{pay_app_id:currentPAId,project_id:currentPAData?.project_id});
-  window.print();
+  const token = getToken();
+  window.open('/api/payapps/'+currentPAId+'/pdf?token='+encodeURIComponent(token),'_blank');
 }
 async function loadPayApp(id,tab=0){
   currentPAId=id;showPage('payapp');paTab(tab);
