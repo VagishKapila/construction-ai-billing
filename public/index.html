@@ -13,9 +13,9 @@
 :root {
   --bg-primary: #0c0c0f;
   --bg-secondary: #141418;
-  --glass-bg: rgba(255,255,255,0.03);
-  --glass-border: rgba(255,255,255,0.06);
-  --glass-bg-hover: rgba(255,255,255,0.06);
+  --glass-bg: rgba(255,255,255,0.04);
+  --glass-border: rgba(255,255,255,0.08);
+  --glass-bg-hover: rgba(255,255,255,0.07);
   --text-primary: #f5f5f0;
   --text-secondary: #a8a8a0;
   --text-muted: #6a6a64;
@@ -61,9 +61,9 @@ body {
 }
 .glass:hover {
   background: var(--glass-bg-hover);
-  border-color: rgba(201,168,76,0.25);
+  border-color: rgba(201,168,76,0.3);
   transform: translateY(-4px);
-  box-shadow: 0 20px 60px rgba(201,168,76,0.06), 0 0 30px rgba(201,168,76,0.03);
+  box-shadow: 0 20px 60px rgba(201,168,76,0.08), 0 0 30px rgba(201,168,76,0.04);
 }
 
 /* ========== NAVIGATION ========== */
@@ -71,11 +71,11 @@ body {
   position: fixed;
   top: 0; left: 0; right: 0;
   z-index: 100;
-  padding: 16px 40px;
+  padding: 14px 40px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(12,12,15,0.6);
+  background: rgba(12,12,15,0.7);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid rgba(255,255,255,0.04);
@@ -93,9 +93,18 @@ body {
   text-decoration: none;
 }
 .nav-logo {
-  width: 38px; height: 38px;
+  width: 42px; height: 42px;
   border-radius: 10px;
   object-fit: contain;
+  background: rgba(255,255,255,0.05);
+  padding: 2px;
+}
+.nav-logo-fallback {
+  width: 42px; height: 42px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--gradient-main);
+  font-size: 20px; font-weight: 800; color: #1a1a1a;
 }
 .nav-title {
   font-size: 18px;
@@ -150,11 +159,11 @@ body {
 }
 .btn-sm { padding: 10px 22px; font-size: 14px; }
 
-/* ========== SECTIONS ========== */
+/* ========== SECTIONS — TIGHT SPACING ========== */
 .section {
   position: relative;
   z-index: 2;
-  padding: 120px 40px;
+  padding: 64px 40px;
   max-width: 1200px;
   margin: 0 auto;
 }
@@ -167,7 +176,7 @@ body {
   text-transform: uppercase;
   letter-spacing: 2px;
   color: var(--accent-gold);
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 .section-label::before {
   content: '';
@@ -187,7 +196,7 @@ h2 {
   font-weight: 800;
   line-height: 1.15;
   letter-spacing: -1.5px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 h3 {
   font-size: 22px;
@@ -244,19 +253,125 @@ h3 {
   color: var(--text-muted);
 }
 
-/* ========== SVG SECTION ILLUSTRATIONS ========== */
-.section-illustration {
-  display: flex;
-  justify-content: center;
-  margin: 40px 0;
+/* ========== HERO MOCKUP ========== */
+.hero-mockup {
+  margin-top: 48px;
+  max-width: 720px;
+  width: 100%;
   position: relative;
-  z-index: 2;
-  opacity: 0.6;
+}
+.mockup-window {
+  background: rgba(20,20,24,0.9);
+  border: 1px solid rgba(201,168,76,0.15);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 30px 100px rgba(0,0,0,0.5), 0 0 60px rgba(201,168,76,0.06);
+}
+.mockup-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.mockup-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+}
+.mockup-dot.red { background: #ff5f57; }
+.mockup-dot.yellow { background: #febc2e; }
+.mockup-dot.green { background: #28c840; }
+.mockup-toolbar-title {
+  margin-left: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.mockup-body {
+  padding: 24px;
+}
+.mockup-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.mockup-row:last-child { border-bottom: none; }
+.mockup-label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.mockup-bar {
+  flex: 2;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.06);
+  position: relative;
+  overflow: hidden;
+}
+.mockup-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--gradient-main);
+  animation: barGrow 2s ease-out forwards;
+}
+@keyframes barGrow {
+  from { width: 0; }
+}
+.mockup-val {
+  width: 60px;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-gold);
+}
+.mockup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.mockup-header h4 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.mockup-badge-live {
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(106,191,105,0.15);
+  color: var(--accent-green);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.mockup-badge-live::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent-green);
+  animation: livePulse 1.5s ease-in-out infinite;
+}
+@keyframes livePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.mockup-glow {
+  position: absolute;
+  width: 200px; height: 200px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(201,168,76,0.12) 0%, transparent 70%);
+  top: -50px; right: -50px;
+  pointer-events: none;
 }
 
 /* ========== STORY SECTION ========== */
 .story-section {
-  padding: 100px 40px;
+  padding: 56px 40px;
   max-width: 800px;
   margin: 0 auto;
   position: relative;
@@ -265,15 +380,15 @@ h3 {
 .story-section p {
   font-size: 18px;
   color: var(--text-secondary);
-  margin-bottom: 28px;
+  margin-bottom: 20px;
   line-height: 1.8;
 }
 .story-section .highlight-text {
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1.4;
-  margin: 48px 0;
+  margin: 32px 0;
   padding-left: 24px;
   border-left: 3px solid var(--accent-gold);
 }
@@ -283,10 +398,10 @@ h3 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 24px;
-  margin-top: 60px;
+  margin-top: 40px;
 }
 .step-card {
-  padding: 40px 30px;
+  padding: 36px 28px;
   text-align: center;
   position: relative;
   overflow: hidden;
@@ -297,17 +412,16 @@ h3 {
   background: var(--gradient-main);
   display: flex; align-items: center; justify-content: center;
   font-size: 22px; font-weight: 800; color: #1a1a1a;
-  margin: 0 auto 24px;
+  margin: 0 auto 20px;
   box-shadow: 0 8px 24px rgba(201,168,76,0.25);
 }
-.step-card h3 { font-size: 20px; }
-.step-card p { color: var(--text-secondary); font-size: 15px; }
-/* Step card SVG decoration */
-.step-card .step-decor {
-  position: absolute;
-  bottom: -10px;
-  right: -10px;
-  opacity: 0.04;
+.step-card h3 { font-size: 18px; }
+.step-card p { color: var(--text-secondary); font-size: 14px; }
+.step-card .step-icon {
+  margin-bottom: 16px;
+}
+.step-card .step-icon svg {
+  width: 48px; height: 48px;
 }
 
 /* ========== FEATURES GRID ========== */
@@ -315,10 +429,10 @@ h3 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 24px;
-  margin-top: 60px;
+  margin-top: 40px;
 }
 .feature-card {
-  padding: 36px 28px;
+  padding: 32px 24px;
   position: relative;
   overflow: hidden;
 }
@@ -336,40 +450,51 @@ h3 {
   width: 52px; height: 52px;
   border-radius: 14px;
   display: flex; align-items: center; justify-content: center;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 .feature-icon svg { width: 28px; height: 28px; }
-.fi-gold { background: rgba(201,168,76,0.1); }
-.fi-silver { background: rgba(176,176,184,0.1); }
-.fi-warm { background: rgba(212,168,83,0.08); }
-.fi-white { background: rgba(232,232,224,0.06); }
-.feature-card h3 { font-size: 18px; margin-bottom: 10px; }
+.fi-gold { background: rgba(201,168,76,0.12); }
+.fi-silver { background: rgba(176,176,184,0.12); }
+.fi-warm { background: rgba(212,168,83,0.1); }
+.fi-white { background: rgba(232,232,224,0.08); }
+.feature-card h3 { font-size: 18px; margin-bottom: 8px; }
 .feature-card p { color: var(--text-secondary); font-size: 14px; line-height: 1.7; }
+
+/* ========== INLINE ILLUSTRATION — BLUEPRINT STYLE ========== */
+.inline-art {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 12px 40px;
+}
+.inline-art svg { max-width: 100%; }
 
 /* ========== WHAT MAKES IT DIFFERENT ========== */
 .diff-section {
-  padding: 100px 40px;
+  padding: 56px 40px;
   max-width: 900px;
   margin: 0 auto;
   position: relative;
   z-index: 2;
 }
 .diff-content {
-  padding: 48px;
-  margin-top: 40px;
+  padding: 40px;
+  margin-top: 28px;
 }
 .diff-content p {
   font-size: 17px;
   color: var(--text-secondary);
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   line-height: 1.8;
 }
 .diff-list {
   list-style: none;
-  margin: 24px 0;
+  margin: 20px 0;
 }
 .diff-list li {
-  padding: 12px 0;
+  padding: 10px 0;
   color: var(--text-secondary);
   font-size: 16px;
   display: flex;
@@ -388,10 +513,10 @@ h3 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 160px; height: 160px;
+  width: 140px; height: 140px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(201,168,76,0.08) 0%, transparent 70%);
-  margin-bottom: 32px;
+  background: radial-gradient(circle, rgba(201,168,76,0.1) 0%, transparent 70%);
+  margin-bottom: 24px;
   position: relative;
 }
 .ai-visual::before {
@@ -399,7 +524,7 @@ h3 {
   position: absolute;
   inset: -2px;
   border-radius: 50%;
-  border: 1px solid rgba(201,168,76,0.15);
+  border: 1px solid rgba(201,168,76,0.2);
   animation: aiPulse 3s ease-in-out infinite;
 }
 .ai-visual::after {
@@ -407,7 +532,7 @@ h3 {
   position: absolute;
   inset: -16px;
   border-radius: 50%;
-  border: 1px solid rgba(201,168,76,0.06);
+  border: 1px solid rgba(201,168,76,0.08);
   animation: aiPulse 3s ease-in-out infinite 0.5s;
 }
 @keyframes aiPulse {
@@ -415,7 +540,7 @@ h3 {
   50% { transform: scale(1.1); opacity: 0; }
 }
 .ai-visual svg {
-  width: 64px; height: 64px;
+  width: 56px; height: 56px;
   opacity: 0.9;
   animation: aiFloat 4s ease-in-out infinite;
 }
@@ -425,10 +550,10 @@ h3 {
 }
 .ai-features {
   display: flex;
-  gap: 16px;
+  gap: 12px;
   justify-content: center;
   flex-wrap: wrap;
-  margin-top: 32px;
+  margin-top: 24px;
 }
 .ai-tag {
   padding: 10px 20px;
@@ -442,21 +567,21 @@ h3 {
 .audience-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 24px;
-  margin-top: 60px;
+  gap: 20px;
+  margin-top: 40px;
 }
 .audience-card {
-  padding: 32px;
+  padding: 28px;
   display: flex;
   align-items: flex-start;
-  gap: 20px;
+  gap: 16px;
 }
 .audience-icon {
   width: 48px; height: 48px;
   border-radius: 12px;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
-  background: rgba(201,168,76,0.08);
+  background: rgba(201,168,76,0.1);
 }
 .audience-icon svg { width: 24px; height: 24px; }
 .audience-card h3 { font-size: 18px; margin-bottom: 6px; }
@@ -465,12 +590,12 @@ h3 {
 /* ========== PRICING / FREE ========== */
 .pricing-section { text-align: center; }
 .pricing-header {
-  margin-bottom: 48px;
+  margin-bottom: 32px;
 }
 .price-tag {
   font-size: 56px;
   font-weight: 800;
-  margin: 16px 0;
+  margin: 12px 0;
   background: linear-gradient(135deg, var(--accent-green), var(--accent-gold));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -483,11 +608,10 @@ h3 {
   max-width: 560px;
   margin: 0 auto;
 }
-/* White card that pops */
 .honesty-card {
   max-width: 700px;
   margin: 0 auto;
-  padding: 56px 48px;
+  padding: 48px 40px;
   background: #ffffff;
   border-radius: 24px;
   color: #1a1a2e;
@@ -497,30 +621,30 @@ h3 {
   font-size: 24px;
   font-weight: 700;
   color: #1a1a2e;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 .honesty-card > p {
   color: #555;
   font-size: 16px;
   line-height: 1.8;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 .honesty-card .deal-label {
   font-size: 17px;
   font-weight: 700;
   color: #1a1a2e;
-  margin: 32px 0 20px;
+  margin: 24px 0 16px;
   text-align: center;
 }
 .deal-items {
   list-style: none;
-  padding: 20px 24px;
+  padding: 16px 20px;
   background: #f0f7ff;
   border-radius: 16px;
-  margin: 0 0 28px;
+  margin: 0 0 20px;
 }
 .deal-item {
-  padding: 16px 0;
+  padding: 12px 0;
   text-align: center;
   border-bottom: 1px solid rgba(0,0,0,0.04);
 }
@@ -541,7 +665,7 @@ h3 {
   font-size: 16px;
   font-weight: 700;
   color: #1a1a2e;
-  margin: 24px 0 0;
+  margin: 20px 0 0;
   text-align: center;
 }
 .honesty-card .deal-italic {
@@ -549,14 +673,14 @@ h3 {
   color: #666;
   font-size: 15px;
   line-height: 1.8;
-  margin-top: 28px;
+  margin-top: 20px;
   text-align: center;
 }
 .hashtags {
   display: flex;
   gap: 12px;
   justify-content: center;
-  margin-top: 20px;
+  margin-top: 16px;
 }
 .hashtag {
   padding: 6px 16px;
@@ -572,10 +696,10 @@ h3 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 24px;
-  margin-top: 60px;
+  margin-top: 40px;
 }
 .roadmap-card {
-  padding: 32px;
+  padding: 28px;
   text-align: center;
   position: relative;
 }
@@ -589,24 +713,24 @@ h3 {
   letter-spacing: 1px;
   background: rgba(201,168,76,0.1);
   color: var(--accent-gold);
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 .roadmap-card h3 { font-size: 18px; }
 .roadmap-card p { color: var(--text-secondary); font-size: 14px; }
-.roadmap-icon { margin-bottom: 12px; }
+.roadmap-icon { margin-bottom: 10px; }
 .roadmap-icon svg { width: 36px; height: 36px; }
 
 /* ========== FINAL CTA ========== */
 .final-cta {
   text-align: center;
-  padding: 140px 40px;
+  padding: 64px 40px;
   position: relative;
   z-index: 2;
 }
 .final-cta-inner {
   max-width: 700px;
   margin: 0 auto;
-  padding: 80px 60px;
+  padding: 60px 48px;
   position: relative;
   overflow: hidden;
 }
@@ -615,17 +739,17 @@ h3 {
   position: absolute;
   inset: 0;
   background: var(--gradient-main);
-  opacity: 0.03;
+  opacity: 0.04;
   border-radius: var(--radius);
 }
-.final-cta h2 { margin-bottom: 16px; }
-.final-cta .subtitle { margin: 0 auto 40px; text-align: center; }
-.final-cta .hero-cta { margin-bottom: 20px; }
+.final-cta h2 { margin-bottom: 12px; }
+.final-cta .subtitle { margin: 0 auto 32px; text-align: center; }
+.final-cta .hero-cta { margin-bottom: 16px; }
 
 /* ========== FOOTER ========== */
 .footer {
   text-align: center;
-  padding: 40px;
+  padding: 32px 40px;
   position: relative;
   z-index: 2;
   border-top: 1px solid rgba(255,255,255,0.04);
@@ -634,29 +758,57 @@ h3 {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
-.footer p { color: var(--text-muted); font-size: 13px; margin-bottom: 8px; }
+.footer p { color: var(--text-muted); font-size: 13px; margin-bottom: 6px; }
 .footer a { color: var(--text-muted); text-decoration: none; transition: color 0.3s; }
 .footer a:hover { color: var(--text-primary); }
-.footer-links { display: flex; gap: 20px; justify-content: center; margin-top: 12px; }
+.footer-links { display: flex; gap: 20px; justify-content: center; margin-top: 10px; }
 .footer-links a { font-size: 13px; }
 
 /* ========== GLOW DIVIDER ========== */
 .glow-divider {
   width: 100%;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(201,168,76,0.15), rgba(176,176,184,0.1), transparent);
+  background: linear-gradient(90deg, transparent, rgba(201,168,76,0.2), rgba(176,176,184,0.12), transparent);
   margin: 0 auto;
   position: relative;
   z-index: 2;
 }
 
+/* ========== STATS BAR ========== */
+.stats-bar {
+  display: flex;
+  justify-content: center;
+  gap: 48px;
+  padding: 32px 40px;
+  position: relative;
+  z-index: 2;
+  max-width: 900px;
+  margin: 0 auto;
+}
+.stat-item {
+  text-align: center;
+}
+.stat-number {
+  font-size: 36px;
+  font-weight: 800;
+  background: var(--gradient-main);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.stat-label {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
 /* ========== SCROLL ANIMATIONS ========== */
 .reveal {
   opacity: 0;
-  transform: translateY(40px);
-  transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: translateY(30px);
+  transition: all 0.7s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .reveal.visible {
   opacity: 1;
@@ -675,21 +827,31 @@ h3 {
   transition: opacity 0.3s;
 }
 
+/* ========== FLOATING ACCENTS ========== */
+.floating-accent {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+
 /* ========== RESPONSIVE ========== */
 @media (max-width: 900px) {
-  .nav { padding: 14px 20px; }
+  .nav { padding: 12px 20px; }
   .nav-links { display: none; }
-  .section { padding: 80px 20px; }
+  .section { padding: 48px 20px; }
   .steps-grid, .features-grid, .roadmap-grid { grid-template-columns: 1fr; }
   .audience-grid { grid-template-columns: 1fr; }
   h1 { font-size: 36px; letter-spacing: -1px; }
   h2 { font-size: 30px; }
-  .story-section { padding: 60px 20px; }
-  .diff-section { padding: 60px 20px; }
-  .diff-content { padding: 28px; }
-  .final-cta-inner { padding: 48px 28px; }
-  .hero { padding-top: 80px; min-height: auto; padding-bottom: 60px; }
-  .section-illustration svg { width: 80% !important; }
+  .story-section { padding: 40px 20px; }
+  .diff-section { padding: 40px 20px; }
+  .diff-content { padding: 24px; }
+  .final-cta-inner { padding: 40px 24px; }
+  .hero { padding-top: 80px; min-height: auto; padding-bottom: 40px; }
+  .hero-mockup { margin-top: 32px; }
+  .stats-bar { gap: 24px; flex-wrap: wrap; }
+  .stat-number { font-size: 28px; }
 }
 @media (max-width: 600px) {
   .hero-cta { flex-direction: column; align-items: center; }
@@ -708,7 +870,8 @@ h3 {
 <!-- Navigation -->
 <nav class="nav" id="nav">
   <a href="#" class="nav-brand">
-    <img class="nav-logo" src="varshyl-logo.png" alt="ConstructInvoice AI">
+    <img class="nav-logo" src="varshyl-logo.png" alt="ConstructInvoice AI" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+    <div class="nav-logo-fallback" style="display:none;">C</div>
     <div class="nav-title">Construct<span>Invoice</span></div>
   </a>
   <div class="nav-links">
@@ -730,17 +893,70 @@ h3 {
     <a href="/login.html" class="btn btn-secondary">Sign In</a>
   </div>
   <p class="hero-note">No spreadsheets. No errors. No delays. No credit card required.</p>
+
+  <!-- App Mockup -->
+  <div class="hero-mockup reveal">
+    <div class="mockup-glow"></div>
+    <div class="mockup-window">
+      <div class="mockup-toolbar">
+        <div class="mockup-dot red"></div>
+        <div class="mockup-dot yellow"></div>
+        <div class="mockup-dot green"></div>
+        <span class="mockup-toolbar-title">ConstructInvoice AI — Pay Application #7</span>
+      </div>
+      <div class="mockup-body">
+        <div class="mockup-header">
+          <h4 style="color:var(--text-primary);">G703 — Schedule of Values</h4>
+          <div class="mockup-badge-live">Auto-calculating</div>
+        </div>
+        <div class="mockup-row">
+          <span class="mockup-label">Concrete Foundation</span>
+          <div class="mockup-bar"><div class="mockup-bar-fill" style="width:85%;"></div></div>
+          <span class="mockup-val">85%</span>
+        </div>
+        <div class="mockup-row">
+          <span class="mockup-label">Structural Steel</span>
+          <div class="mockup-bar"><div class="mockup-bar-fill" style="width:62%;animation-delay:0.3s;"></div></div>
+          <span class="mockup-val">62%</span>
+        </div>
+        <div class="mockup-row">
+          <span class="mockup-label">Mechanical HVAC</span>
+          <div class="mockup-bar"><div class="mockup-bar-fill" style="width:45%;animation-delay:0.5s;"></div></div>
+          <span class="mockup-val">45%</span>
+        </div>
+        <div class="mockup-row">
+          <span class="mockup-label">Electrical Rough-In</span>
+          <div class="mockup-bar"><div class="mockup-bar-fill" style="width:30%;animation-delay:0.7s;"></div></div>
+          <span class="mockup-val">30%</span>
+        </div>
+        <div class="mockup-row">
+          <span class="mockup-label">Fire Protection</span>
+          <div class="mockup-bar"><div class="mockup-bar-fill" style="width:18%;animation-delay:0.9s;"></div></div>
+          <span class="mockup-val">18%</span>
+        </div>
+      </div>
+    </div>
+  </div>
 </section>
 
-<!-- Hero illustration -->
-<div class="section-illustration reveal">
-  <svg width="600" height="80" viewBox="0 0 600 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M0 40 Q150 10 300 40 Q450 70 600 40" stroke="rgba(201,168,76,0.12)" stroke-width="1" fill="none"/>
-    <path d="M0 40 Q150 70 300 40 Q450 10 600 40" stroke="rgba(176,176,184,0.08)" stroke-width="1" fill="none"/>
-    <circle cx="150" cy="30" r="3" fill="rgba(201,168,76,0.2)"/>
-    <circle cx="300" cy="40" r="4" fill="rgba(201,168,76,0.15)"/>
-    <circle cx="450" cy="30" r="3" fill="rgba(176,176,184,0.15)"/>
-  </svg>
+<!-- Stats Bar -->
+<div class="stats-bar reveal">
+  <div class="stat-item">
+    <div class="stat-number">5 min</div>
+    <div class="stat-label">Average Pay App Time</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-number">100%</div>
+    <div class="stat-label">AIA Compliant</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-number">$0</div>
+    <div class="stat-label">Free Forever</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-number">24/7</div>
+    <div class="stat-label">AI Agent Support</div>
+  </div>
 </div>
 
 <div class="glow-divider"></div>
@@ -754,17 +970,6 @@ h3 {
   <p>Because one wrong number… one missed change order… one small mistake… and your payment is delayed by weeks.</p>
   <div class="highlight-text">Not because you didn't do the work. Because the paperwork wasn't perfect.</div>
 </section>
-
-<!-- Decorative SVG -->
-<div class="section-illustration reveal">
-  <svg width="400" height="60" viewBox="0 0 400 60" fill="none">
-    <rect x="80" y="20" width="240" height="20" rx="10" fill="none" stroke="rgba(201,168,76,0.08)" stroke-width="1"/>
-    <rect x="85" y="25" width="100" height="10" rx="5" fill="rgba(201,168,76,0.06)"/>
-    <line x1="0" y1="30" x2="75" y2="30" stroke="rgba(201,168,76,0.06)" stroke-width="1"/>
-    <line x1="325" y1="30" x2="400" y2="30" stroke="rgba(201,168,76,0.06)" stroke-width="1"/>
-    <circle cx="200" cy="30" r="2" fill="rgba(201,168,76,0.15)"/>
-  </svg>
-</div>
 
 <div class="glow-divider"></div>
 
@@ -789,37 +994,21 @@ h3 {
   <div class="steps-grid">
     <div class="step-card glass">
       <div class="step-number">1</div>
-      <h3>Upload Your Schedule of Values (SOV), Bid, or Proposal</h3>
+      <h3>Upload Your SOV, Bid, or Proposal</h3>
       <p>Excel, PDF, Word, CSV — no formatting needed. Our AI maps your line items automatically from your SOV, bid, or proposal document.</p>
-      <svg class="step-decor" width="120" height="120" viewBox="0 0 120 120" fill="none"><rect x="10" y="10" width="100" height="100" rx="20" stroke="rgba(201,168,76,0.06)" stroke-width="1"/><rect x="25" y="30" width="60" height="6" rx="3" fill="rgba(201,168,76,0.04)"/><rect x="25" y="45" width="45" height="6" rx="3" fill="rgba(201,168,76,0.04)"/><rect x="25" y="60" width="55" height="6" rx="3" fill="rgba(201,168,76,0.04)"/></svg>
     </div>
     <div class="step-card glass">
       <div class="step-number">2</div>
       <h3>Enter This Period's Progress</h3>
       <p>Update percentages across your line items. Retainage and math calculate live as you type.</p>
-      <svg class="step-decor" width="120" height="120" viewBox="0 0 120 120" fill="none"><circle cx="60" cy="60" r="45" stroke="rgba(201,168,76,0.06)" stroke-width="1"/><path d="M60 25 L60 60 L85 60" stroke="rgba(201,168,76,0.08)" stroke-width="2" stroke-linecap="round"/></svg>
     </div>
     <div class="step-card glass">
       <div class="step-number">3</div>
       <h3>Export & Submit</h3>
       <p>Download a complete G702 & G703 — balanced, verified, and ready to sign.</p>
-      <svg class="step-decor" width="120" height="120" viewBox="0 0 120 120" fill="none"><path d="M30 80 L60 50 L90 80" stroke="rgba(201,168,76,0.08)" stroke-width="2" fill="none" stroke-linecap="round"/><line x1="60" y1="50" x2="60" y2="95" stroke="rgba(201,168,76,0.06)" stroke-width="2" stroke-linecap="round"/></svg>
     </div>
   </div>
 </section>
-
-<!-- Decorative flow -->
-<div class="section-illustration reveal">
-  <svg width="500" height="40" viewBox="0 0 500 40" fill="none">
-    <circle cx="100" cy="20" r="6" stroke="rgba(201,168,76,0.12)" stroke-width="1" fill="none"/>
-    <line x1="108" y1="20" x2="192" y2="20" stroke="rgba(201,168,76,0.08)" stroke-width="1" stroke-dasharray="4 4"/>
-    <circle cx="200" cy="20" r="6" stroke="rgba(201,168,76,0.12)" stroke-width="1" fill="none"/>
-    <line x1="208" y1="20" x2="292" y2="20" stroke="rgba(201,168,76,0.08)" stroke-width="1" stroke-dasharray="4 4"/>
-    <circle cx="300" cy="20" r="6" stroke="rgba(201,168,76,0.12)" stroke-width="1" fill="none"/>
-    <line x1="308" y1="20" x2="392" y2="20" stroke="rgba(201,168,76,0.08)" stroke-width="1" stroke-dasharray="4 4"/>
-    <circle cx="400" cy="20" r="6" fill="rgba(201,168,76,0.1)"/>
-  </svg>
-</div>
 
 <div class="glow-divider"></div>
 
@@ -895,26 +1084,12 @@ h3 {
   </div>
 </section>
 
-<!-- Decorative grid -->
-<div class="section-illustration reveal">
-  <svg width="300" height="60" viewBox="0 0 300 60" fill="none">
-    <rect x="50" y="10" width="40" height="40" rx="8" stroke="rgba(201,168,76,0.08)" stroke-width="1" fill="rgba(201,168,76,0.02)"/>
-    <rect x="110" y="10" width="40" height="40" rx="8" stroke="rgba(176,176,184,0.08)" stroke-width="1"/>
-    <rect x="170" y="10" width="40" height="40" rx="8" stroke="rgba(201,168,76,0.06)" stroke-width="1" fill="rgba(201,168,76,0.01)"/>
-    <rect x="230" y="10" width="40" height="40" rx="8" stroke="rgba(176,176,184,0.06)" stroke-width="1"/>
-    <line x1="92" y1="30" x2="108" y2="30" stroke="rgba(201,168,76,0.08)" stroke-width="1"/>
-    <line x1="152" y1="30" x2="168" y2="30" stroke="rgba(201,168,76,0.06)" stroke-width="1"/>
-    <line x1="212" y1="30" x2="228" y2="30" stroke="rgba(201,168,76,0.06)" stroke-width="1"/>
-  </svg>
-</div>
-
 <div class="glow-divider"></div>
 
 <!-- AI AGENT -->
 <section class="section ai-agent-section reveal">
   <div class="ai-visual">
     <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <!-- Brain/AI icon -->
       <circle cx="32" cy="32" r="22" stroke="#c9a84c" stroke-width="1.5" fill="none"/>
       <circle cx="32" cy="32" r="16" stroke="rgba(201,168,76,0.4)" stroke-width="1" fill="none"/>
       <path d="M24 26c0-3 2-5 5-5s5 2 5 5" stroke="#c9a84c" stroke-width="1.5" stroke-linecap="round"/>
@@ -926,7 +1101,6 @@ h3 {
       <line x1="28" y1="34" x2="28" y2="38" stroke="#c9a84c" stroke-width="1" stroke-linecap="round"/>
       <line x1="36" y1="34" x2="36" y2="38" stroke="#e8d48b" stroke-width="1" stroke-linecap="round"/>
       <line x1="30" y1="32" x2="34" y2="32" stroke="rgba(201,168,76,0.3)" stroke-width="1"/>
-      <!-- Orbiting dots -->
       <circle cx="32" cy="8" r="2" fill="#c9a84c" opacity="0.4">
         <animateTransform attributeName="transform" type="rotate" values="0 32 32;360 32 32" dur="8s" repeatCount="indefinite"/>
       </circle>
@@ -1034,7 +1208,7 @@ h3 {
 
     <div class="deal-italic">We're not building this to get rich. We're building this because we can, and because this industry deserves better tools. If we can feed somebody while we do it — that's the whole point. And when the day comes that we build transaction features and invoicing tools that save you real money — we hope you'll think of us. That's how we grow. Together.</div>
 
-    <div class="hashtags" style="margin-top:28px;">
+    <div class="hashtags" style="margin-top:20px;">
       <span class="hashtag">#Varshyl</span>
       <span class="hashtag">#ConstructInvoice</span>
     </div>
@@ -1076,7 +1250,7 @@ h3 {
 <section class="final-cta">
   <div class="final-cta-inner glass">
     <h2>Ready when<br><span class="gradient-text">you are.</span></h2>
-    <p class="subtitle" style="margin:0 auto 40px; text-align:center;">Start in minutes. No credit card. No pressure. Just better billing.</p>
+    <p class="subtitle" style="margin:0 auto 32px; text-align:center;">Start in minutes. No credit card. No pressure. Just better billing.</p>
     <div class="hero-cta">
       <a href="/login.html" class="btn btn-primary">Start Free →</a>
       <a href="/login.html" class="btn btn-secondary">Sign In</a>
@@ -1088,7 +1262,7 @@ h3 {
 <!-- FOOTER -->
 <footer class="footer">
   <div class="footer-brand">
-    <img class="nav-logo" src="varshyl-logo.png" alt="ConstructInvoice AI" style="width:30px;height:30px;border-radius:8px;">
+    <img class="nav-logo" src="varshyl-logo.png" alt="ConstructInvoice AI" style="width:30px;height:30px;border-radius:8px;" onerror="this.style.display='none';">
     <span style="font-weight:700;font-size:15px;">Construct<span style="color:var(--accent-gold);">Invoice</span> AI</span>
   </div>
   <p>A product of <strong>Varshyl Inc.</strong> · San Jose, California</p>
@@ -1097,7 +1271,7 @@ h3 {
     <a href="/privacy.html">Privacy Policy</a>
     <a href="/terms.html">Terms of Service</a>
   </div>
-  <p style="margin-top:16px;">© 2026 Varshyl Inc. · constructinv.varshyl.com</p>
+  <p style="margin-top:12px;">© 2026 Varshyl Inc. · constructinv.varshyl.com</p>
 </footer>
 
 <script>
@@ -1112,7 +1286,6 @@ h3 {
   const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.z = 30;
 
-  // Gold/silver/white color palette for 3D shapes
   const shapes = [];
   const geometries = [
     new THREE.IcosahedronGeometry(1, 0),
@@ -1124,18 +1297,18 @@ h3 {
   ];
   const colors = [0xc9a84c, 0xe8d48b, 0xb0b0b8, 0xd4a853, 0x888890, 0xe8e8e0];
 
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < 60; i++) {
     const geo = geometries[Math.floor(Math.random() * geometries.length)];
     const mat = new THREE.MeshPhongMaterial({
       color: colors[Math.floor(Math.random() * colors.length)],
       transparent: true,
-      opacity: 0.08 + Math.random() * 0.07,
-      wireframe: Math.random() > 0.4,
+      opacity: 0.12 + Math.random() * 0.12,
+      wireframe: Math.random() > 0.35,
       shininess: 150,
       specular: 0xc9a84c
     });
     const mesh = new THREE.Mesh(geo, mat);
-    const scale = 0.3 + Math.random() * 1.5;
+    const scale = 0.3 + Math.random() * 1.8;
     mesh.scale.set(scale, scale, scale);
     mesh.position.set(
       (Math.random() - 0.5) * 60,
@@ -1153,8 +1326,8 @@ h3 {
     shapes.push(mesh);
   }
 
-  // Particle field — gold/warm particles
-  const particleCount = 250;
+  // Particle field
+  const particleCount = 300;
   const particleGeo = new THREE.BufferGeometry();
   const positions = new Float32Array(particleCount * 3);
   for (let i = 0; i < particleCount * 3; i += 3) {
@@ -1165,17 +1338,17 @@ h3 {
   particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   const particleMat = new THREE.PointsMaterial({
     color: 0xc9a84c,
-    size: 0.07,
+    size: 0.08,
     transparent: true,
-    opacity: 0.4,
+    opacity: 0.5,
     sizeAttenuation: true
   });
   const particles = new THREE.Points(particleGeo, particleMat);
   scene.add(particles);
 
-  // Connection lines in gold
-  const lineMat = new THREE.LineBasicMaterial({ color: 0xc9a84c, transparent: true, opacity: 0.03 });
-  for (let i = 0; i < 20; i++) {
+  // Connection lines
+  const lineMat = new THREE.LineBasicMaterial({ color: 0xc9a84c, transparent: true, opacity: 0.06 });
+  for (let i = 0; i < 30; i++) {
     const lineGeo = new THREE.BufferGeometry();
     const idx1 = Math.floor(Math.random() * shapes.length);
     const idx2 = Math.floor(Math.random() * shapes.length);
@@ -1189,20 +1362,19 @@ h3 {
     }
   }
 
-  // Warm lighting
-  const ambientLight = new THREE.AmbientLight(0xc9a84c, 0.2);
+  // Warm lighting — brighter
+  const ambientLight = new THREE.AmbientLight(0xc9a84c, 0.3);
   scene.add(ambientLight);
-  const pointLight1 = new THREE.PointLight(0xc9a84c, 0.8, 100);
+  const pointLight1 = new THREE.PointLight(0xc9a84c, 1.0, 100);
   pointLight1.position.set(15, 15, 15);
   scene.add(pointLight1);
-  const pointLight2 = new THREE.PointLight(0xe8d48b, 0.6, 100);
+  const pointLight2 = new THREE.PointLight(0xe8d48b, 0.8, 100);
   pointLight2.position.set(-15, -10, 10);
   scene.add(pointLight2);
-  const pointLight3 = new THREE.PointLight(0xb0b0b8, 0.4, 100);
+  const pointLight3 = new THREE.PointLight(0xb0b0b8, 0.5, 100);
   pointLight3.position.set(0, 20, -10);
   scene.add(pointLight3);
 
-  // Mouse tracking
   let mouseX = 0, mouseY = 0;
   document.addEventListener('mousemove', (e) => {
     mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
@@ -1214,11 +1386,9 @@ h3 {
     }
   });
 
-  // Scroll tracking
   let scrollY = 0;
   window.addEventListener('scroll', () => { scrollY = window.scrollY; });
 
-  // Animation loop
   function animate() {
     requestAnimationFrame(animate);
     const time = Date.now() * 0.001;
@@ -1260,7 +1430,7 @@ const reveals = document.querySelectorAll('.reveal');
 const observer = new IntersectionObserver((entries) => {
   entries.forEach((entry, i) => {
     if (entry.isIntersecting) {
-      setTimeout(() => entry.target.classList.add('visible'), i * 100);
+      setTimeout(() => entry.target.classList.add('visible'), i * 80);
       observer.unobserve(entry.target);
     }
   });
