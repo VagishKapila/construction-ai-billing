@@ -218,6 +218,10 @@ async function initDB() {
     -- Per-project payment terms (overrides company default in AIA preview)
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS payment_terms VARCHAR(100);
 
+    -- Payment received flag for revenue tracking
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS payment_received BOOLEAN DEFAULT FALSE;
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS payment_received_at TIMESTAMPTZ;
+
     CREATE TABLE IF NOT EXISTS reminder_log (
       id SERIAL PRIMARY KEY,
       user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,

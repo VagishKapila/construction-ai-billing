@@ -744,13 +744,17 @@ app.put('/api/payapps/:id', auth, async (req,res) => {
   if(!r.rows[0]) return res.status(404).json({error:'Not found'});
   if (status === 'submitted') {
     await logEvent(req.user.id, 'payapp_submitted', { pay_app_id: parseInt(req.params.id) });
-    // Snapshot amount_due and retention_held from live line math for revenue reporting
+    // Snapshot amount_due and retention_held using correct column names
     try {
       const snap = await pool.query(`
         SELECT
-          SUM(pal.this_period_amount - COALESCE(pal.retainage_amount,0)) as amount_due,
-          SUM(COALESCE(pal.retainage_amount,0)) as retention_held
-        FROM pay_app_lines pal WHERE pal.pay_app_id=$1`, [req.params.id]);
+          SUM(sl.scheduled_value * pal.this_pct / 100
+              - sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100
+              + sl.scheduled_value * pal.prev_pct / 100 * pal.retainage_pct / 100) AS amount_due,
+          SUM(sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100) AS retention_held
+        FROM pay_app_lines pal
+        JOIN sov_lines sl ON sl.id = pal.sov_line_id
+        WHERE pal.pay_app_id=$1`, [req.params.id]);
       if (snap.rows[0]) {
         await pool.query(
           'UPDATE pay_apps SET amount_due=$1, retention_held=$2 WHERE id=$3',
@@ -1468,8 +1472,8 @@ function generatePayAppHTML(pa, lines, cos, totals, logoBase64, sigBase64) {
   // Signature: show uploaded image if available, otherwise a clear blank signing area
   const contactName = pa.contact_name || '';
   const sigHtml = sigBase64
-    ? `<img src="${sigBase64}" style="max-height:45px;max-width:200px;object-fit:contain;display:block;margin-bottom:2px"/>`
-    : `<div style="height:38px"></div>`; /* blank space for wet ink signature */
+    ? `<img src="${sigBase64}" style="max-height:72px;max-width:240px;object-fit:contain;display:block;margin-bottom:4px"/>`
+    : `<div style="height:52px"></div>`; /* blank space for wet ink signature */
 
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"/><style>
@@ -2971,28 +2975,44 @@ app.get('/api/revenue/summary', auth, async (req, res) => {
     const period = req.query.period || 'monthly'; // monthly | quarterly | yearly
 
     // All pay apps for this user in the selected year
+    // Compute amount_due live from pay_app_lines (don't rely on stored snapshot which may be stale)
     const paRes = await pool.query(`
-      SELECT pa.id, pa.pay_app_number, pa.period_end_date as period_end, pa.status,
-             pa.amount_due, pa.retention_held,
-             p.name as project_name, p.address, p.job_number,
-             p.contract_amount,
-             EXTRACT(MONTH FROM pa.period_end_date) as month,
-             EXTRACT(QUARTER FROM pa.period_end_date) as quarter
+      SELECT pa.id, pa.app_number AS pay_app_number, pa.period_end AS period_end, pa.status,
+             pa.payment_received,
+             p.name AS project_name, p.address, p.job_number,
+             p.original_contract AS contract_amount,
+             EXTRACT(MONTH FROM pa.period_end) AS month,
+             EXTRACT(QUARTER FROM pa.period_end) AS quarter,
+             -- Live amount_due = this-period net (this_pct earnings minus full retainage increment)
+             COALESCE((
+               SELECT SUM(sl.scheduled_value * pal.this_pct / 100
+                          - sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100
+                          + sl.scheduled_value * pal.prev_pct / 100 * pal.retainage_pct / 100)
+               FROM pay_app_lines pal
+               JOIN sov_lines sl ON sl.id = pal.sov_line_id
+               WHERE pal.pay_app_id = pa.id
+             ), 0) AS amount_due,
+             COALESCE((
+               SELECT SUM(sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100)
+               FROM pay_app_lines pal
+               JOIN sov_lines sl ON sl.id = pal.sov_line_id
+               WHERE pal.pay_app_id = pa.id
+             ), 0) AS retention_held
       FROM pay_apps pa
       JOIN projects p ON p.id = pa.project_id
       WHERE p.user_id = $1
-        AND EXTRACT(YEAR FROM pa.period_end_date) = $2
+        AND (pa.period_end IS NULL OR EXTRACT(YEAR FROM pa.period_end) = $2)
         AND pa.deleted_at IS NULL
-      ORDER BY pa.period_end_date DESC
+      ORDER BY pa.period_end DESC NULLS LAST
     `, [uid, year]);
 
     const rows = paRes.rows;
 
-    // KPIs — sum over submitted/approved only
-    const billedRows = rows.filter(r => r.status === 'submitted' || r.status === 'approved');
+    // KPIs — sum over submitted/approved/received only
+    const billedRows = rows.filter(r => ['submitted','approved','paid'].includes(r.status) || r.payment_received);
     const total_billed = billedRows.reduce((s, r) => s + parseFloat(r.amount_due || 0), 0);
     const total_retention = billedRows.reduce((s, r) => s + parseFloat(r.retention_held || 0), 0);
-    const active_projects = new Set(billedRows.map(r => r.project_name)).size;
+    const active_projects = new Set(rows.map(r => r.project_name)).size;
 
     // Build chart buckets
     let chart = [];
@@ -3024,6 +3044,27 @@ app.get('/api/revenue/summary', auth, async (req, res) => {
     res.json({ total_billed, total_retention, active_projects, chart, rows });
   } catch(e) {
     console.error('[Revenue]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── PAYMENT RECEIVED TOGGLE ────────────────────────────────────────────────
+app.post('/api/payapps/:id/payment-received', auth, async (req, res) => {
+  try {
+    const { received } = req.body; // true or false
+    // Verify the pay app belongs to this user
+    const check = await pool.query(
+      `SELECT pa.id FROM pay_apps pa JOIN projects p ON p.id=pa.project_id WHERE pa.id=$1 AND p.user_id=$2`,
+      [req.params.id, req.user.id]
+    );
+    if (!check.rows[0]) return res.status(404).json({ error: 'Not found' });
+    const r = await pool.query(
+      `UPDATE pay_apps SET payment_received=$1, payment_received_at=$2 WHERE id=$3 RETURNING *`,
+      [!!received, received ? new Date() : null, req.params.id]
+    );
+    res.json(r.rows[0]);
+  } catch(e) {
+    console.error('[PaymentReceived]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

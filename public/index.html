@@ -87,8 +87,10 @@ button:focus-visible,a:focus-visible,[role="button"]:focus-visible{outline:2.5px
 .mv{font-size:18px;font-weight:600}
 .mv.blue{color:var(--blue)}.mv.green{color:var(--green)}.mv.amber{color:var(--amber)}
 .tabs{display:flex;border-bottom:0.5px solid var(--border);margin-bottom:18px;overflow-x:auto}
-.tab{padding:9px 16px;font-size:12px;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.tab{padding:9px 16px;font-size:12px;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;display:flex;align-items:center;gap:5px}
 .tab.on{color:var(--blue);border-bottom-color:var(--blue);font-weight:500}
+.tab-step{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--border);color:var(--text2);font-size:10px;font-weight:700;flex-shrink:0;line-height:1}
+.tab.on .tab-step{background:var(--blue);color:#fff}
 .tp{display:none}.tp.on{display:block}
 .tbl-wrap{overflow-x:auto;border-radius:var(--radius-lg);border:0.5px solid var(--border)}
 table{width:100%;border-collapse:collapse;font-size:11px}
@@ -1350,10 +1352,11 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
                   <th>This Invoice</th>
                   <th>Retention</th>
                   <th>Status</th>
+                  <th>Payment Received</th>
                 </tr>
               </thead>
               <tbody id="rev-table-body">
-                <tr><td colspan="8" style="text-align:center;color:var(--text2);padding:32px">Loading...</td></tr>
+                <tr><td colspan="9" style="text-align:center;color:var(--text2);padding:32px">Loading...</td></tr>
               </tbody>
             </table>
           </div>
@@ -1567,12 +1570,12 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
       <div class="pg" id="pg-payapp">
         <div id="pa-header"></div>
         <div class="tabs" id="pa-tabs">
-          <div class="tab on" onclick="paTab(0)">G703 — Continuation</div>
-          <div class="tab" onclick="paTab(1)">Change orders</div>
-          <div class="tab" onclick="paTab(2)">Attachments</div>
-          <div class="tab" onclick="paTab(3)">G702 — Application</div>
-          <div class="tab" onclick="paTab(4)">Lien waiver</div>
-          <div class="tab" onclick="paTab(5)">Preview &amp; Send</div>
+          <div class="tab on" onclick="paTab(0)"><span class="tab-step">1</span> G703 — Billing</div>
+          <div class="tab" onclick="paTab(1)"><span class="tab-step">2</span> Change Orders</div>
+          <div class="tab" onclick="paTab(2)"><span class="tab-step">3</span> Attachments</div>
+          <div class="tab" onclick="paTab(3)"><span class="tab-step">4</span> G702 — Summary</div>
+          <div class="tab" onclick="paTab(4)"><span class="tab-step">5</span> Lien Waiver</div>
+          <div class="tab" onclick="paTab(5)"><span class="tab-step">6</span> Preview &amp; Send</div>
         </div>
 
         <!-- STEP 1: G703 — Continuation -->
@@ -1583,7 +1586,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
           </div>
           <div class="bulk-bar">
             <label>Apply billing % to all lines:</label>
-            <input class="bulk-in" type="number" id="bulk-pct" value="0" min="0" max="100" step="1"/>
+            <input class="bulk-in" type="number" id="bulk-pct" value="20" min="0" max="100" step="1"/>
             <button class="btn btn-primary btn-sm" onclick="applyBulk()">Apply to all</button>
             <button class="btn btn-sm" onclick="clearAll()">Clear all</button>
             <span style="font-size:11px;color:var(--text2)">Retainage % editable per line</span>
@@ -2923,6 +2926,9 @@ function renderG703(pa){
     </tr>`;
   }).join('');
   document.getElementById('g703-body').innerHTML=rows;
+  // Auto-apply 20% bulk if this is a brand-new pay app (all lines still at 0%)
+  const isNew=(pa.lines||[]).length>0 && (pa.lines||[]).every(r=>parseFloat(r.this_pct||0)===0 && parseFloat(r.prev_pct||0)===0);
+  if(isNew){ const bi=document.getElementById('bulk-pct'); if(bi){ bi.value=20; applyBulk(); } }
   document.getElementById('g703-foot').innerHTML=`<tr>
     <td colspan="2" class="r">Grand total</td>
     <td class="r">${fmtR(tSV)}</td><td class="r">${fmtR(tPrev)}</td>
@@ -3480,7 +3486,7 @@ function loadSigPreview() {
   const url = '/api/settings/signature?token=' + token + '&t=' + Date.now();
   document.querySelectorAll('.sig-preview-img').forEach(el => { el.src = url; el.style.display = 'block'; });
   const area = document.getElementById('sig-contractor-img');
-  if (area) area.innerHTML = '<img src="' + url + '" style="max-height:40px;max-width:160px;display:block;margin:4px 0"/>';
+  if (area) area.innerHTML = '<img src="' + url + '" style="max-height:70px;max-width:220px;display:block;margin:6px 0"/>';
 }
 
 // ===== EDIT PROJECT =====
@@ -4141,18 +4147,39 @@ function renderRevChart(chart) {
 
 function renderRevTable(rows) {
   const tbody = document.getElementById('rev-table-body');
-  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:32px">No pay applications found for this period.</td></tr>'; return; }
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text2);padding:32px">No pay applications found for this period.</td></tr>'; return; }
   const fmt = v => v ? '$' + parseFloat(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
-  tbody.innerHTML = rows.map(r => `<tr>
+  tbody.innerHTML = rows.map(r => {
+    const received = r.payment_received;
+    const toggleId = 'pmtrcv-'+r.id;
+    return `<tr style="${received?'background:#f0fff4':''}">
     <td style="font-weight:600;white-space:nowrap">${r.job_number||'—'}</td>
     <td><div style="font-weight:600;font-size:13px">${r.project_name}</div><div style="font-size:11px;color:var(--text2)">${r.address||''}</div></td>
     <td>Pay App #${r.pay_app_number||'?'}</td>
     <td style="white-space:nowrap">${r.period_end?new Date(r.period_end).toLocaleDateString():'—'}</td>
     <td>${fmt(r.contract_amount)}</td>
-    <td style="font-weight:600">${fmt(r.amount_due)}</td>
+    <td style="font-weight:600;color:${received?'var(--green)':'inherit'}">${fmt(r.amount_due)}</td>
     <td>${fmt(r.retention_held)}</td>
     <td><span class="rev-status ${r.status||'draft'}">${r.status||'draft'}</span></td>
-  </tr>`).join('');
+    <td style="text-align:center">
+      <label class="toggle-switch" title="${received?'Mark unpaid':'Mark as paid'}">
+        <input type="checkbox" ${received?'checked':''} onchange="togglePaymentReceived(${r.id},this.checked)">
+        <span class="toggle-slider"></span>
+      </label>
+    </td>
+  </tr>`;
+  }).join('');
+}
+
+async function togglePaymentReceived(payAppId, received) {
+  try {
+    await api('POST', '/payapps/'+payAppId+'/payment-received', { received });
+    // Update row color live without full reload
+    const row = document.querySelector('#rev-table-body tr td label input[onchange*="'+payAppId+'"]')?.closest('tr');
+    if (row) row.style.background = received ? '#f0fff4' : '';
+    // Reload KPIs to reflect updated totals
+    loadRevenue();
+  } catch(e) { alert('Error: '+e.message); }
 }
 
 function filterRevTable() {
