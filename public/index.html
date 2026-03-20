@@ -107,6 +107,9 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
 .bulk-bar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg3);border-radius:var(--radius);margin-bottom:12px;flex-wrap:wrap}
 .bulk-bar label{font-size:12px;color:var(--text2);white-space:nowrap}
 .bulk-in{width:70px;height:30px;padding:0 8px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg2);color:var(--text);font-size:13px;font-weight:600;text-align:right}
+.pa-step-nav{display:flex;align-items:center;justify-content:space-between;padding:12px 0;margin-top:14px;border-top:0.5px solid var(--border);gap:8px}
+.pa-step-nav-top{display:flex;align-items:center;justify-content:space-between;padding-bottom:12px;margin-bottom:14px;border-bottom:0.5px solid var(--border);gap:8px}
+.pa-step-label{font-size:11px;color:var(--text2);font-weight:500}
 .ib{background:var(--bg3);border-radius:var(--radius);padding:14px}
 .ir{display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:0.5px solid rgba(0,0,0,0.06)}
 .ir:last-child{border-bottom:none}
@@ -1556,42 +1559,26 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
       <div class="pg" id="pg-payapp">
         <div id="pa-header"></div>
         <div class="tabs" id="pa-tabs">
-          <div class="tab" onclick="paTab(0)">G702 — Application</div>
-          <div class="tab on" onclick="paTab(1)">G703 — Continuation</div>
-          <div class="tab" onclick="paTab(2)">Change orders</div>
-          <div class="tab" onclick="paTab(3)">Attachments</div>
-          <div class="tab" onclick="paTab(4)">Preview &amp; Export</div>
+          <div class="tab on" onclick="paTab(0)">G703 — Continuation</div>
+          <div class="tab" onclick="paTab(1)">Change orders</div>
+          <div class="tab" onclick="paTab(2)">Attachments</div>
+          <div class="tab" onclick="paTab(3)">G702 — Application</div>
+          <div class="tab" onclick="paTab(4)">Lien waiver</div>
+          <div class="tab" onclick="paTab(5)">Preview &amp; Send</div>
         </div>
 
-        <!-- G702 -->
-        <div class="tp" id="tp0">
-          <div class="card">
-            <div class="ct">Billing period &amp; architect certificate</div>
-            <div class="fg">
-              <div class="field"><label>Period label</label><input type="text" id="pa-period-label" placeholder="e.g. January 2022" onchange="savePAMeta()"/></div>
-              <div class="field"><label>Period start</label><input type="date" id="pa-period-start" onchange="savePAMeta()"/></div>
-              <div class="field"><label>Period end</label><input type="date" id="pa-period-end" onchange="savePAMeta()"/></div>
-              <div class="field"><label>Amount certified ($)</label><input type="text" id="arch-cert-amt" placeholder="Enter certified amount" onchange="saveArchCert()"/></div>
-              <div class="field"><label>Certificate date</label><input type="date" id="arch-cert-date" onchange="saveArchCert()"/></div>
-              <div class="field"><label>Architect name</label><input type="text" id="arch-cert-name" placeholder="Architect of record" onchange="saveArchCert()"/></div>
-            </div>
+        <!-- STEP 1: G703 — Continuation -->
+        <div class="tp on" id="tp0">
+          <div class="pa-step-nav-top">
+            <span class="pa-step-label">Step 1 of 6 — Schedule of Values</span>
+            <button class="btn btn-primary btn-sm" onclick="saveAndNext(1)">Save &amp; Next: Change Orders →</button>
           </div>
-          <div id="g702-contract-warn"></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
-            <div class="ib" id="g702-proj-info"></div>
-            <div class="ib" id="g702-summary"></div>
-          </div>
-        </div>
-
-        <!-- G703 -->
-        <div class="tp on" id="tp1">
           <div class="bulk-bar">
-            <label>Apply % to all lines:</label>
-            <input class="bulk-in" type="number" id="bulk-pct" value="20" min="0" max="100" step="1"/>
+            <label>Apply billing % to all lines:</label>
+            <input class="bulk-in" type="number" id="bulk-pct" value="0" min="0" max="100" step="1"/>
             <button class="btn btn-primary btn-sm" onclick="applyBulk()">Apply to all</button>
             <button class="btn btn-sm" onclick="clearAll()">Clear all</button>
             <span style="font-size:11px;color:var(--text2)">Retainage % editable per line</span>
-            <button class="btn btn-success btn-sm" onclick="saveLines()" style="margin-left:auto">Save &amp; recalculate</button>
           </div>
           <div class="tbl-wrap">
             <table style="min-width:950px">
@@ -1612,14 +1599,19 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               <tfoot id="g703-foot"></tfoot>
             </table>
           </div>
-          <div class="br" style="margin-top:12px">
-            <button class="btn btn-success" onclick="saveLines()">Save and recalculate</button>
+          <div class="pa-step-nav">
             <span id="save-status" style="font-size:11px;color:var(--text2)"></span>
+            <button class="btn btn-primary" onclick="saveAndNext(1)">Save &amp; Next: Change Orders →</button>
           </div>
         </div>
 
-        <!-- CHANGE ORDERS -->
-        <div class="tp" id="tp2">
+        <!-- STEP 2: Change Orders -->
+        <div class="tp" id="tp1">
+          <div class="pa-step-nav-top">
+            <button class="btn btn-sm" onclick="paTab(0)">← Back</button>
+            <span class="pa-step-label">Step 2 of 6 — Change Orders</span>
+            <button class="btn btn-primary btn-sm" onclick="paTab(2)">Next: Attachments →</button>
+          </div>
           <div class="card">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
               <div class="ct" style="margin:0">Change order log</div>
@@ -1630,10 +1622,19 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               Total change orders: <span id="co-total" style="margin-left:12px;color:var(--blue)">$0.00</span>
             </div>
           </div>
+          <div class="pa-step-nav">
+            <button class="btn btn-sm" onclick="paTab(0)">← Back</button>
+            <button class="btn btn-primary" onclick="paTab(2)">Next: Attachments →</button>
+          </div>
         </div>
 
-        <!-- ATTACHMENTS -->
-        <div class="tp" id="tp3">
+        <!-- STEP 3: Attachments -->
+        <div class="tp" id="tp2">
+          <div class="pa-step-nav-top">
+            <button class="btn btn-sm" onclick="paTab(1)">← Back</button>
+            <span class="pa-step-label">Step 3 of 6 — Attachments</span>
+            <button class="btn btn-primary btn-sm" onclick="paTab(3)">Next: G702 Review →</button>
+          </div>
           <div class="card">
             <div class="ct">Attachments</div>
             <label class="upload-zone" style="display:block;margin-bottom:14px">
@@ -1643,10 +1644,100 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
             </label>
             <div id="attach-list"></div>
           </div>
+          <div class="pa-step-nav">
+            <button class="btn btn-sm" onclick="paTab(1)">← Back</button>
+            <button class="btn btn-primary" onclick="paTab(3)">Next: G702 Review →</button>
+          </div>
         </div>
 
-        <!-- PREVIEW & EXPORT -->
+        <!-- STEP 4: G702 — Application Review -->
+        <div class="tp" id="tp3">
+          <div class="pa-step-nav-top">
+            <button class="btn btn-sm" onclick="paTab(2)">← Back</button>
+            <span class="pa-step-label">Step 4 of 6 — G702 Application Review</span>
+            <button class="btn btn-primary btn-sm" onclick="paTab(4)">Next: Lien Waiver →</button>
+          </div>
+          <div class="card">
+            <div class="ct">Billing period &amp; architect certificate</div>
+            <div class="fg">
+              <div class="field"><label>Period label</label><input type="text" id="pa-period-label" placeholder="e.g. January 2022" onchange="savePAMeta()"/></div>
+              <div class="field"><label>Period start</label><input type="date" id="pa-period-start" onchange="savePAMeta()"/></div>
+              <div class="field"><label>Period end</label><input type="date" id="pa-period-end" onchange="savePAMeta()"/></div>
+              <div class="field"><label>Amount certified ($)</label><input type="text" id="arch-cert-amt" placeholder="Enter certified amount" onchange="saveArchCert()"/></div>
+              <div class="field"><label>Certificate date</label><input type="date" id="arch-cert-date" onchange="saveArchCert()"/></div>
+              <div class="field"><label>Architect name</label><input type="text" id="arch-cert-name" placeholder="Architect of record" onchange="saveArchCert()"/></div>
+            </div>
+          </div>
+          <div id="g702-contract-warn"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+            <div class="ib" id="g702-proj-info"></div>
+            <div class="ib" id="g702-summary"></div>
+          </div>
+          <div class="pa-step-nav">
+            <button class="btn btn-sm" onclick="paTab(2)">← Back</button>
+            <button class="btn btn-primary" onclick="paTab(4)">Next: Lien Waiver →</button>
+          </div>
+        </div>
+
+        <!-- STEP 5: Lien Waiver -->
         <div class="tp" id="tp4">
+          <div class="pa-step-nav-top">
+            <button class="btn btn-sm" onclick="paTab(3)">← Back</button>
+            <span class="pa-step-label">Step 5 of 6 — Lien Waiver</span>
+            <button class="btn btn-sm" onclick="paTab(5)">Skip →</button>
+          </div>
+          <div class="card">
+            <div class="ct">Attach Lien Waiver</div>
+            <p style="font-size:12px;color:var(--text2);margin-bottom:14px">Generate a signed lien waiver and attach it to your pay application. It will be included as page 3 of the PDF.</p>
+            <div id="iw-err" class="err hidden" style="margin-bottom:8px"></div>
+            <div id="iw-success" style="font-size:12px;color:var(--green);margin-bottom:10px;display:none"></div>
+            <div class="fg">
+              <div class="field">
+                <label>Waiver type</label>
+                <select id="iw-doc-type">
+                  <option value="conditional_waiver" selected>Conditional Waiver — Progress Payment</option>
+                  <option value="unconditional_waiver">Unconditional Waiver — Progress Payment</option>
+                  <option value="conditional_final_waiver">Conditional Waiver — Final Payment</option>
+                  <option value="unconditional_final_waiver">Unconditional Waiver — Final Payment</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Jurisdiction</label>
+                <select id="iw-jurisdiction">
+                  <option value="california">California</option>
+                  <option value="virginia">Virginia</option>
+                  <option value="dc">Washington D.C.</option>
+                </select>
+              </div>
+            </div>
+            <div class="fg">
+              <div class="field"><label>Through date</label><input type="date" id="iw-through-date"/></div>
+              <div class="field"><label>Amount ($)</label><input type="number" id="iw-amount" placeholder="Net amount due"/></div>
+            </div>
+            <div class="field"><label>Check payable to</label><input type="text" id="iw-payable-to" placeholder="Your company name"/></div>
+            <hr style="border:none;border-top:0.5px solid var(--border);margin:12px 0"/>
+            <p style="font-size:11px;color:var(--text2);margin-bottom:8px">By typing your name below you are electronically signing this document. Your name, date/time, and IP address will be recorded on the PDF.</p>
+            <div class="fg">
+              <div class="field"><label>Signatory name *</label><input type="text" id="iw-signatory" placeholder="Your full legal name"/></div>
+              <div class="field"><label>Title</label><input type="text" id="iw-title" placeholder="e.g. Project Manager"/></div>
+            </div>
+            <div class="br" style="margin-top:12px">
+              <button class="btn btn-primary" id="iw-generate-btn" onclick="generateAndAttachWaiver()">Generate &amp; Attach</button>
+            </div>
+          </div>
+          <div class="pa-step-nav">
+            <button class="btn btn-sm" onclick="paTab(3)">← Back</button>
+            <button class="btn btn-sm" onclick="paTab(5)">Skip — no waiver needed →</button>
+          </div>
+        </div>
+
+        <!-- STEP 6: Preview & Send -->
+        <div class="tp" id="tp5">
+          <div class="pa-step-nav-top">
+            <button class="btn btn-sm" onclick="paTab(4)">← Back</button>
+            <span class="pa-step-label">Step 6 of 6 — Preview &amp; Send</span>
+            <span></span>
+          </div>
           <div style="display:flex;gap:10px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
             <button class="btn btn-primary" onclick="downloadPDF()">⬇ Download Pay App PDF</button>
             <button class="btn btn-success" id="btn-download-with-lien" onclick="downloadPDFWithLien()" style="display:none">⬇ Download + Lien Waiver</button>
@@ -1763,8 +1854,8 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               <textarea id="email-body" rows="4" style="resize:vertical;padding:8px 10px;border:0.5px solid var(--border2);border-radius:var(--radius);font-size:12px;background:var(--bg2);color:var(--text)"></textarea>
             </div>
             <div class="br">
-              <button class="btn btn-primary" onclick="sendEmail()">Send email</button>
-              <span style="font-size:11px;color:var(--text2)">PDF attached automatically</span>
+              <button class="btn btn-success" onclick="sendEmail()" id="btn-send-email">📤 Send &amp; Mark Submitted</button>
+              <span style="font-size:11px;color:var(--text2)">PDF + lien waiver attached automatically</span>
             </div>
           </div>
         </div>
@@ -2398,11 +2489,11 @@ async function loadProject(id){
         const submitted=pa.status==='submitted';
         const delBtn=`<button class="btn btn-sm" onclick="event.stopPropagation();deletePayApp(${pa.id},currentProjectId,'${(pa.period_label||'Pay App #'+pa.app_number).replace(/'/g,"\\'")}',${pa.app_number})" style="background:none;border:1px solid var(--red);color:var(--red);padding:3px 8px;font-size:11px" title="Delete">🗑</button>`;
         const actions=submitted
-          ?`<button class="btn btn-sm" onclick="event.stopPropagation();loadPayApp(${pa.id},4)" title="Preview &amp; Export">⬡ Preview</button>
+          ?`<button class="btn btn-sm" onclick="event.stopPropagation();loadPayApp(${pa.id},5)" title="Preview &amp; Export">⬡ Preview</button>
              <span class="badge badge-green" style="margin-left:4px">submitted</span>
              ${delBtn}`
           :`<button class="btn btn-amber btn-sm" onclick="event.stopPropagation();quickMarkSubmitted(${pa.id},${pa.app_number})" title="Mark as submitted">✓ Submit</button>
-             <button class="btn btn-sm" onclick="event.stopPropagation();loadPayApp(${pa.id},4)" title="Preview &amp; Export">⬡ Preview</button>
+             <button class="btn btn-sm" onclick="event.stopPropagation();loadPayApp(${pa.id},5)" title="Preview &amp; Export">⬡ Preview</button>
              <span class="badge badge-amber" style="margin-left:4px">draft</span>
              ${delBtn}`;
         return`<div class="pa-item" onclick="loadPayApp(${pa.id})">
@@ -2605,7 +2696,7 @@ function downloadPDF(){
   const url = `/api/payapps/${currentPAId}/pdf?token=${getToken()}`;
   window.open(url, '_blank');
 }
-async function loadPayApp(id,tab=1){
+async function loadPayApp(id,tab=0){
   currentPAId=id;showPage('payapp');paTab(tab);
   try{
     const pa=await api('GET','/payapps/'+id);
@@ -2636,7 +2727,7 @@ function renderPAHeader(pa){
   document.getElementById('pa-header').innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-size:18px;font-weight:600">Pay App #${pa.app_number} <span class="badge ${submitted?'badge-green':'badge-amber'}" style="font-size:11px;vertical-align:middle;cursor:pointer" onclick="paTab(4)" title="Click to view preview">${pa.status||'draft'}</span></div>
+        <div style="font-size:18px;font-weight:600">Pay App #${pa.app_number} <span class="badge ${submitted?'badge-green':'badge-amber'}" style="font-size:11px;vertical-align:middle;cursor:pointer" onclick="paTab(5)" title="Click to view preview">${pa.status||'draft'}</span></div>
         <div style="font-size:12px;color:var(--text2)">${pa.period_label||'No period set'} · ${pa.project_name} · ${pa.app_number>1?'Carries forward from Pay App #'+(pa.app_number-1):'First application'}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -2644,7 +2735,7 @@ function renderPAHeader(pa){
         ${submitted
           ?'<button class="btn btn-sm" disabled style="opacity:0.5;cursor:default">✓ Submitted</button>'
           :'<button class="btn btn-amber btn-sm" onclick="markSubmitted()">✓ Mark submitted</button>'}
-        <button class="btn btn-primary btn-sm" onclick="paTab(4)">Preview &amp; Export</button>
+        <button class="btn btn-primary btn-sm" onclick="paTab(5)">Preview &amp; Send</button>
         <button class="btn btn-sm" onclick="deletePayApp(${pa.id},${pa.project_id},'${(pa.period_label||'Pay App #'+pa.app_number).replace(/'/g,"\\'")}',${pa.app_number})" style="margin-left:auto;background:none;border:1px solid var(--red);color:var(--red);font-size:11px" title="Delete this pay application">🗑 Delete</button>
       </div>
     </div>`;
@@ -3084,7 +3175,22 @@ async function markSubmitted(){
   catch(e){alert('Error: '+e.message);}
 }
 function copyShareLink(){const url=window.location.origin+'/share/'+currentPAId;navigator.clipboard.writeText(url).then(()=>alert('Link copied!\n'+url)).catch(()=>alert('Share link: '+url));}
-async function sendEmail(){alert('Email: In production this sends via SMTP/SendGrid.\n\nTo: '+document.getElementById('email-to').value);}
+async function sendEmail(){
+  alert('Email: In production this sends via SMTP/SendGrid.\n\nTo: '+document.getElementById('email-to').value);
+  // Auto-mark as submitted after sending
+  if(currentPAData&&currentPAData.status!=='submitted'){
+    try{
+      await api('PUT','/payapps/'+currentPAId,{status:'submitted'});
+      currentPAData=await api('GET','/payapps/'+currentPAId);
+      renderPAHeader(currentPAData);
+      if(currentProjects.length){
+        try{const allPAs=await api('GET','/projects/'+currentPAData.project_id+'/payapps');sidebarPACache[currentPAData.project_id]=allPAs;buildSidebarProjects(currentProjects,currentPAData.project_id);}catch(e){}
+      }
+      const btn=document.getElementById('btn-send-email');
+      if(btn){btn.textContent='✅ Sent & Submitted';btn.disabled=true;}
+    }catch(e){console.error('Auto-submit failed:',e);}
+  }
+}
 
 async function createProject(){
   if(!sovRows.length){document.getElementById('np-err-final').textContent='Please upload an SOV file first';document.getElementById('np-err-final').classList.remove('hidden');return;}
@@ -3194,7 +3300,65 @@ async function handleNewProjectContractUpload(input) {
 function paTab(n){
   document.querySelectorAll('#pa-tabs .tab').forEach((t,i)=>t.classList.toggle('on',i===n));
   document.querySelectorAll('#pg-payapp .tp').forEach((p,i)=>p.classList.toggle('on',i===n));
-  if(n===4&&currentPAData) renderAIAPreview(currentPAData);
+  if(n===5&&currentPAData) renderAIAPreview(currentPAData);
+  if(n===4&&currentPAData) populateLienWaiverStep(currentPAData);
+}
+async function saveAndNext(nextTab){
+  await saveLines();
+  paTab(nextTab);
+}
+function populateLienWaiverStep(pa){
+  const t=calcTotals(pa);
+  // Only reset if not already filled (avoid clearing user edits on re-visit)
+  const amtEl=document.getElementById('iw-amount');
+  if(!amtEl.dataset.userEdited) amtEl.value=t.due>0?t.due.toFixed(2):'';
+  const payEl=document.getElementById('iw-payable-to');
+  if(!payEl.dataset.userEdited) payEl.value=companySettings.company_name||pa.contractor||'';
+  const dateEl=document.getElementById('iw-through-date');
+  if(!dateEl.dataset.userEdited) dateEl.value=(pa.period_end||'').split('T')[0]||'';
+  const sigEl=document.getElementById('iw-signatory');
+  if(!sigEl.dataset.userEdited) sigEl.value=companySettings.contact_name||'';
+  const titleEl=document.getElementById('iw-title');
+  if(!titleEl.dataset.userEdited) titleEl.value='';
+  // Mark user-edited on input so we don't overwrite their changes
+  ['iw-amount','iw-payable-to','iw-through-date','iw-signatory','iw-title'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el&&!el._iwListener){el._iwListener=true;el.addEventListener('input',()=>{el.dataset.userEdited='1';});}
+  });
+  document.getElementById('iw-err').classList.add('hidden');
+  const succ=document.getElementById('iw-success');succ.style.display='none';succ.textContent='';
+  const btn=document.getElementById('iw-generate-btn');btn.disabled=false;btn.textContent='Generate & Attach';
+}
+async function generateAndAttachWaiver(){
+  const docType=document.getElementById('iw-doc-type').value;
+  const amount=document.getElementById('iw-amount').value;
+  const throughDate=document.getElementById('iw-through-date').value;
+  const payableTo=document.getElementById('iw-payable-to').value;
+  const signatory=document.getElementById('iw-signatory').value.trim();
+  const sigTitle=document.getElementById('iw-title').value.trim();
+  const jurisdiction=document.getElementById('iw-jurisdiction').value;
+  const errEl=document.getElementById('iw-err');
+  const succEl=document.getElementById('iw-success');
+  errEl.classList.add('hidden');succEl.style.display='none';
+  if(!signatory){errEl.textContent='Signatory name is required.';errEl.classList.remove('hidden');return;}
+  const btn=document.getElementById('iw-generate-btn');
+  btn.disabled=true;btn.textContent='Generating…';
+  try{
+    await api('POST',`/projects/${currentPAData.project_id}/lien-docs`,{
+      doc_type:docType,through_date:throughDate,
+      amount:amount?parseFloat(amount):null,
+      check_payable_to:payableTo,maker_of_check:'',
+      signatory_name:signatory,signatory_title:sigTitle,
+      jurisdiction,pay_app_id:currentPAId
+    });
+    await loadLienDocs(currentPAData.project_id);
+    if(currentPAId) renderPayAppLienStatus(currentPAId);
+    succEl.textContent='✅ Waiver generated and attached!';succEl.style.display='block';
+    setTimeout(()=>paTab(5),1200);
+  }catch(e){
+    errEl.textContent='Error: '+e.message;errEl.classList.remove('hidden');
+    btn.disabled=false;btn.textContent='Generate & Attach';
+  }
 }
 
 
