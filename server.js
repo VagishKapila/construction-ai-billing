@@ -1386,12 +1386,44 @@ app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
     const ext = path.extname(req.file.originalname).toLowerCase();
     let result;
 
-    if (ext === '.pdf' || ext === '.docx' || ext === '.doc') {
-      // Node.js parser for PDFs and Word docs (no Python dependency)
+    if (ext === '.pdf') {
+      // PDF: use parse_sov.py (pdfplumber) — handles multi-column contractor estimates correctly
+      const pyResult = await new Promise((resolve, reject) => {
+        const { spawn } = require('child_process');
+        // Rename temp file so Python sees .pdf extension
+        const tmpPdf = req.file.path + '.pdf';
+        fs.renameSync(req.file.path, tmpPdf);
+        const py = spawn('python3', [path.join(__dirname, 'parse_sov.py'), tmpPdf]);
+        let out = '', err = '';
+        py.stdout.on('data', d => out += d);
+        py.stderr.on('data', d => err += d);
+        py.on('close', code => {
+          try { fs.renameSync(tmpPdf, req.file.path); } catch(_) {}
+          if (code !== 0 && !out) return reject(new Error(err || 'Python parser failed'));
+          try { resolve(JSON.parse(out)); } catch(e) { reject(new Error('Invalid JSON from parser: ' + out.slice(0,200))); }
+        });
+      });
+      if (pyResult.error) {
+        cleanup();
+        return res.status(422).json({ error: pyResult.error });
+      }
+      const rows = pyResult.rows || [];
+      if (!rows.length) {
+        cleanup();
+        return res.status(422).json({ error: 'No line items with dollar amounts could be extracted from this PDF. If it is a scanned/image PDF, try uploading a Word (.docx) or Excel (.xlsx) version instead.' });
+      }
+      result = {
+        rows, all_rows: rows,
+        row_count: rows.length, total_rows: rows.length,
+        filename: req.file.originalname,
+        sheet_used: 'PDF'
+      };
+    } else if (ext === '.docx' || ext === '.doc') {
+      // Word docs: use Node.js mammoth parser
       const rows = await parseSOVFromText(req.file.path, ext);
       if (!rows || rows.length === 0) {
         cleanup();
-        return res.status(422).json({ error: 'No line items with dollar amounts could be extracted from this file. This may be a scanned/image PDF. Please try uploading an Excel (.xlsx) or Word (.docx) version instead.' });
+        return res.status(422).json({ error: 'No line items with dollar amounts could be extracted from this file. Please try uploading an Excel (.xlsx) version instead.' });
       }
       result = {
         rows, all_rows: rows,
