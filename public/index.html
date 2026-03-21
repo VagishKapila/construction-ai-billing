@@ -1387,33 +1387,6 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
             </div>
           </div>
         </div>
-        <!-- Export & Reports card -->
-        <div class="card" style="margin-top:22px">
-          <div class="ct" style="margin-bottom:4px">📤 Export & Reports</div>
-          <div class="psub" style="margin-bottom:16px">Download billing data for accounting software or generate a full-year revenue report.</div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
-            <div style="border:1px solid var(--border2);border-radius:var(--radius-lg);padding:16px 18px">
-              <div style="font-size:13px;font-weight:600;margin-bottom:4px">📊 Generic CSV</div>
-              <div style="font-size:11px;color:var(--text2);margin-bottom:12px">All pay apps for the selected year — for Excel, Google Sheets, or your accountant.</div>
-              <button class="btn btn-sm" style="width:100%" onclick="exportRevCSV()">⬇ Download CSV</button>
-            </div>
-            <div style="border:1px solid var(--border2);border-radius:var(--radius-lg);padding:16px 18px">
-              <div style="font-size:13px;font-weight:600;margin-bottom:4px">🟩 QuickBooks IIF</div>
-              <div style="font-size:11px;color:var(--text2);margin-bottom:12px">Import invoices directly into QuickBooks Desktop or Online via IIF format.</div>
-              <button class="btn btn-sm" style="width:100%" onclick="exportQuickBooks()">⬇ Download IIF</button>
-            </div>
-            <div style="border:1px solid var(--border2);border-radius:var(--radius-lg);padding:16px 18px">
-              <div style="font-size:13px;font-weight:600;margin-bottom:4px">🏗️ Sage 300 CSV</div>
-              <div style="font-size:11px;color:var(--text2);margin-bottom:12px">AR Invoice batch import for Sage 300 Construction (A/R → Transactions → Invoice Batch → Import).</div>
-              <button class="btn btn-sm" style="width:100%" onclick="exportSage()">⬇ Download CSV</button>
-            </div>
-            <div style="border:1px solid var(--border2);border-radius:var(--radius-lg);padding:16px 18px;background:linear-gradient(135deg,#f0f6ff,#fff)">
-              <div style="font-size:13px;font-weight:600;margin-bottom:4px">📋 Annual Revenue Report</div>
-              <div style="font-size:11px;color:var(--text2);margin-bottom:12px">Full-year PDF with KPI summary, monthly chart, and complete pay app history.</div>
-              <button class="btn btn-sm" style="width:100%;background:#185FA5;color:#fff;border-color:#185FA5" onclick="exportAnnualReport()">⬇ Download PDF</button>
-            </div>
-          </div>
-        </div>
         <!-- Reminder settings card -->
         <div class="card" style="margin-top:22px">
           <div class="ct" style="margin-bottom:4px">🔔 Follow-up & Reminder Settings</div>
@@ -2277,7 +2250,26 @@ function showPage(id){
   document.querySelectorAll('.ni[aria-current]').forEach(n=>n.removeAttribute('aria-current'));
   const navMap={dash:'nav-dash',revenue:'nav-revenue',settings:null,project:null};
   if(navMap[id]) { const el=document.getElementById(navMap[id]); if(el) el.setAttribute('aria-current','page'); }
+  // Hash-based routing: push a history entry so the back button works within the SPA
+  if(!window._spaRestoring) {
+    const hashable = ['dash','revenue','settings'];
+    if(hashable.includes(id)) history.pushState({spaPage:id}, '', '#'+id);
+  }
 }
+// Navigate to a named page without triggering another history push
+function _navigateToPage(page) {
+  if(page === 'revenue') showRevenue();
+  else if(page === 'settings') showSettings();
+  else showDash();
+}
+// Handle browser back/forward within the SPA
+window.addEventListener('popstate', function(e) {
+  if(!token) return; // not authenticated — let the browser do a normal navigation
+  const page = (e.state && e.state.spaPage) || location.hash.replace('#','') || 'dash';
+  window._spaRestoring = true;
+  _navigateToPage(page);
+  window._spaRestoring = false;
+});
 function showDash(){
   closeSidebar();
   showPage('dash');
