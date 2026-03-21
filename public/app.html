@@ -597,7 +597,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
 <!-- ══════════════════════════════════════════════════════════════════════════
      LANDING PAGE
      ══════════════════════════════════════════════════════════════════════════ -->
-<div id="landing-screen" class="lp">
+<div id="landing-screen" class="hidden" class="lp">
 
   <!-- NAV -->
   <nav class="lp-nav" aria-label="Main navigation">
@@ -809,7 +809,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
 
 </div><!-- /landing-screen -->
 
-<div id="auth-screen" class="auth-wrap hidden">
+<div id="auth-screen" class="auth-wrap">
   <div class="auth-card">
     <button onclick="window.location.href='/'" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:12px;padding:0;margin-bottom:14px;display:flex;align-items:center;gap:4px">← Back to home</button>
 <img src="constructinvoice-logo.png" alt="ConstructInvoice AI" style="width:80px;height:80px;border-radius:16px;margin-bottom:8px;object-fit:contain;" onerror="this.style.display='none'">
