@@ -3017,6 +3017,13 @@ app.get('/api/revenue/summary', auth, async (req, res) => {
              p.original_contract AS contract_amount,
              EXTRACT(MONTH   FROM COALESCE(pa.period_end, pa.created_at::date)) AS month,
              EXTRACT(QUARTER FROM COALESCE(pa.period_end, pa.created_at::date)) AS quarter,
+             -- Gross billed this period (before retainage): Column C × Scheduled Value
+             COALESCE((
+               SELECT SUM(sl.scheduled_value * pal.this_pct / 100)
+               FROM pay_app_lines pal
+               JOIN sov_lines sl ON sl.id = pal.sov_line_id
+               WHERE pal.pay_app_id = pa.id
+             ), 0) AS gross_this,
              -- Live amount_due (H = F - G) computed from actual line percentages
              COALESCE((
                SELECT SUM(sl.scheduled_value * pal.this_pct / 100
@@ -3044,7 +3051,9 @@ app.get('/api/revenue/summary', auth, async (req, res) => {
 
     // KPIs — sum over submitted/approved/received only
     const billedRows = rows.filter(r => ['submitted','approved','paid'].includes(r.status) || r.payment_received);
-    const total_billed = billedRows.reduce((s, r) => s + parseFloat(r.amount_due || 0), 0);
+    const gross_billed   = billedRows.reduce((s, r) => s + parseFloat(r.gross_this    || 0), 0);
+    const total_billed   = gross_billed; // use gross (same as dashboard /api/stats) so numbers are consistent
+    const net_billed     = billedRows.reduce((s, r) => s + parseFloat(r.amount_due    || 0), 0);
     const total_retention = billedRows.reduce((s, r) => s + parseFloat(r.retention_held || 0), 0);
     const active_projects = new Set(rows.map(r => r.project_name)).size;
 
@@ -3081,7 +3090,7 @@ app.get('/api/revenue/summary', auth, async (req, res) => {
       chart = yRes.rows.map(r => ({ label: String(parseInt(r.yr)), amount: parseFloat(r.amount)||0 }));
     }
 
-    res.json({ total_billed, total_retention, active_projects, chart, rows });
+    res.json({ total_billed, net_billed, total_retention, active_projects, chart, rows });
   } catch(e) {
     console.error('[Revenue]', e.message);
     res.status(500).json({ error: 'Internal server error' });

@@ -1323,9 +1323,9 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
         </div>
         <!-- KPI cards -->
         <div class="rev-kpi-row" id="rev-kpis">
-          <div class="rev-kpi"><div class="rev-kpi-label">Total Billed</div><div class="rev-kpi-val" id="rev-total-billed">—</div><div class="rev-kpi-sub">All submitted pay apps</div></div>
-          <div class="rev-kpi"><div class="rev-kpi-label">Retention Held</div><div class="rev-kpi-val" id="rev-total-retention">—</div><div class="rev-kpi-sub">Across all projects</div></div>
-          <div class="rev-kpi"><div class="rev-kpi-label">Net Received</div><div class="rev-kpi-val" id="rev-net-received">—</div><div class="rev-kpi-sub">Billed minus retention</div></div>
+          <div class="rev-kpi"><div class="rev-kpi-label">Gross Billed</div><div class="rev-kpi-val" id="rev-total-billed">—</div><div class="rev-kpi-sub">Before retainage (matches dashboard)</div></div>
+          <div class="rev-kpi"><div class="rev-kpi-label">Retention Held</div><div class="rev-kpi-val" id="rev-total-retention">—</div><div class="rev-kpi-sub">Withheld across all projects</div></div>
+          <div class="rev-kpi"><div class="rev-kpi-label">Net Cash Due</div><div class="rev-kpi-val" id="rev-net-received">—</div><div class="rev-kpi-sub">Gross billed minus retention</div></div>
           <div class="rev-kpi"><div class="rev-kpi-label">Active Projects</div><div class="rev-kpi-val" id="rev-active-projects">—</div><div class="rev-kpi-sub">With billing activity</div></div>
         </div>
         <!-- Bar chart -->
@@ -4179,7 +4179,7 @@ async function loadRevenue() {
     const fmt = v => '$' + Math.round(v || 0).toLocaleString();
     document.getElementById('rev-total-billed').textContent = fmt(data.total_billed);
     document.getElementById('rev-total-retention').textContent = fmt(data.total_retention);
-    document.getElementById('rev-net-received').textContent = fmt((data.total_billed || 0) - (data.total_retention || 0));
+    document.getElementById('rev-net-received').textContent = fmt(data.net_billed || (data.total_billed || 0) - (data.total_retention || 0));
     document.getElementById('rev-active-projects').textContent = data.active_projects || 0;
     renderRevChart(data.chart || []);
     renderRevTable(revAllRows);
