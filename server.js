@@ -3077,6 +3077,218 @@ app.post('/api/payapps/:id/payment-received', auth, async (req, res) => {
   }
 });
 
+// ── SHARED HELPER: fetch all pay apps for a user/year with live amounts ──────
+async function fetchRevenueRows(uid, year) {
+  const r = await pool.query(`
+    SELECT pa.id, pa.project_id, pa.app_number, pa.period_end, pa.status,
+           pa.payment_received,
+           p.name AS project_name, p.address, p.job_number,
+           p.original_contract AS contract_amount,
+           COALESCE((
+             SELECT SUM(sl.scheduled_value * pal.this_pct / 100
+                      - sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100
+                      + sl.scheduled_value * pal.prev_pct  / 100 * pal.retainage_pct / 100)
+             FROM pay_app_lines pal
+             JOIN sov_lines sl ON sl.id = pal.sov_line_id
+             WHERE pal.pay_app_id = pa.id
+           ), 0) AS amount_due,
+           COALESCE((
+             SELECT SUM(sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100)
+             FROM pay_app_lines pal
+             JOIN sov_lines sl ON sl.id = pal.sov_line_id
+             WHERE pal.pay_app_id = pa.id
+           ), 0) AS retention_held
+    FROM pay_apps pa
+    JOIN projects p ON p.id = pa.project_id
+    WHERE p.user_id = $1
+      AND EXTRACT(YEAR FROM COALESCE(pa.period_end, pa.created_at::date)) = $2
+      AND pa.deleted_at IS NULL
+    ORDER BY COALESCE(pa.period_end, pa.created_at::date) DESC
+  `, [uid, year]);
+  return r.rows;
+}
+
+// ── QUICKBOOKS IIF EXPORT ─────────────────────────────────────────────────────
+// DR Accounts Receivable / CR Construction Revenue per invoice.
+// Import: QB Desktop — File > Utilities > Import > IIF Files
+app.get('/api/revenue/export/quickbooks', auth, async (req, res) => {
+  try {
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const rows = await fetchRevenueRows(req.user.id, year);
+    const billed = rows.filter(r => ['submitted','approved','paid'].includes(r.status) || r.payment_received);
+
+    const fmtD = d => { const dt = new Date(d||Date.now()); return `${String(dt.getMonth()+1).padStart(2,'0')}/${String(dt.getDate()).padStart(2,'0')}/${dt.getFullYear()}`; };
+    const fmtA = n => parseFloat(n||0).toFixed(2);
+
+    let iif = '!TRNS\tTRNSID\tTRNSTYPE\tDATE\tACCNT\tNAME\tAMOUNT\tDOCNUM\tMEMO\tCLEAR\tTOPRINT\n';
+    iif    += '!SPL\tSPLID\tTRNSTYPE\tDATE\tACCNT\tNAME\tAMOUNT\tDOCNUM\tMEMO\tCLEAR\n';
+    iif    += '!ENDTRNS\n';
+
+    billed.forEach((r, i) => {
+      const date     = fmtD(r.period_end);
+      const customer = r.project_name || 'Unknown';
+      const docNum   = `${r.job_number||''}#${r.app_number}`.trim();
+      const memo     = `Pay App #${r.app_number} — ${r.project_name}`;
+      const amt      = fmtA(r.amount_due);
+      const negAmt   = fmtA(-parseFloat(r.amount_due||0));
+
+      iif += `TRNS\t${1000+i}\tINVOICE\t${date}\tAccounts Receivable\t${customer}\t${amt}\t${docNum}\t${memo}\tN\tY\n`;
+      iif += `SPL\t${2000+i}\tINVOICE\t${date}\tConstruction Revenue\t${customer}\t${negAmt}\t${docNum}\t${memo}\tN\n`;
+      iif += 'ENDTRNS\n';
+    });
+
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="revenue_${year}_quickbooks.iif"`);
+    res.send(iif);
+  } catch(e) {
+    console.error('[QB Export]', e.message);
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
+// ── SAGE 300 CONSTRUCTION CSV EXPORT ─────────────────────────────────────────
+// AR Invoice batch import.
+// Import path: A/R → A/R Transactions → Invoice Batch List → File → Import
+app.get('/api/revenue/export/sage', auth, async (req, res) => {
+  try {
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const rows = await fetchRevenueRows(req.user.id, year);
+    const billed = rows.filter(r => ['submitted','approved','paid'].includes(r.status) || r.payment_received);
+
+    const fmtD = d => { const dt = new Date(d||Date.now()); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`; };
+    const fmtA = n => parseFloat(n||0).toFixed(2);
+
+    const headers = ['CUSTOMER_NO','CUSTOMER_NAME','DOCUMENT_NO','DOCUMENT_DATE','DUE_DATE','GL_ACCOUNT','DESCRIPTION','INVOICE_AMOUNT','RETAINAGE_AMOUNT','JOB_NUMBER'];
+    const csvRows = billed.map(r => [
+      r.job_number || r.project_name?.replace(/\s/g,'').toUpperCase().slice(0,10) || 'CUST001',
+      r.project_name || '',
+      `PA${String(r.app_number).padStart(3,'0')}-${r.job_number||r.id}`,
+      fmtD(r.period_end),
+      fmtD(r.period_end ? new Date(new Date(r.period_end).getTime() + 30*24*60*60*1000) : null),
+      '4000-00',
+      `Pay App #${r.app_number} - ${r.project_name}`,
+      fmtA(r.amount_due),
+      fmtA(r.retention_held),
+      r.job_number || ''
+    ]);
+
+    const csv = [headers, ...csvRows].map(row => row.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="revenue_${year}_sage300.csv"`);
+    res.send(csv);
+  } catch(e) {
+    console.error('[Sage Export]', e.message);
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
+// ── ANNUAL REVENUE REPORT PDF ─────────────────────────────────────────────────
+app.get('/api/revenue/report/pdf', auth, async (req, res) => {
+  try {
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const rows = await fetchRevenueRows(req.user.id, year);
+
+    const fmtM  = n => '$' + parseFloat(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const fmtD  = d => d ? new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+
+    const billed = rows.filter(r => ['submitted','approved','paid'].includes(r.status) || r.payment_received);
+    const total_billed    = billed.reduce((s,r)=>s+parseFloat(r.amount_due||0),0);
+    const total_retention = billed.reduce((s,r)=>s+parseFloat(r.retention_held||0),0);
+    const net_received    = total_billed - total_retention;
+    const active_projects = new Set(rows.map(r=>r.project_name)).size;
+
+    // Monthly chart data
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const monthlyAmounts = months.map((_,i) =>
+      billed.filter(r => r.period_end && new Date(r.period_end).getMonth()===i)
+            .reduce((s,r)=>s+parseFloat(r.amount_due||0),0)
+    );
+    const maxAmt = Math.max(...monthlyAmounts, 1);
+
+    const barBars = months.map((m,i) => {
+      const h = Math.round((monthlyAmounts[i]/maxAmt)*80);
+      const lbl = monthlyAmounts[i]>0 ? `$${Math.round(monthlyAmounts[i]/1000)}k` : '';
+      return `<div style="display:flex;flex-direction:column;align-items:center;flex:1;gap:3px">
+        <div style="font-size:9px;color:#185FA5;font-weight:600">${lbl}</div>
+        <div style="width:100%;height:${h}px;background:linear-gradient(to top,#185FA5,#4a9be0);border-radius:3px 3px 0 0;min-height:${monthlyAmounts[i]>0?4:0}px"></div>
+        <div style="font-size:9px;color:#666">${m}</div>
+      </div>`;
+    }).join('');
+
+    const tableRows = rows.map(r => `
+      <tr>
+        <td>${r.job_number||'—'}</td>
+        <td>${r.project_name||'—'}</td>
+        <td>#${r.app_number}</td>
+        <td>${fmtD(r.period_end)}</td>
+        <td style="text-align:right">${fmtM(r.contract_amount)}</td>
+        <td style="text-align:right">${fmtM(r.amount_due)}</td>
+        <td style="text-align:right">${fmtM(r.retention_held)}</td>
+        <td style="text-align:center"><span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:${r.status==='submitted'||r.status==='approved'?'#d1fae5':'#fef3c7'};color:${r.status==='submitted'||r.status==='approved'?'#065f46':'#92400e'}">${r.status||'draft'}</span></td>
+        <td style="text-align:center">${r.payment_received?'✓':'—'}</td>
+      </tr>`).join('');
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:11px;color:#1a1a2e;padding:32px 40px}
+      .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:18px;border-bottom:2px solid #185FA5}
+      .co-name{font-size:20px;font-weight:700;color:#185FA5}
+      .report-title{font-size:14px;color:#444;margin-top:3px}
+      .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+      .kpi{background:#f0f6ff;border-radius:8px;padding:14px 16px;border:1px solid #c7dff7}
+      .kpi-label{font-size:9px;color:#666;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px}
+      .kpi-val{font-size:18px;font-weight:700;color:#185FA5}
+      .section-title{font-size:12px;font-weight:700;color:#1a1a2e;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #e2e8f0;text-transform:uppercase;letter-spacing:0.05em}
+      .chart-wrap{display:flex;align-items:flex-end;gap:6px;height:100px;margin-bottom:24px;padding:0 4px}
+      table{width:100%;border-collapse:collapse;font-size:10px}
+      th{background:#185FA5;color:#fff;padding:7px 10px;text-align:left;font-weight:600;font-size:9px;text-transform:uppercase;letter-spacing:0.04em}
+      td{padding:7px 10px;border-bottom:1px solid #f1f5f9}
+      tr:nth-child(even) td{background:#f8fafc}
+      .footer{margin-top:28px;padding-top:12px;border-top:1px solid #e2e8f0;text-align:center;font-size:9px;color:#999}
+    </style></head><body>
+    <div class="header">
+      <div>
+        <div class="co-name">Annual Revenue Report</div>
+        <div class="report-title">Fiscal Year ${year} · Generated ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
+      </div>
+    </div>
+    <div class="kpi-row">
+      <div class="kpi"><div class="kpi-label">Total Billed</div><div class="kpi-val">${fmtM(total_billed)}</div></div>
+      <div class="kpi"><div class="kpi-label">Retention Held</div><div class="kpi-val">${fmtM(total_retention)}</div></div>
+      <div class="kpi"><div class="kpi-label">Net Received</div><div class="kpi-val">${fmtM(net_received)}</div></div>
+      <div class="kpi"><div class="kpi-label">Active Projects</div><div class="kpi-val">${active_projects}</div></div>
+    </div>
+    <div class="section-title">Monthly Billing</div>
+    <div class="chart-wrap">${barBars}</div>
+    <div class="section-title">Pay Application History</div>
+    <table>
+      <thead><tr><th>Job #</th><th>Project</th><th>Pay App</th><th>Period End</th><th style="text-align:right">Contract</th><th style="text-align:right">Invoice Amt</th><th style="text-align:right">Retention</th><th style="text-align:center">Status</th><th style="text-align:center">Paid</th></tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+    <div class="footer">ConstructInvoice AI · $0 to use — pay it forward instead: feed a child, help a neighbor 🙏</div>
+    </body></html>`;
+
+    let pdfBuf;
+    if (puppeteer) {
+      const browser = await puppeteer.launch({ args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu'] });
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: 'networkidle0' });
+      pdfBuf = await page.pdf({ format: 'Letter', printBackground: true, margin: { top:'0.4in', bottom:'0.4in', left:'0.4in', right:'0.4in' } });
+      await browser.close();
+    } else {
+      return res.status(503).json({ error: 'PDF generation unavailable' });
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="annual_revenue_report_${year}.pdf"`);
+    res.send(pdfBuf);
+  } catch(e) {
+    console.error('[Annual Report]', e.message);
+    res.status(500).json({ error: 'Report generation failed' });
+  }
+});
+
 // ── PUBLIC INVOICE VIEW (no auth — shareable link sent to owners) ──────────
 app.get('/invoice/:token', async (req, res) => {
   try {
