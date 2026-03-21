@@ -93,16 +93,18 @@ body {
   text-decoration: none;
 }
 .nav-logo {
-  width: 42px; height: 42px;
-  border-radius: 10px;
-  object-fit: contain;
-  background: rgba(255,255,255,0.05);
-  padding: 2px;
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  object-fit: cover;
+  background: #fff;
+  padding: 3px;
+  box-shadow: 0 2px 12px rgba(201,168,76,0.2);
 }
 .nav-logo-fallback {
-  width: 42px; height: 42px;
-  border-radius: 10px;
-  display: flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  display: none;
+  align-items: center; justify-content: center;
   background: var(--gradient-main);
   font-size: 20px; font-weight: 800; color: #1a1a1a;
 }
@@ -871,7 +873,7 @@ h3 {
 <nav class="nav" id="nav">
   <a href="#" class="nav-brand">
     <img class="nav-logo" src="varshyl-logo.png" alt="ConstructInvoice AI" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
-    <div class="nav-logo-fallback" style="display:none;">C</div>
+    <svg class="nav-logo-fallback" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:none;width:44px;height:44px;"><ellipse cx="24" cy="24" rx="20" ry="18" stroke="url(#ng)" stroke-width="2" fill="none" transform="rotate(-15 24 24)"/><rect x="14" y="10" width="16" height="22" rx="2" fill="#fff" stroke="#5a3d8a" stroke-width="1.2"/><text x="22" y="20" font-family="Inter,sans-serif" font-size="8" font-weight="700" fill="#c9a84c" text-anchor="middle">$</text><line x1="17" y1="23" x2="27" y2="23" stroke="#c9a84c" stroke-width="1" stroke-linecap="round"/><line x1="17" y1="26" x2="25" y2="26" stroke="#b0b0b8" stroke-width="1" stroke-linecap="round"/><circle cx="28" cy="28" r="6" fill="#e8a830"/><path d="M25.5 28 L27.5 30 L31 26" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><defs><linearGradient id="ng" x1="0" y1="0" x2="48" y2="48"><stop offset="0%" stop-color="#c9a84c"/><stop offset="50%" stop-color="#e8d48b"/><stop offset="100%" stop-color="#3a5ba0"/></linearGradient></defs></svg>
     <div class="nav-title">Construct<span>Invoice</span></div>
   </a>
   <div class="nav-links">
@@ -879,18 +881,19 @@ h3 {
     <a href="#how-it-works">How It Works</a>
     <a href="#who-its-for">Who It's For</a>
     <a href="#pricing">Pricing</a>
-    <a href="/login.html" class="btn btn-primary btn-sm">Start Free →</a>
+    <a href="/app.html" class="btn btn-primary btn-sm">Start Free →</a>
   </div>
 </nav>
 
 <!-- HERO -->
 <section class="hero section">
+  <img src="varshyl-logo.png" alt="ConstructInvoice AI" style="width:100px;height:100px;border-radius:20px;margin-bottom:24px;background:#fff;padding:6px;box-shadow:0 8px 40px rgba(201,168,76,0.2), 0 0 0 1px rgba(201,168,76,0.1);" onerror="this.style.display='none';">
   <div class="hero-badge">⚡ AI-Powered AIA Billing</div>
   <h1>Stop Doing AIA<br>G702/703 Billing<br><span class="gradient-text">by Hand.</span></h1>
   <p class="subtitle">Construction AI Billing automates your G702/G703 pay applications — from your Schedule of Values (SOV), bid, or proposal to a signed, print-ready PDF — in minutes, not hours. And our AI Agents follow up on pending payments to get you paid.</p>
   <div class="hero-cta">
-    <a href="/login.html" class="btn btn-primary">Start Free in 2 Minutes →</a>
-    <a href="/login.html" class="btn btn-secondary">Sign In</a>
+    <a href="/app.html" class="btn btn-primary">Start Free in 2 Minutes →</a>
+    <a href="/app.html" class="btn btn-secondary">Sign In</a>
   </div>
   <p class="hero-note">No spreadsheets. No errors. No delays. No credit card required.</p>
 
@@ -1252,8 +1255,8 @@ h3 {
     <h2>Ready when<br><span class="gradient-text">you are.</span></h2>
     <p class="subtitle" style="margin:0 auto 32px; text-align:center;">Start in minutes. No credit card. No pressure. Just better billing.</p>
     <div class="hero-cta">
-      <a href="/login.html" class="btn btn-primary">Start Free →</a>
-      <a href="/login.html" class="btn btn-secondary">Sign In</a>
+      <a href="/app.html" class="btn btn-primary">Start Free →</a>
+      <a href="/app.html" class="btn btn-secondary">Sign In</a>
     </div>
     <p class="hero-note" style="margin-top:16px;">Have a photo to share? Email us at <a href="mailto:vaakapila@gmail.com" style="color:var(--accent-gold);text-decoration:none;">vaakapila@gmail.com</a></p>
   </div>
@@ -1262,7 +1265,7 @@ h3 {
 <!-- FOOTER -->
 <footer class="footer">
   <div class="footer-brand">
-    <img class="nav-logo" src="varshyl-logo.png" alt="ConstructInvoice AI" style="width:30px;height:30px;border-radius:8px;" onerror="this.style.display='none';">
+    <img class="nav-logo" src="varshyl-logo.png" alt="ConstructInvoice AI" style="width:34px;height:34px;border-radius:8px;padding:2px;background:#fff;box-shadow:0 2px 8px rgba(201,168,76,0.15);" onerror="this.style.display='none';">
     <span style="font-weight:700;font-size:15px;">Construct<span style="color:var(--accent-gold);">Invoice</span> AI</span>
   </div>
   <p>A product of <strong>Varshyl Inc.</strong> · San Jose, California</p>
