@@ -10,10 +10,10 @@ import sys, json, re, os
 # ── Patterns to skip (headers, footers, metadata, sub-bullets) ────────────────
 SKIP_RE = re.compile(
     r'^(\*|•|·|–|—|-{2,})'               # bullet / sub-item lines
-    r'|^(subtotal|total|tax|overhead|company overhead|balance due|amount paid'
-    r'|terms|signature|page \d|files\+|materials\n|note[:\s]|excludes'
-    r'|it is an honor|we thank|sincerely|dear |http|www\.|all demolition'
-    r'|material and|item\s+labor|labor\s+overhead|rental equipment\s*$)',
+    r'|^(subtotal|total|tax|company overhead|balance due|amount paid'
+    r'|terms\s+and\s+conditions|signature|page \d+\s*/|files\+|note[:\s]|excludes'
+    r'|it is an honor|we thank|sincerely|dear |http|www\.'
+    r'|material and\s+labor|item\s+labor|labor\s+overhead)',
     re.IGNORECASE
 )
 
