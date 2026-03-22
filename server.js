@@ -1430,19 +1430,30 @@ app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
     if (ext === '.pdf') {
       // PDF: use parse_sov.py (pdfplumber) — handles multi-column contractor estimates correctly
       const pyResult = await new Promise((resolve, reject) => {
-        const { spawn } = require('child_process');
+        const { spawn, execSync } = require('child_process');
         // Rename temp file so Python sees .pdf extension
         const tmpPdf = req.file.path + '.pdf';
         fs.renameSync(req.file.path, tmpPdf);
-        const py = spawn('python3', [path.join(__dirname, 'parse_sov.py'), tmpPdf]);
+        // Determine which Python binary is available (Railway may have 'python' not 'python3')
+        let pyBin = 'python3';
+        try { execSync('python3 --version', { stdio: 'ignore' }); }
+        catch(_) {
+          try { execSync('python --version', { stdio: 'ignore' }); pyBin = 'python'; }
+          catch(__) { /* will fail gracefully below */ }
+        }
+        const py = spawn(pyBin, [path.join(__dirname, 'parse_sov.py'), tmpPdf]);
         let out = '', err = '';
         py.stdout.on('data', d => out += d);
         py.stderr.on('data', d => err += d);
+        // CRITICAL: handle spawn errors (e.g. python not found) — without this Node.js crashes → 502
+        py.on('error', (spawnErr) => {
+          try { fs.renameSync(tmpPdf, req.file.path); } catch(_) {}
+          reject(new Error('Python not available on this server: ' + spawnErr.message));
+        });
         py.on('close', code => {
           try { fs.renameSync(tmpPdf, req.file.path); } catch(_) {}
-          if (code !== 0 && !out && !err) return reject(new Error('Python parser failed'));
-          // pdfplumber may emit non-JSON text on stdout; JSON might be in stdout or stderr.
-          // Try stdout first, then stderr, then extract the first {...} block from combined output.
+          if (code !== 0 && !out && !err) return reject(new Error('Python parser failed (exit ' + code + ')'));
+          // pdfplumber may emit non-JSON text; try stdout first, then stderr, then extract {...}
           const combined = out + err;
           let parsed = null;
           for (const s of [out, err]) {
