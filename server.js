@@ -2142,7 +2142,8 @@ app.post('/api/payapps/:id/email', auth, async (req, res) => {
     </div>`;
 
     // Send via Resend
-    const fromName  = process.env.FROM_NAME  || 'ConstructInvoice AI';
+    // Strip any non-ASCII characters from fromName — Resend rejects unicode in the from field
+    const fromName  = ((process.env.FROM_NAME  || 'ConstructInvoice AI').replace(/[^\x20-\x7E]/g, '').trim()) || 'ConstructInvoice AI';
     const fromEmail = process.env.FROM_EMAIL || 'billing@varshyl.com';
     if (!process.env.RESEND_API_KEY) {
       console.log(`[DEV Email] TO:${to} CC:${cc||'-'} | ${subject||'Pay App #'+pa.app_number} | attachments:${emailAttachments.length}`);
