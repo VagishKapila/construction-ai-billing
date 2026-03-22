@@ -3293,9 +3293,9 @@ async function sendEmail(){
     if(currentProjects.length){
       try{const allPAs=await api('GET','/projects/'+currentPAData.project_id+'/payapps');sidebarPACache[currentPAData.project_id]=allPAs;buildSidebarProjects(currentProjects,currentPAData.project_id);}catch(e){}
     }
-    if(btn){btn.textContent='✅ Sent & Submitted';btn.disabled=true;}
+    if(btn){btn.textContent='📤 Resend';btn.disabled=false;}
     const attMsg=result.attachments>1?' (PDF + lien waiver attached)':result.attachments===1?' (PDF attached)':'';
-    alert('✅ Email sent to '+to+'!\n'+attMsg);
+    alert('✅ Email sent to '+to+'!\n'+attMsg+'\n\nYou can resend anytime using the Resend button.');
   }catch(e){
     if(btn){btn.textContent=origTxt;btn.disabled=false;}
     alert('Failed to send email:\n'+(e.data&&e.data.detail||e.message));
