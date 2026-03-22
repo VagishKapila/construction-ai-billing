@@ -2251,7 +2251,26 @@ function showPage(id){
   document.querySelectorAll('.ni[aria-current]').forEach(n=>n.removeAttribute('aria-current'));
   const navMap={dash:'nav-dash',revenue:'nav-revenue',settings:null,project:null};
   if(navMap[id]) { const el=document.getElementById(navMap[id]); if(el) el.setAttribute('aria-current','page'); }
+  // Hash-based routing: push a history entry so back button navigates within the SPA
+  if(!window._spaRestoring) {
+    const hashable=['dash','revenue','settings'];
+    if(hashable.includes(id)) history.pushState({spaPage:id},'','#'+id);
+  }
 }
+// Navigate to named page without double-pushing history
+function _navigateToPage(page){
+  if(page==='revenue') showRevenue();
+  else if(page==='settings') showSettings();
+  else showDash();
+}
+// Handle browser back/forward within the SPA
+window.addEventListener('popstate',function(e){
+  if(!token) return; // not logged in, let normal navigation happen
+  const page=(e.state&&e.state.spaPage)||location.hash.replace('#','')||'dash';
+  window._spaRestoring=true;
+  _navigateToPage(page);
+  window._spaRestoring=false;
+});
 function showDash(){
   closeSidebar();
   showPage('dash');
@@ -2359,10 +2378,29 @@ function processSOVFile(file){
   .then(data=>{
     if(data.error) throw new Error(data.error);
     sovRows=data.rows||[];
+    const fmt$=n=>'$'+Math.round(parseFloat(n)||0).toLocaleString('en-US');
     let html=`<div style="padding:8px 12px;background:var(--green-light);border-radius:var(--radius);margin-bottom:10px">
-      <div style="font-weight:500;color:var(--green)">Parsed: ${data.filename}</div>
-      <div style="font-size:11px;color:var(--green);margin-top:2px">Sheet: ${data.sheet_used} &nbsp;·&nbsp; ${data.row_count} parent lines &nbsp;·&nbsp; ${data.total_rows} total lines</div>
+      <div style="font-weight:500;color:var(--green)">✅ Parsed: ${data.filename}</div>
+      <div style="font-size:11px;color:var(--green);margin-top:2px">Format: ${data.sheet_used} &nbsp;·&nbsp; ${data.row_count} line items found</div>
     </div>`;
+    // Financial summary from document (subtotal, overhead, tax, total, etc.)
+    const sum=data.summary||{};
+    const sumKeys=Object.keys(sum).filter(k=>k!=='amount_paid'&&sum[k]>0);
+    if(sumKeys.length>0){
+      const computed=data.computed_total||0;
+      const reported=data.reported_total||0;
+      const diff=reported>0?Math.abs(computed-reported):0;
+      const matchOk=diff<1;
+      html+=`<div style="padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);margin-bottom:10px;font-size:12px">
+        <div style="font-weight:600;margin-bottom:6px;font-size:13px">📋 Document Financial Summary</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 20px">
+          ${sumKeys.map(k=>`<div style="color:var(--text2)">${k.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</div><div style="font-weight:500;text-align:right">${fmt$(sum[k])}</div>`).join('')}
+          <div style="color:var(--text2)">Line Items Total</div><div style="font-weight:500;text-align:right">${fmt$(computed)}</div>
+        </div>
+        ${reported>0&&!matchOk?`<div style="margin-top:8px;padding:6px 8px;background:#fff8e1;border-radius:4px;color:#7c5e00;font-size:11px">⚠️ Line items sum (${fmt$(computed)}) differs from document total (${fmt$(reported)}) by ${fmt$(diff)} — this is normal when the document has alternative bids or excluded items. Review and delete any lines you don't want to include.</div>`:''}
+        ${reported>0&&matchOk?`<div style="margin-top:6px;color:var(--green);font-size:11px">✓ Line items match document total</div>`:''}
+      </div>`;
+    }
     if(data.all_rows&&data.all_rows.length>data.rows.length){
       html+=`<div style="display:flex;gap:8px;margin-bottom:4px">
         <button class="btn btn-primary btn-sm" onclick="switchSOVView(true)">Parent lines only (${data.rows.length})</button>

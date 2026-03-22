@@ -1059,6 +1059,17 @@ app.delete('/api/attachments/:id', auth, async (req,res) => {
 //   5. Skip grand-total / subtotal summary rows (don't include them as line items)
 function parseSOVFile(filePath) {
   const XLSX = require('xlsx');
+  // Local helper to normalize summary row descriptions (subtotal/total/balance) to standard keys.
+  // Defined inside parseSOVFile so it's available when QA test evals this function in isolation.
+  function _xlsSummaryLabel(text) {
+    const s = String(text).replace(/\s*[$\d,\.]+.*$/, '').trim().toLowerCase().replace(/\s+/g,' ');
+    if (/sub[\s-]?total/.test(s))   return 'subtotal';
+    if (/balance[\s-]?due/.test(s)) return 'balance_due';
+    if (/amount[\s-]?paid/.test(s)) return 'amount_paid';
+    if (/grand/.test(s))            return 'total';
+    if (/^total/.test(s))           return 'total';
+    return s.replace(/[^a-z0-9_]/g,'_').slice(0,30);
+  }
   const workbook = XLSX.readFile(filePath);
 
   // Prefer Summary sheet
@@ -1174,9 +1185,18 @@ function parseSOVFile(filePath) {
   }
 
   // ── Step 3: Parse data rows — skip summary/total rows, collect line items ───
-  const isSummary = (desc, itemId) =>
-    /^(total|subtotal|grand\s*total|total\s+project|total\s+bid|total\s+cost)/i.test(desc) ||
-    /^(total|subtotal|grand\s*total)$/i.test(itemId);
+  const xlsSummary = {};  // captures subtotal/total rows as metadata
+  const isSummary = (desc, itemId, amt) => {
+    const isSum = /^(total|subtotal|grand\s*total|total\s+project|total\s+bid|total\s+cost)/i.test(desc) ||
+                  /^(total|subtotal|grand\s*total)$/i.test(itemId);
+    if (isSum && !isNaN(amt) && amt > 0) {
+      // Prefer itemId for label when it looks like a summary keyword (e.g. "TOTAL"), else use desc
+      const labelText = /^(total|subtotal|grand)/i.test(itemId) ? itemId : (desc || itemId);
+      const key = _xlsSummaryLabel(labelText);
+      xlsSummary[key] = Math.round(amt * 100) / 100;
+    }
+    return isSum;
+  };
 
   const isHeaderLabel = (desc) =>
     /^(section|description|item|scope|no\.|#|trade|work\s*item|csi)/i.test(desc);
@@ -1197,7 +1217,7 @@ function parseSOVFile(filePath) {
 
     if (!desc || desc.length < 2) continue;
     if (isHeaderLabel(desc)) continue;
-    if (isSummary(desc, itemId)) continue;  // skip Grand Total rows; continue so Fee after subtotal is kept
+    if (isSummary(desc, itemId, parseFloat(rawAmt))) continue;  // skip Grand Total rows; capture as summary metadata
     if (isNaN(amt) || amt <= 0) continue;   // skip "By Others", blank amounts
 
     // isParent: ends-in-000 CSI division codes, short alpha codes (GC/GL), or blank code
@@ -1250,14 +1270,28 @@ function parseSOVFile(filePath) {
 
   const parentRows = allRows.filter(r => r.is_parent);
 
-  return { headers: ['Item #','Description','Scheduled Value'], sheetName, allRows, parentRows, iItem, iDesc, iAmt };
+  return { headers: ['Item #','Description','Scheduled Value'], sheetName, allRows, parentRows, iItem, iDesc, iAmt, summary: xlsSummary };
 }
 
 // ── Node.js PDF/DOCX SOV parser (replaces Python parse_sov.py) ─────────────────
 // Parses contractor estimate PDFs and Word docs into line items.
 // Uses pdf-parse (PDF) and mammoth (DOCX) — pure JS, no Python needed.
 
-const SKIP_RE = /^(\*|•|·|–|—|-{2,})|^(subtotal|total|tax|overhead|company overhead|balance due|amount paid|terms|signature|page \d|note[:\s]|excludes|it is an honor|we thank|sincerely|dear |http|www\.)/i;
+// Lines to skip entirely — boilerplate, not scope or money
+// NOTE: tax / overhead / company overhead are NOT skipped — they are real billable line items
+const SKIP_RE = /^(\*|•|·|–|—|-{2,})|^(terms|signature|page \d|note[:\s]|excludes|it is an honor|we thank|sincerely|dear |http|www\.)/i;
+// Financial summary rows: captured as metadata, NOT added as line items
+const SUMMARY_RE = /^(subtotal|sub[\s\-]total|grand[\s\-]total|total[\s\-]amount|balance[\s\-]due|amount[\s\-]paid|amount[\s\-]due|total\s*$|total\s+\$)/i;
+function extractSummaryLabel(line) {
+  const s = line.replace(/\s*\$[\d,]+(?:\.\d{1,2})?.*$/, '').trim().toLowerCase().replace(/\s+/g,' ');
+  if (/sub[\s-]?total/.test(s))   return 'subtotal';
+  if (/balance[\s-]?due/.test(s)) return 'balance_due';
+  if (/amount[\s-]?paid/.test(s)) return 'amount_paid';
+  if (/amount[\s-]?due/.test(s))  return 'amount_due';
+  if (/grand/.test(s))            return 'total';
+  if (/^total/.test(s))           return 'total';
+  return s.replace(/[^a-z0-9_]/g,'_').slice(0,30);
+}
 // Skip metadata lines: license numbers, addresses, dates — not work items
 const SKIP_META_RE = /\b(lic(ense)?(\s*#|\s+no\.?)?|p\.?o\.?\s*box|phone|fax|e[\-]?mail|zip|contractor'?s)\b|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2},?\s*\d{4}/i;
 
@@ -1305,11 +1339,18 @@ function rowsFromLines(lines) {
   }
 
   const rows = [];
+  const summary = {};
   const seen = new Set();
   let counter = 1000;
   for (const raw of merged) {
     const line = raw.trim();
     if (line.length < 5) continue;
+    // Capture financial summary rows as metadata (subtotal, total, balance due, etc.)
+    if (SUMMARY_RE.test(line)) {
+      const amts = extractAmounts(line);
+      if (amts.length) summary[extractSummaryLabel(line)] = Math.round(amts[amts.length-1] * 100) / 100;
+      continue;
+    }
     if (SKIP_RE.test(line)) continue;
     if (SKIP_META_RE.test(line)) continue;
     const amounts = extractAmounts(line);
@@ -1332,7 +1373,7 @@ function rowsFromLines(lines) {
     rows.push({ item_id: String(counter), description: desc, scheduled_value: Math.round(total * 100) / 100 });
     counter += 1000;
   }
-  return rows;
+  return {rows, summary};
 }
 
 async function parseSOVFromText(filePath, ext) {
@@ -1370,12 +1411,12 @@ async function parseSOVFromText(filePath, ext) {
         tableCells.push(`${desc} $${amt}`);
       }
     }
-    const tableRows = rowsFromLines(tableCells);
-    if (tableRows.length > 0) return tableRows;
+    const tableResult = rowsFromLines(tableCells);
+    if (tableResult.rows && tableResult.rows.length > 0) return tableResult;
     // Fallback: plain text lines
     return rowsFromLines(lines);
   }
-  return [];
+  return {rows: [], summary: {}};
 }
 
 app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
@@ -1412,28 +1453,40 @@ app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
         cleanup();
         return res.status(422).json({ error: 'No line items with dollar amounts could be extracted from this PDF. If it is a scanned/image PDF, try uploading a Word (.docx) or Excel (.xlsx) version instead.' });
       }
+      const summary = pyResult.summary || {};
+      const computed_total = pyResult.computed_total || rows.reduce((s,r) => s + r.scheduled_value, 0);
+      const reported_total = pyResult.reported_total || summary.total || summary.balance_due || null;
       result = {
         rows, all_rows: rows,
         row_count: rows.length, total_rows: rows.length,
+        summary, computed_total, reported_total,
         filename: req.file.originalname,
         sheet_used: 'PDF'
       };
     } else if (ext === '.docx' || ext === '.doc') {
       // Word docs: use Node.js mammoth parser
-      const rows = await parseSOVFromText(req.file.path, ext);
+      const parsed = await parseSOVFromText(req.file.path, ext);
+      const rows = parsed.rows || parsed;  // handle both old array and new {rows,summary}
+      const summary = parsed.summary || {};
       if (!rows || rows.length === 0) {
         cleanup();
         return res.status(422).json({ error: 'No line items with dollar amounts could be extracted from this file. Please try uploading an Excel (.xlsx) version instead.' });
       }
+      const computed_total = rows.reduce((s,r) => s + r.scheduled_value, 0);
+      const reported_total = summary.total || summary.balance_due || null;
       result = {
         rows, all_rows: rows,
         row_count: rows.length, total_rows: rows.length,
+        summary, computed_total, reported_total,
         filename: req.file.originalname,
         sheet_used: ext.replace('.','').toUpperCase()
       };
     } else {
       // Existing Node/XLSX parser for .xlsx/.xls/.csv
       const parsed = parseSOVFile(req.file.path);
+      const summary = parsed.summary || {};
+      const computed_total = parsed.allRows.reduce((s,r) => s + r.scheduled_value, 0);
+      const reported_total = summary.total || summary.subtotal || null;
       result = {
         headers:    parsed.headers,
         detected:   { item: parsed.iItem, desc: parsed.iDesc, amt: parsed.iAmt },
@@ -1441,6 +1494,7 @@ app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
         rows:       parsed.allRows,
         row_count:  parsed.allRows.length,
         total_rows: parsed.allRows.length,
+        summary, computed_total, reported_total,
         filename:   req.file.originalname,
         sheet_used: parsed.sheetName
       };

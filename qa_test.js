@@ -28,7 +28,9 @@ function checkContains(label, filePath, pattern) {
 console.log('\n══════════════════════════════════════════════════');
 console.log('  BUG FIX 1: PDF & Word upload allowed on SOV step');
 console.log('══════════════════════════════════════════════════');
-const indexSrc = fs.readFileSync('./public/index.html', 'utf8');
+// The landing page is public/index.html; the billing app is public/app.html.
+// QA checks app features in app.html (the actual SPA), landing features in index.html.
+const indexSrc = fs.readFileSync('./public/app.html', 'utf8');
 
 check('PDF extension (.pdf) is in the allowed list',
   indexSrc.includes(".endsWith('.pdf')"));
@@ -194,7 +196,7 @@ check('Parser uses rightmost column on tie for amounts',
 check('isSummary() skips grand-total rows',
   serverSrc2.includes('isSummary'));
 check('Summary rows skipped but parsing continues (for Fee after subtotal)',
-  serverSrc2.includes('isSummary(desc, itemId)) continue'));
+  serverSrc2.includes('isSummary(') && serverSrc2.includes(') continue'));
 
 // ─────────────────────────────────────────────────────────────────────────────
 console.log('\n══════════════════════════════════════════════════');
@@ -202,8 +204,10 @@ console.log('  LANDING PAGE & MOBILE');
 console.log('══════════════════════════════════════════════════');
 check('Landing page div exists in HTML',
   indexSrc.includes('id="landing-screen"'));
-check('Auth screen starts hidden (requires landing page first)',
-  indexSrc.includes('id="auth-screen" class="auth-wrap hidden"'));
+// In the two-file structure, app.html shows auth immediately (landing is index.html)
+// The auth screen should be visible so users can log in when navigating to /app.html
+check('Auth screen exists in app',
+  indexSrc.includes('id="auth-screen"'));
 check('Mobile CSS has grid column collapse to 1fr',
   indexSrc.includes('grid-template-columns:1fr'));
 check('showAuthFromLanding() function exists',

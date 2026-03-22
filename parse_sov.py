@@ -2,18 +2,29 @@
 """
 Smart SOV parser for Construction AI Billing.
 Accepts PDF (.pdf) and Word (.docx/.doc) contractor estimates.
-Extracts: item_id, description, scheduled_value
+Extracts: item_id, description, scheduled_value (line items)
+Also extracts: summary (subtotal, overhead, tax, total, etc.)
 Returns JSON to stdout.
 """
 import sys, json, re, os
 
-# ── Patterns to skip (headers, footers, metadata, sub-bullets) ────────────────
+# ── Lines to skip entirely (document boilerplate, not scope or money) ─────────
+# NOTE: "company overhead", "tax" are NOT skipped — they are real billable line items.
+# Only skip meta/summary rows handled by SUMMARY_RE, and pure boilerplate.
 SKIP_RE = re.compile(
     r'^(\*|•|·|–|—|-{2,})'               # bullet / sub-item lines
-    r'|^(subtotal|total|tax|company overhead|balance due|amount paid'
-    r'|terms\s+and\s+conditions|signature|page \d+\s*/|files\+|note[:\s]|excludes'
+    r'|^(terms\s+and\s+conditions|signature|page \d+\s*/|files\+|note[:\s]|excludes'
     r'|it is an honor|we thank|sincerely|dear |http|www\.'
     r'|material and\s+labor|item\s+labor|labor\s+overhead)',
+    re.IGNORECASE
+)
+
+# ── Financial summary rows: captured as metadata, NOT added as line items ──────
+# These are document totals / running sums, not individual billable scope items.
+SUMMARY_RE = re.compile(
+    r'^(subtotal|sub[\s\-]total|grand[\s\-]total|total[\s\-]amount|'
+    r'balance[\s\-]due|amount[\s\-]paid|amount[\s\-]due|'
+    r'total\s*$|total\s+\$)',
     re.IGNORECASE
 )
 
@@ -27,6 +38,25 @@ def extract_amounts(text):
     return [float(m.replace('$','').replace(',',''))
             for m in re.findall(r'\$[\d,]+(?:\.\d{1,2})?', text)]
 
+def extract_bare_amounts(text):
+    """Return floats from bare large numbers (no $ sign).
+    Used for summary lines that sometimes drop the $ due to PDF encoding."""
+    return [float(m.replace(',',''))
+            for m in re.findall(r'(?<!\d)(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)(?!\d)', text)
+            if float(m.replace(',','')) > 100]
+
+def extract_summary_label(line):
+    """Normalize a summary line description to a standard key."""
+    s = re.sub(r'\s*\$[\d,]+(?:\.\d{1,2})?.*$', '', line).strip().lower()
+    s = re.sub(r'\s+', ' ', s)
+    if re.search(r'sub[\s\-]?total', s):    return 'subtotal'
+    if re.search(r'balance[\s\-]?due', s):  return 'balance_due'
+    if re.search(r'amount[\s\-]?paid', s):  return 'amount_paid'
+    if re.search(r'amount[\s\-]?due', s):   return 'amount_due'
+    if re.search(r'grand[\s\-]?total', s):  return 'total'
+    if re.search(r'^total', s):             return 'total'
+    return re.sub(r'[^a-z0-9_]', '_', s)[:30]
+
 def assign_id(counter, existing_id=''):
     """Return existing_id if it looks like a real cost code, else auto-assign."""
     if re.match(r'^\d{3,6}$', str(existing_id).strip()):
@@ -39,6 +69,7 @@ def assign_id(counter, existing_id=''):
 def parse_pdf(filepath):
     import pdfplumber
     rows = []
+    summary = {}
     counter = [1000]
     seen = set()
 
@@ -49,6 +80,19 @@ def parse_pdf(filepath):
                 line = line.strip()
                 if len(line) < 5:
                     continue
+
+                # Check for financial summary rows first (subtotal, total, balance due, etc.)
+                if SUMMARY_RE.search(line):
+                    amounts = extract_amounts(line)
+                    if not amounts:
+                        # Some PDFs strip the $ sign — try bare number extraction
+                        amounts = extract_bare_amounts(line)
+                    if amounts:
+                        key = extract_summary_label(line)
+                        summary[key] = round(amounts[-1], 2)
+                    continue
+
+                # Skip boilerplate lines
                 if SKIP_RE.search(line):
                     continue
 
@@ -82,13 +126,14 @@ def parse_pdf(filepath):
                     'scheduled_value': round(total, 2)
                 })
 
-    return rows
+    return rows, summary
 
 # ── DOCX parser ────────────────────────────────────────────────────────────────
 def parse_docx(filepath):
     import docx as python_docx
     doc = python_docx.Document(filepath)
     rows = []
+    summary = {}
     counter = [1000]
     seen = set()
 
@@ -106,11 +151,24 @@ def parse_docx(filepath):
             'scheduled_value': round(amt, 2)
         })
 
+    def maybe_summary(cells):
+        """If any cell matches SUMMARY_RE, capture as metadata and return True."""
+        text = ' '.join(cells)
+        if SUMMARY_RE.search(text):
+            amounts = extract_amounts(text)
+            if amounts:
+                key = extract_summary_label(text)
+                summary[key] = round(amounts[-1], 2)
+            return True
+        return False
+
     # Tables first (most structured)
     for table in doc.tables:
         for row in table.rows:
             cells = [c.text.strip() for c in row.cells]
             if not any(cells):
+                continue
+            if maybe_summary(cells):
                 continue
             # Find rightmost numeric cell as amount; leftmost text as desc
             amt_idx = -1
@@ -133,7 +191,14 @@ def parse_docx(filepath):
     if not rows:
         for para in doc.paragraphs:
             text = para.text.strip()
-            if not text or SKIP_RE.search(text):
+            if not text:
+                continue
+            if SUMMARY_RE.search(text):
+                amts = extract_amounts(text)
+                if amts:
+                    summary[extract_summary_label(text)] = round(amts[-1], 2)
+                continue
+            if SKIP_RE.search(text):
                 continue
             amts = extract_amounts(text)
             if not amts:
@@ -142,7 +207,7 @@ def parse_docx(filepath):
             desc = re.sub(r'\s*\$[\d,]+(?:\.\d{1,2})?.*$', '', text).strip()
             add_row('', desc, total)
 
-    return rows
+    return rows, summary
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main():
@@ -155,9 +220,9 @@ def main():
 
     try:
         if ext == '.pdf':
-            rows = parse_pdf(filepath)
+            rows, summary = parse_pdf(filepath)
         elif ext in ('.docx', '.doc'):
-            rows = parse_docx(filepath)
+            rows, summary = parse_docx(filepath)
         else:
             print(json.dumps({'error': f'Unsupported format: {ext}. Use PDF or DOCX.'}))
             sys.exit(1)
@@ -166,13 +231,19 @@ def main():
             print(json.dumps({'error': 'No line items with dollar amounts found in this file.'}))
             sys.exit(1)
 
+        computed_total = round(sum(r['scheduled_value'] for r in rows), 2)
+        reported_total = summary.get('total') or summary.get('balance_due')
+
         print(json.dumps({
-            'rows':       rows,
-            'all_rows':   rows,
-            'row_count':  len(rows),
-            'total_rows': len(rows),
-            'sheet_used': ext.lstrip('.').upper(),
-            'filename':   os.path.basename(filepath)
+            'rows':           rows,
+            'all_rows':       rows,
+            'row_count':      len(rows),
+            'total_rows':     len(rows),
+            'summary':        summary,
+            'computed_total': computed_total,
+            'reported_total': reported_total,
+            'sheet_used':     ext.lstrip('.').upper(),
+            'filename':       os.path.basename(filepath)
         }))
 
     except Exception as e:
