@@ -3146,8 +3146,8 @@ app.get('/api/revenue/summary', auth, async (req, res) => {
 
     res.json({ total_billed, net_billed, total_retention, active_projects, chart, rows });
   } catch(e) {
-    console.error('[Revenue]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[Revenue] ERROR:', e.message, '\n', e.stack);
+    res.status(500).json({ error: 'Internal server error', detail: e.message });
   }
 });
 

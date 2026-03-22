@@ -2242,7 +2242,12 @@ function logout(){
   token=null;currentUser=null;
   localStorage.removeItem('caib_token');localStorage.removeItem('caib_user');
   sessionStorage.removeItem('caib_token');sessionStorage.removeItem('caib_user');
-  showAuth();
+  // Show auth screen, hide everything else
+  document.getElementById('app-screen').classList.add('hidden');
+  document.getElementById('landing-screen').classList.add('hidden');
+  document.getElementById('auth-screen').classList.remove('hidden');
+  authTab('login');
+  window.scrollTo(0,0);
 }
 function showPage(id){
   document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));
@@ -4204,7 +4209,9 @@ async function loadRevenue() {
     renderRevChart(data.chart || []);
     renderRevTable(revAllRows);
   } catch(e) {
-    document.getElementById('rev-table-body').innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:32px">Could not load data.</td></tr>`;
+    console.error('[Revenue] load error:', e.message, e.status||'', e.data||'');
+    const hint = e.status===401 ? 'Session expired — please sign out and sign back in.' : (e.data&&e.data.detail ? '('+e.data.detail+')' : '');
+    document.getElementById('rev-table-body').innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:32px">Could not load data. ${hint}</td></tr>`;
   }
 }
 
