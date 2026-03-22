@@ -1537,7 +1537,7 @@ app.get('/api/projects/:id/sov/uploads', auth, async (req, res) => {
 // Contract routes handled below in Phase 1 section (lines ~2063+)
 
 // ── Generate a self-contained HTML document that mirrors the on-screen preview ──
-function generatePayAppHTML(pa, lines, cos, totals, logoBase64, sigBase64) {
+function generatePayAppHTML(pa, lines, cos, totals, logoBase64, sigBase64, photoAttachments=[]) {
   const { tComp, tRet, tPrevCert, tCO, contract, earned, due } = totals;
   const fmtM = n => '$' + parseFloat(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 
@@ -1733,6 +1733,20 @@ td{border:1px solid #ddd;padding:2px 5px}
     <a href="https://constructinv.varshyl.com" class="brand-link">constructinv.varshyl.com</a>
   </div>
 </div>
+${photoAttachments.length ? `
+<div style="page-break-before:always;padding:28px 36px">
+  <div style="border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:18px">
+    <span style="font-size:12pt;font-weight:bold;font-family:'Times New Roman',serif">Site Photos — Attachment</span>
+    <span style="font-size:9pt;color:#555;margin-left:12px">Pay App #${pa.app_number}${pa.period_label ? ' · ' + pa.period_label : ''}</span>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:16px">
+    ${photoAttachments.map((p, i) => `
+    <div style="break-inside:avoid;text-align:center;width:245px">
+      <img src="${p.base64}" style="width:245px;max-height:200px;object-fit:contain;border:1px solid #ccc;display:block"/>
+      <div style="font-size:7.5pt;color:#666;margin-top:4px;word-break:break-word">${p.name || ('Photo ' + (i+1))}</div>
+    </div>`).join('')}
+  </div>
+</div>` : ''}
 </body></html>`;
 }
 
@@ -1800,6 +1814,17 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
   const logoBase64 = readImgB64(pa.logo_filename);
   const sigBase64  = readImgB64(pa.signature_filename);
 
+  // ── Load photo attachments for this pay app ───────────────────────────────
+  const photoAttsRes = await pool.query(
+    `SELECT filename, original_name FROM attachments WHERE pay_app_id=$1 AND mime_type LIKE 'image/%' ORDER BY uploaded_at`,
+    [req.params.id]
+  );
+  const photoAttachments = photoAttsRes.rows.map(a => {
+    const b64 = readImgB64(a.filename);
+    if (!b64) return null;
+    return { base64: b64, name: a.original_name || a.filename, filePath: path.join(__dirname, 'uploads', a.filename) };
+  }).filter(Boolean);
+
   const totals = { tComp, tRet, tPrevCert, tCO, contract, earned, due };
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="PayApp_${pa.app_number}_${(pa.pname||'').replace(/\s+/g,'_')}.pdf"`);
@@ -1808,7 +1833,7 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
   if (puppeteer) {
     let browser;
     try {
-      const html = generatePayAppHTML(pa, lines.rows, cos.rows, totals, logoBase64, sigBase64);
+      const html = generatePayAppHTML(pa, lines.rows, cos.rows, totals, logoBase64, sigBase64, photoAttachments);
       browser = await puppeteer.launch({
         args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu']
       });
@@ -1957,7 +1982,202 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
     }
   } catch(lienErr) { console.error('Lien append error:', lienErr.message); }
 
+  // ── Photo attachments (PDFKit fallback path) ─────────────────────────────
+  for (const att of photoAttachments) {
+    try {
+      if (att.filePath && fs.existsSync(att.filePath)) {
+        doc.addPage();
+        doc.fontSize(9).font('Helvetica-Bold').text('Site Photo', 45, 45);
+        doc.fontSize(8).font('Helvetica').fillColor('#555').text(att.name || '', 45, 58);
+        doc.fillColor('#000');
+        doc.image(att.filePath, 45, 80, { fit: [522, 640], align: 'center', valign: 'top' });
+      }
+    } catch(photoErr) { console.error('Photo page error:', photoErr.message); }
+  }
+
   doc.end();
+});
+
+// ── Email pay application (PDF + lien waiver attached) ───────────────────
+app.post('/api/payapps/:id/email', auth, async (req, res) => {
+  const { to, cc, subject, message } = req.body;
+  if (!to) return res.status(400).json({ error: 'Recipient email (to) is required' });
+
+  try {
+    // Load pay app data
+    const paRes = await pool.query(
+      `SELECT pa.*,p.name as pname,p.owner,p.contractor,p.architect,p.original_contract,
+              p.number as pnum,p.payment_terms,p.contract_date,
+              cs.logo_filename,cs.signature_filename,cs.default_payment_terms,
+              cs.contact_name,cs.company_name
+       FROM pay_apps pa
+       JOIN projects p ON p.id=pa.project_id
+       LEFT JOIN company_settings cs ON cs.user_id=p.user_id
+       WHERE pa.id=$1 AND p.user_id=$2`,
+      [req.params.id, req.user.id]
+    );
+    const pa = paRes.rows[0];
+    if (!pa) return res.status(404).json({ error: 'Pay app not found' });
+
+    const lines = await pool.query(
+      'SELECT pal.*,sl.item_id,sl.description,sl.scheduled_value FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id WHERE pal.pay_app_id=$1 ORDER BY sl.sort_order',
+      [req.params.id]
+    );
+    const cos = await pool.query('SELECT * FROM change_orders WHERE pay_app_id=$1', [req.params.id]);
+
+    // Calculate totals
+    let tComp=0, tRet=0, tPrevCert=0;
+    lines.rows.forEach(r => {
+      const sv=parseFloat(r.scheduled_value);
+      const retPct=parseFloat(r.retainage_pct)/100;
+      const prev=sv*parseFloat(r.prev_pct)/100;
+      const thisPer=sv*parseFloat(r.this_pct)/100;
+      const comp=prev+thisPer+parseFloat(r.stored_materials||0);
+      tComp+=comp; tRet+=comp*retPct; tPrevCert+=prev*(1-retPct);
+    });
+    const tCO=cos.rows.reduce((s,c)=>s+parseFloat(c.amount||0),0);
+    const contract=parseFloat(pa.original_contract)+tCO;
+    const earned=tComp-tRet;
+    const due=Math.max(0,earned-tPrevCert);
+    const totals={tComp,tRet,tPrevCert,tCO,contract,earned,due};
+
+    // Load images (reuse same helper pattern as PDF route)
+    const imgMimeE = buf => {
+      if (buf[0]===0x89 && buf[1]===0x50) return 'image/png';
+      if (buf[0]===0xFF && buf[1]===0xD8) return 'image/jpeg';
+      if (buf[0]===0x47 && buf[1]===0x49) return 'image/gif';
+      return 'image/png';
+    };
+    const readImgB64E = filename => {
+      if (!filename) return null;
+      try {
+        const fp = path.join(__dirname, 'uploads', filename);
+        if (!fs.existsSync(fp)) return null;
+        const buf = fs.readFileSync(fp);
+        return `data:${imgMimeE(buf)};base64,${buf.toString('base64')}`;
+      } catch(e) { return null; }
+    };
+    const logoBase64 = readImgB64E(pa.logo_filename);
+    const sigBase64  = readImgB64E(pa.signature_filename);
+
+    const photoAttsRes = await pool.query(
+      `SELECT filename, original_name FROM attachments WHERE pay_app_id=$1 AND mime_type LIKE 'image/%' ORDER BY uploaded_at`,
+      [req.params.id]
+    );
+    const photoAttachments = photoAttsRes.rows.map(a => {
+      const b64 = readImgB64E(a.filename);
+      if (!b64) return null;
+      return { base64: b64, name: a.original_name || a.filename, filePath: path.join(__dirname, 'uploads', a.filename) };
+    }).filter(Boolean);
+
+    // Generate pay app PDF buffer via Puppeteer
+    const html = generatePayAppHTML(pa, lines.rows, cos.rows, totals, logoBase64, sigBase64, photoAttachments);
+    const pdfFilename = `PayApp_${pa.app_number}_${(pa.pname||'').replace(/\s+/g,'_')}.pdf`;
+    const emailAttachments = [];
+
+    if (puppeteer) {
+      let browser;
+      try {
+        browser = await puppeteer.launch({
+          args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu']
+        });
+        const page = await browser.newPage();
+        await page.setContent(html, { waitUntil: 'networkidle0' });
+        const pdfBuf = await page.pdf({
+          format: 'Letter',
+          printBackground: true,
+          margin: { top: '0.5in', right: '0.45in', bottom: '0.5in', left: '0.45in' }
+        });
+        emailAttachments.push({ filename: pdfFilename, content: Buffer.from(pdfBuf).toString('base64') });
+      } finally {
+        if (browser) await browser.close().catch(()=>{});
+      }
+    }
+
+    // Attach lien waiver PDF if one is linked
+    try {
+      const lienRes = await pool.query(
+        `SELECT ld.filename, ld.doc_type FROM lien_documents ld
+         JOIN projects p ON p.id=ld.project_id
+         WHERE ld.pay_app_id=$1 AND p.user_id=$2
+         ORDER BY ld.created_at DESC LIMIT 1`,
+        [req.params.id, req.user.id]
+      );
+      if (lienRes.rows[0]) {
+        const lienPath = path.join(__dirname, 'uploads', lienRes.rows[0].filename);
+        if (fs.existsSync(lienPath)) {
+          const lienBuf = fs.readFileSync(lienPath);
+          emailAttachments.push({
+            filename: `Lien_Waiver_${(lienRes.rows[0].doc_type||'waiver').replace(/\s+/g,'_')}_PayApp${pa.app_number}.pdf`,
+            content: lienBuf.toString('base64')
+          });
+        }
+      }
+    } catch(lienErr) { console.error('[Email] Lien attach error:', lienErr.message); }
+
+    // Build HTML email body
+    const safeMsg = (message||'').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+    const emailHtml = `<div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+      <div style="background:#185FA5;padding:18px 24px;color:#fff">
+        <h2 style="margin:0;font-size:16pt">Pay Application #${pa.app_number}</h2>
+        <div style="font-size:10pt;margin-top:4px;opacity:0.9">${pa.pname||''} · ${pa.period_label||''}</div>
+      </div>
+      <div style="padding:24px;border:1px solid #ddd;border-top:0">
+        ${safeMsg ? `<p style="margin-top:0">${safeMsg}</p><hr style="border:0;border-top:1px solid #eee;margin:16px 0">` : ''}
+        <table style="width:100%;border-collapse:collapse;font-size:10pt">
+          <tr><td style="padding:5px 8px;color:#555">Project</td><td style="padding:5px 8px;font-weight:bold">${pa.pname||''}</td></tr>
+          <tr style="background:#f7f7f7"><td style="padding:5px 8px;color:#555">Application #</td><td style="padding:5px 8px">${pa.app_number}</td></tr>
+          <tr><td style="padding:5px 8px;color:#555">Period</td><td style="padding:5px 8px">${pa.period_label||''}</td></tr>
+          <tr style="background:#f7f7f7"><td style="padding:5px 8px;color:#555;font-weight:bold">Current Payment Due</td>
+            <td style="padding:5px 8px;font-weight:bold;color:#185FA5;font-size:11pt">$${due.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>
+        </table>
+        <p style="margin-top:16px;font-size:9pt;color:#888">
+          ${emailAttachments.length > 0 ? `Pay application PDF${emailAttachments.length>1?' and lien waiver are':' is'} attached.` : ''}
+          <a href="https://constructinv.varshyl.com" style="color:#185FA5">View online</a>
+        </p>
+      </div>
+      <div style="padding:10px 24px;font-size:8pt;color:#aaa;text-align:center">
+        Sent via <a href="https://constructinv.varshyl.com" style="color:#aaa">ConstructInvoice AI</a> · Varshyl Inc.
+      </div>
+    </div>`;
+
+    // Send via Resend
+    const fromName  = process.env.FROM_NAME  || 'ConstructInvoice AI';
+    const fromEmail = process.env.FROM_EMAIL || 'billing@varshyl.com';
+    if (!process.env.RESEND_API_KEY) {
+      console.log(`[DEV Email] TO:${to} CC:${cc||'-'} | ${subject||'Pay App #'+pa.app_number} | attachments:${emailAttachments.length}`);
+    } else {
+      const payload = {
+        from: `${fromName} <${fromEmail}>`,
+        to: [to],
+        subject: subject || `Pay Application #${pa.app_number} — ${pa.pname||''} (${pa.period_label||''})`,
+        html: emailHtml,
+        attachments: emailAttachments
+      };
+      if (cc) payload.cc = [cc];
+      const r = await fetchEmail('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!r.ok) {
+        const errBody = await r.text().catch(()=>'');
+        console.error('[Email Route] Resend error:', r.status, errBody);
+        return res.status(502).json({ error: 'Email delivery failed', detail: errBody });
+      }
+    }
+
+    // Mark pay app as submitted
+    if (pa.status !== 'submitted') {
+      await pool.query('UPDATE pay_apps SET status=$1 WHERE id=$2', ['submitted', req.params.id]);
+    }
+    await logEvent(req.user.id, 'email_sent', { pay_app_id: parseInt(req.params.id) });
+    res.json({ ok: true, attachments: emailAttachments.length });
+
+  } catch(e) {
+    console.error('[Email Route] Error:', e.message, e.stack);
+    res.status(500).json({ error: 'Failed to send email', detail: e.message });
+  }
 });
 
 

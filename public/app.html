@@ -3277,19 +3277,28 @@ async function markSubmitted(){
 }
 function copyShareLink(){const url=window.location.origin+'/share/'+currentPAId;navigator.clipboard.writeText(url).then(()=>alert('Link copied!\n'+url)).catch(()=>alert('Share link: '+url));}
 async function sendEmail(){
-  alert('Email: In production this sends via SMTP/SendGrid.\n\nTo: '+document.getElementById('email-to').value);
-  // Auto-mark as submitted after sending
-  if(currentPAData&&currentPAData.status!=='submitted'){
-    try{
-      await api('PUT','/payapps/'+currentPAId,{status:'submitted'});
-      currentPAData=await api('GET','/payapps/'+currentPAId);
-      renderPAHeader(currentPAData);
-      if(currentProjects.length){
-        try{const allPAs=await api('GET','/projects/'+currentPAData.project_id+'/payapps');sidebarPACache[currentPAData.project_id]=allPAs;buildSidebarProjects(currentProjects,currentPAData.project_id);}catch(e){}
-      }
-      const btn=document.getElementById('btn-send-email');
-      if(btn){btn.textContent='✅ Sent & Submitted';btn.disabled=true;}
-    }catch(e){console.error('Auto-submit failed:',e);}
+  const to=(document.getElementById('email-to').value||'').trim();
+  const cc=(document.getElementById('email-cc').value||'').trim();
+  const subject=(document.getElementById('email-subj').value||'').trim();
+  const message=(document.getElementById('email-body').value||'').trim();
+  if(!to){alert('Please enter a recipient email address.');return;}
+  const btn=document.getElementById('btn-send-email');
+  const origTxt=btn?btn.textContent:'';
+  if(btn){btn.textContent='⏳ Sending…';btn.disabled=true;}
+  try{
+    const result=await api('POST','/payapps/'+currentPAId+'/email',{to,cc,subject,message});
+    // Update local state (server marks as submitted)
+    currentPAData=await api('GET','/payapps/'+currentPAId);
+    renderPAHeader(currentPAData);
+    if(currentProjects.length){
+      try{const allPAs=await api('GET','/projects/'+currentPAData.project_id+'/payapps');sidebarPACache[currentPAData.project_id]=allPAs;buildSidebarProjects(currentProjects,currentPAData.project_id);}catch(e){}
+    }
+    if(btn){btn.textContent='✅ Sent & Submitted';btn.disabled=true;}
+    const attMsg=result.attachments>1?' (PDF + lien waiver attached)':result.attachments===1?' (PDF attached)':'';
+    alert('✅ Email sent to '+to+'!\n'+attMsg);
+  }catch(e){
+    if(btn){btn.textContent=origTxt;btn.disabled=false;}
+    alert('Failed to send email:\n'+(e.data&&e.data.detail||e.message));
   }
 }
 
