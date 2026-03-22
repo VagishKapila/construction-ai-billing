@@ -24,7 +24,7 @@ SKIP_RE = re.compile(
 SUMMARY_RE = re.compile(
     r'^(subtotal|sub[\s\-]total|grand[\s\-]total|total[\s\-]amount|'
     r'balance[\s\-]due|amount[\s\-]paid|amount[\s\-]due|'
-    r'total\s*$|total\s+\$)',
+    r'total[\s\(\$\-]|total\s*$)',   # "total", "total (...)", "total -", "total $"
     re.IGNORECASE
 )
 
@@ -76,9 +76,11 @@ def parse_pdf(filepath):
     with pdfplumber.open(filepath) as pdf:
         for page in pdf.pages:
             text = page.extract_text() or ''
+            pending_desc = None  # holds a description-only line waiting for its amount line
             for line in text.split('\n'):
                 line = line.strip()
                 if len(line) < 5:
+                    pending_desc = None
                     continue
 
                 # Check for financial summary rows first (subtotal, total, balance due, etc.)
@@ -90,28 +92,45 @@ def parse_pdf(filepath):
                     if amounts:
                         key = extract_summary_label(line)
                         summary[key] = round(amounts[-1], 2)
+                    pending_desc = None
                     continue
 
                 # Skip boilerplate lines
                 if SKIP_RE.search(line):
+                    pending_desc = None
                     continue
 
                 amounts = extract_amounts(line)
                 if not amounts:
+                    # No dollar amounts — this might be a description-only line
+                    # Save it as pending in case the next line has the amount
+                    candidate = clean_desc(line)
+                    if len(candidate) >= 4 and not re.match(r'^[\d\s\.\-]+$', candidate) and not SKIP_RE.search(candidate):
+                        pending_desc = candidate
+                    else:
+                        pending_desc = None
                     continue
 
                 # Last dollar amount = Total column (Material + Labor + Overhead)
                 total = amounts[-1]
                 if total <= 0:
+                    pending_desc = None
                     continue
 
                 # Description = everything before the first dollar sign
                 desc = re.sub(r'\s*\$[\d,]+(?:\.\d{1,2})?.*$', '', line).strip()
                 desc = clean_desc(desc)
 
-                # Skip very short or numeric-only descriptions
+                # If description is numeric-only (e.g. "23000") or too short, try pending_desc
                 if len(desc) < 4 or re.match(r'^[\d\s\.\-]+$', desc):
-                    continue
+                    if pending_desc:
+                        desc = pending_desc
+                    else:
+                        pending_desc = None
+                        continue
+
+                pending_desc = None  # consumed or reset
+
                 if SKIP_RE.search(desc):
                     continue
 

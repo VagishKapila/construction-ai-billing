@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-installCommand = "npm install"
+installCommand = "pip install -r requirements.txt && npm install"
 
 [deploy]
 startCommand = "node server.js"

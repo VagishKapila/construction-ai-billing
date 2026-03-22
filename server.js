@@ -1281,7 +1281,7 @@ function parseSOVFile(filePath) {
 // NOTE: tax / overhead / company overhead are NOT skipped — they are real billable line items
 const SKIP_RE = /^(\*|•|·|–|—|-{2,})|^(terms|signature|page \d|note[:\s]|excludes|it is an honor|we thank|sincerely|dear |http|www\.)/i;
 // Financial summary rows: captured as metadata, NOT added as line items
-const SUMMARY_RE = /^(subtotal|sub[\s\-]total|grand[\s\-]total|total[\s\-]amount|balance[\s\-]due|amount[\s\-]paid|amount[\s\-]due|total\s*$|total\s+\$)/i;
+const SUMMARY_RE = /^(subtotal|sub[\s\-]total|grand[\s\-]total|total[\s\-]amount|balance[\s\-]due|amount[\s\-]paid|amount[\s\-]due|total[\s\(\$\-]|total\s*$)/i;
 function extractSummaryLabel(line) {
   const s = line.replace(/\s*\$[\d,]+(?:\.\d{1,2})?.*$/, '').trim().toLowerCase().replace(/\s+/g,' ');
   if (/sub[\s-]?total/.test(s))   return 'subtotal';
