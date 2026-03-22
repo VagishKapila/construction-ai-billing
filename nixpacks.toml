@@ -1,0 +1,4 @@
+# Tell Railway's nixpacks to include BOTH Node.js and Python runtimes.
+# Without this, Railway only activates the Node provider and python3 is
+# not available when server.js tries to spawn parse_sov.py.
+providers = ["node", "python"]

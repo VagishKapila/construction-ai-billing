@@ -1438,16 +1438,45 @@ app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
     let result;
 
     if (ext === '.pdf') {
-      // PDF: pure Node.js parsing via pdf-parse + rowsFromLines (no Python dependency)
-      const parsed = await parseSOVFromText(req.file.path, ext);
-      const rows = parsed.rows || [];
+      // PDF: pdfplumber (Python) first — correct multi-column table handling.
+      // Falls back to pure-JS pdf-parse if Python is not available on this server.
+      let parsed = null;
+      try {
+        parsed = await new Promise((resolve, reject) => {
+          const { spawn } = require('child_process');
+          const tmpPdf = req.file.path + '.pdf';
+          fs.renameSync(req.file.path, tmpPdf);
+          const py = spawn('python3', [path.join(__dirname, 'parse_sov.py'), tmpPdf]);
+          let out = '', err = '';
+          py.stdout.on('data', d => out += d);
+          py.stderr.on('data', d => err += d);
+          py.on('error', (e) => {
+            try { fs.renameSync(tmpPdf, req.file.path); } catch(_) {}
+            reject(e);
+          });
+          py.on('close', code => {
+            try { fs.renameSync(tmpPdf, req.file.path); } catch(_) {}
+            const combined = out + err;
+            let r = null;
+            for (const s of [out, err]) { try { r = JSON.parse(s.trim()); break; } catch(_) {} }
+            if (!r) { const m = combined.match(/\{[\s\S]*\}/); if (m) { try { r = JSON.parse(m[0]); } catch(_) {} } }
+            if (r) return resolve(r);
+            reject(new Error('Parser output: ' + combined.slice(0, 200)));
+          });
+        });
+        console.log('[PDF] pdfplumber parsed', parsed.row_count, 'rows');
+      } catch(e) {
+        console.log('[PDF] Python unavailable, using pure-JS fallback:', e.message);
+        parsed = await parseSOVFromText(req.file.path, ext);
+      }
+      const rows = (parsed && parsed.rows) || [];
       if (!rows.length) {
         cleanup();
         return res.status(422).json({ error: 'No line items with dollar amounts could be extracted from this PDF. If it is a scanned/image PDF, try uploading a Word (.docx) or Excel (.xlsx) version instead.' });
       }
-      const summary = parsed.summary || {};
-      const computed_total = rows.reduce((s,r) => s + r.scheduled_value, 0);
-      const reported_total = summary.total || summary.balance_due || null;
+      const summary = (parsed && parsed.summary) || {};
+      const computed_total = (parsed && parsed.computed_total) || rows.reduce((s,r) => s + r.scheduled_value, 0);
+      const reported_total = (parsed && parsed.reported_total) || summary.total || summary.balance_due || null;
       result = {
         rows, all_rows: rows,
         row_count: rows.length, total_rows: rows.length,
