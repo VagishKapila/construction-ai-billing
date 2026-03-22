@@ -2753,28 +2753,39 @@ async function renderPayAppLienStatus(paId) {
     // Get lien docs for this project and check if any are linked to this pay app
     const allDocs = await api('GET', `/projects/${currentProjectId}/lien-docs`);
     const linked = allDocs.filter(d => d.pay_app_id == paId);
+    // Best-effort amount: use live-computed value if available, fall back to saved DB value
+    const amtDue = (window._currentPayDue > 0 ? window._currentPayDue
+      : (currentPAData && currentPAData.amount_due > 0 ? parseFloat(currentPAData.amount_due) : 0));
+    const amtStr = amtDue > 0 ? amtDue.toFixed(2) : '';
     if (!linked.length) {
       el.innerHTML = `<div style="display:inline-flex;align-items:center;gap:8px;padding:7px 12px;background:var(--amber-light);border-radius:var(--radius);font-size:11px;border:1px solid rgba(133,79,11,0.2)">
         <span>📋 No lien waiver linked.</span>
-        <button class="btn btn-sm" onclick="openLienDocModal(${currentProjectId},{doc_type:'conditional_waiver',pay_app_id:${paId}})">Generate conditional waiver</button>
+        <button class="btn btn-sm" onclick="openLienDocModal(${currentProjectId},{doc_type:'conditional_waiver',pay_app_id:${paId},amount:'${amtStr}'})">Generate conditional waiver</button>
       </div>`;
       if (btnWithLien) btnWithLien.style.display = 'none';
+      window._linkedLienDocId = null;
       return;
     }
     const typeLabels = {conditional_waiver:'Conditional Waiver (Progress)',unconditional_waiver:'Unconditional Waiver (Progress)',conditional_final_waiver:'Conditional Waiver (Final)',unconditional_final_waiver:'Unconditional Waiver (Final)',preliminary_notice:'Preliminary Notice'};
     const d = linked[0];
+    window._linkedLienDocId = d.id; // used by downloadPDFWithLien
     el.innerHTML = `<div style="display:inline-flex;align-items:center;gap:10px;padding:7px 12px;background:var(--green-light);border-radius:var(--radius);font-size:11px;border:1px solid rgba(59,109,17,0.2)">
       <span>✅ <strong>${typeLabels[d.doc_type]||d.doc_type}</strong> linked · signed by ${d.signatory_name||'—'}</span>
       <a href="/api/lien-docs/${d.id}/pdf?token=${getToken()}" target="_blank" class="btn btn-sm">Download waiver</a>
-      <button class="btn btn-sm" onclick="openLienDocModal(${currentProjectId},{doc_type:'conditional_waiver',pay_app_id:${paId}})">+ New</button>
+      <button class="btn btn-sm" onclick="openLienDocModal(${currentProjectId},{doc_type:'conditional_waiver',pay_app_id:${paId},amount:'${amtStr}'})">+ New</button>
     </div>`;
     if (btnWithLien) btnWithLien.style.display = '';
   } catch(e) { el.innerHTML = ''; }
 }
 
 function downloadPDFWithLien() {
-  // Use browser print — matches the on-screen preview exactly (includes logo, lien waiver status, etc.)
+  // Open pay app PDF
   downloadPDF();
+  // Also open the linked lien waiver PDF so both download together
+  if (window._linkedLienDocId) {
+    const token = getToken();
+    window.open('/api/lien-docs/'+window._linkedLienDocId+'/pdf?token='+encodeURIComponent(token),'_blank');
+  }
 }
 
 function downloadPDF(){
@@ -3068,6 +3079,7 @@ function updateG702Live(){
   const contract=parseFloat(currentPAData.original_contract)+tCO;
   const earned=tComp-tRet;
   const due=Math.max(0,earned-tPrev);
+  window._currentPayDue=due; // cache for lien waiver pre-fill
   const el=document.getElementById('g702-summary');
   if(el) el.innerHTML=`
     <div style="font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">G702 Summary</div>
@@ -3146,7 +3158,7 @@ function updateCOTotal(){
 async function addCO(){
   coCounter++;
   try{
-    await api('POST','/payapps/'+currentPAId+'/changeorders',{co_number:coCounter,description:'New change order',amount:0,status:'pending'});
+    await api('POST','/payapps/'+currentPAId+'/changeorders',{co_number:coCounter,description:'New change order',amount:0,status:'approved'});
     currentPAData=await api('GET','/payapps/'+currentPAId);
     renderCOs(currentPAData);
   }catch(e){alert('Error: '+e.message);}
