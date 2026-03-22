@@ -6,7 +6,10 @@ Extracts: item_id, description, scheduled_value (line items)
 Also extracts: summary (subtotal, overhead, tax, total, etc.)
 Returns JSON to stdout.
 """
-import sys, json, re, os
+import sys, json, re, os, logging
+# Suppress pdfminer/pdfplumber warnings so only our JSON goes to stdout
+logging.getLogger('pdfminer').setLevel(logging.ERROR)
+logging.getLogger('pdfplumber').setLevel(logging.ERROR)
 
 # ── Lines to skip entirely (document boilerplate, not scope or money) ─────────
 # NOTE: "company overhead", "tax" are NOT skipped — they are real billable line items.
@@ -253,7 +256,7 @@ def main():
         computed_total = round(sum(r['scheduled_value'] for r in rows), 2)
         reported_total = summary.get('total') or summary.get('balance_due')
 
-        print(json.dumps({
+        sys.stdout.write(json.dumps({
             'rows':           rows,
             'all_rows':       rows,
             'row_count':      len(rows),
@@ -263,10 +266,12 @@ def main():
             'reported_total': reported_total,
             'sheet_used':     ext.lstrip('.').upper(),
             'filename':       os.path.basename(filepath)
-        }))
+        }) + '\n')
+        sys.stdout.flush()
 
     except Exception as e:
-        print(json.dumps({'error': str(e)}))
+        sys.stdout.write(json.dumps({'error': str(e)}) + '\n')
+        sys.stdout.flush()
         sys.exit(1)
 
 if __name__ == '__main__':

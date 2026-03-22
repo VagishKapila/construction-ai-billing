@@ -1440,8 +1440,20 @@ app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
         py.stderr.on('data', d => err += d);
         py.on('close', code => {
           try { fs.renameSync(tmpPdf, req.file.path); } catch(_) {}
-          if (code !== 0 && !out) return reject(new Error(err || 'Python parser failed'));
-          try { resolve(JSON.parse(out)); } catch(e) { reject(new Error('Invalid JSON from parser: ' + out.slice(0,200))); }
+          if (code !== 0 && !out && !err) return reject(new Error('Python parser failed'));
+          // pdfplumber may emit non-JSON text on stdout; JSON might be in stdout or stderr.
+          // Try stdout first, then stderr, then extract the first {...} block from combined output.
+          const combined = out + err;
+          let parsed = null;
+          for (const s of [out, err]) {
+            try { parsed = JSON.parse(s.trim()); break; } catch(_) {}
+          }
+          if (!parsed) {
+            const m = combined.match(/\{[\s\S]*\}/);
+            if (m) { try { parsed = JSON.parse(m[0]); } catch(_) {} }
+          }
+          if (parsed) return resolve(parsed);
+          reject(new Error('Invalid JSON from parser: ' + combined.slice(0, 300)));
         });
       });
       if (pyResult.error) {
