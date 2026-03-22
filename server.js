@@ -1342,30 +1342,40 @@ function rowsFromLines(lines) {
   const summary = {};
   const seen = new Set();
   let counter = 1000;
+  let pendingDesc = null; // for PDFs where description is on one line, "CODE $amount" on the next
   for (const raw of merged) {
     const line = raw.trim();
-    if (line.length < 5) continue;
+    if (line.length < 5) { pendingDesc = null; continue; }
     // Capture financial summary rows as metadata (subtotal, total, balance due, etc.)
     if (SUMMARY_RE.test(line)) {
       const amts = extractAmounts(line);
       if (amts.length) summary[extractSummaryLabel(line)] = Math.round(amts[amts.length-1] * 100) / 100;
+      pendingDesc = null;
       continue;
     }
-    if (SKIP_RE.test(line)) continue;
-    if (SKIP_META_RE.test(line)) continue;
+    if (SKIP_RE.test(line)) { pendingDesc = null; continue; }
+    if (SKIP_META_RE.test(line)) { pendingDesc = null; continue; }
     const amounts = extractAmounts(line);
-    if (!amounts.length) continue;
+    if (!amounts.length) {
+      // No dollar amount — save as pending description in case next line has a "CODE $amount" pattern
+      const candidate = cleanDesc(line.replace(/\s*\$[\d,]+(?:\.\d{1,2})?.*$/, '').trim());
+      pendingDesc = (candidate.length >= 4 && !/^[\d\s.,\-]+$/.test(candidate)) ? candidate : null;
+      continue;
+    }
     const total = amounts[amounts.length - 1];
-    if (total <= 0) continue;
+    if (total <= 0) { pendingDesc = null; continue; }
     // Description = everything before the amount (strip trailing $X,XXX or bare X,XXX)
     let desc = cleanDesc(
       line.replace(/\s*\$[\d,]+(?:\.\d{1,2})?.*$/, '')
           .replace(/\s+\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?\s*$/, '')
           .trim()
     );
-    // Filter out empty, purely numeric, or numeric-with-punctuation descriptions
-    // (catches "201,186.41" being treated as a description)
-    if (desc.length < 4 || /^[\d\s.,\-]+$/.test(desc)) continue;
+    // If description is empty or purely numeric (e.g. "23000"), try pending description from prior line
+    if (desc.length < 4 || /^[\d\s.,\-]+$/.test(desc)) {
+      if (pendingDesc) { desc = pendingDesc; }
+      else { pendingDesc = null; continue; }
+    }
+    pendingDesc = null;
     if (SKIP_RE.test(desc)) continue;
     const key = desc.toLowerCase();
     if (seen.has(key)) continue;
@@ -1428,57 +1438,16 @@ app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
     let result;
 
     if (ext === '.pdf') {
-      // PDF: use parse_sov.py (pdfplumber) — handles multi-column contractor estimates correctly
-      const pyResult = await new Promise((resolve, reject) => {
-        const { spawn, execSync } = require('child_process');
-        // Rename temp file so Python sees .pdf extension
-        const tmpPdf = req.file.path + '.pdf';
-        fs.renameSync(req.file.path, tmpPdf);
-        // Determine which Python binary is available (Railway may have 'python' not 'python3')
-        let pyBin = 'python3';
-        try { execSync('python3 --version', { stdio: 'ignore' }); }
-        catch(_) {
-          try { execSync('python --version', { stdio: 'ignore' }); pyBin = 'python'; }
-          catch(__) { /* will fail gracefully below */ }
-        }
-        const py = spawn(pyBin, [path.join(__dirname, 'parse_sov.py'), tmpPdf]);
-        let out = '', err = '';
-        py.stdout.on('data', d => out += d);
-        py.stderr.on('data', d => err += d);
-        // CRITICAL: handle spawn errors (e.g. python not found) — without this Node.js crashes → 502
-        py.on('error', (spawnErr) => {
-          try { fs.renameSync(tmpPdf, req.file.path); } catch(_) {}
-          reject(new Error('Python not available on this server: ' + spawnErr.message));
-        });
-        py.on('close', code => {
-          try { fs.renameSync(tmpPdf, req.file.path); } catch(_) {}
-          if (code !== 0 && !out && !err) return reject(new Error('Python parser failed (exit ' + code + ')'));
-          // pdfplumber may emit non-JSON text; try stdout first, then stderr, then extract {...}
-          const combined = out + err;
-          let parsed = null;
-          for (const s of [out, err]) {
-            try { parsed = JSON.parse(s.trim()); break; } catch(_) {}
-          }
-          if (!parsed) {
-            const m = combined.match(/\{[\s\S]*\}/);
-            if (m) { try { parsed = JSON.parse(m[0]); } catch(_) {} }
-          }
-          if (parsed) return resolve(parsed);
-          reject(new Error('Invalid JSON from parser: ' + combined.slice(0, 300)));
-        });
-      });
-      if (pyResult.error) {
-        cleanup();
-        return res.status(422).json({ error: pyResult.error });
-      }
-      const rows = pyResult.rows || [];
+      // PDF: pure Node.js parsing via pdf-parse + rowsFromLines (no Python dependency)
+      const parsed = await parseSOVFromText(req.file.path, ext);
+      const rows = parsed.rows || [];
       if (!rows.length) {
         cleanup();
         return res.status(422).json({ error: 'No line items with dollar amounts could be extracted from this PDF. If it is a scanned/image PDF, try uploading a Word (.docx) or Excel (.xlsx) version instead.' });
       }
-      const summary = pyResult.summary || {};
-      const computed_total = pyResult.computed_total || rows.reduce((s,r) => s + r.scheduled_value, 0);
-      const reported_total = pyResult.reported_total || summary.total || summary.balance_due || null;
+      const summary = parsed.summary || {};
+      const computed_total = rows.reduce((s,r) => s + r.scheduled_value, 0);
+      const reported_total = summary.total || summary.balance_due || null;
       result = {
         rows, all_rows: rows,
         row_count: rows.length, total_rows: rows.length,
