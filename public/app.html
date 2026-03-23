@@ -1180,7 +1180,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
                 <div class="field"><label>Distribution — send copies to</label>
                   <div style="display:flex;gap:16px;padding:8px 0">
                     <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="dist-owner" onchange="saveDistChecks()" checked/> Owner</label>
-                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="dist-architect" onchange="saveDistChecks()" checked/> Architect</label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="dist-architect" onchange="saveDistChecks()"/> Architect</label>
                     <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="dist-contractor" onchange="saveDistChecks()"/> Contractor file</label>
                   </div>
                 </div>
@@ -2551,7 +2551,7 @@ function toggleSidebarProj(id){
   else collapsedProjects.add(id);
   buildSidebarProjects(currentProjects, currentProjectId);
 }
-async function loadProject(id){
+async function loadProject(id, opts={}){
   closeSidebar();
   currentProjectId=id;showPage('project');
   try{
@@ -2588,7 +2588,15 @@ async function loadProject(id){
     const btn=document.getElementById('new-pa-btn');
     if(btn) btn.textContent=payapps.length===0?'Create first pay app':'+ Pay App #'+(payapps.length+1);
     if(!payapps.length){
-      paList.innerHTML='<div style="font-size:12px;color:var(--text2)">No pay apps yet. Click "Create first pay app" to begin billing.</div>';
+      paList.innerHTML=`<div style="text-align:center;padding:48px 24px 36px">
+        <div onclick="newPayApp()" style="width:72px;height:72px;border-radius:50%;background:var(--blue);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;margin-bottom:20px;box-shadow:0 4px 20px rgba(37,99,235,0.35);transition:transform .15s,box-shadow .15s" onmouseover="this.style.transform='scale(1.08)';this.style.boxShadow='0 6px 28px rgba(37,99,235,0.45)'" onmouseout="this.style.transform='scale(1)';this.style.boxShadow='0 4px 20px rgba(37,99,235,0.35)'">
+          <span style="font-size:38px;color:#fff;line-height:1;margin-top:-2px">+</span>
+        </div>
+        <div style="font-size:19px;font-weight:700;color:var(--text1);margin-bottom:8px">Create Your First Pay Application</div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:28px;max-width:300px;margin-left:auto;margin-right:auto;line-height:1.55">Your project is set up. Tap the button below to generate your first G702/G703 billing package.</div>
+        <button class="btn btn-primary" onclick="newPayApp()" style="padding:12px 36px;font-size:15px;font-weight:600;letter-spacing:.01em">+ Create Pay App #1</button>
+      </div>`;
+      if(opts.autoNewPayApp) setTimeout(()=>newPayApp(), 80);
     }else{
       paList.innerHTML=payapps.map(pa=>{
         const submitted=pa.status==='submitted';
@@ -2834,7 +2842,7 @@ async function loadPayApp(id,tab=0){
     if(pa.period_end) document.getElementById('pa-period-end').value=(pa.period_end||'').split('T')[0];
     // Distribution checkboxes (null = use DB default: owner+arch true, contractor false)
     document.getElementById('dist-owner').checked    = pa.dist_owner    !== false;
-    document.getElementById('dist-architect').checked = pa.dist_architect !== false;
+    document.getElementById('dist-architect').checked = pa.dist_architect === true;
     document.getElementById('dist-contractor').checked = pa.dist_contractor === true;
   }catch(e){console.error(e);}
 }
@@ -2952,7 +2960,7 @@ function renderAIAPreview(pa){
   // Sync distribution checkboxes in the AIA preview
   const _setChk=(id,val)=>{const el=document.getElementById(id);if(el){el.style.background=val?'#185FA5':'';el.classList.toggle('checked',val);}};
   _setChk('dist-box-owner',    pa.dist_owner    !== false);
-  _setChk('dist-box-architect', pa.dist_architect !== false);
+  _setChk('dist-box-architect', pa.dist_architect === true);
   _setChk('dist-box-contractor', pa.dist_contractor === true);
   const ptEl=document.getElementById('prev-payment-terms');
   if(ptEl) ptEl.innerHTML='<strong>Payment Terms:</strong> '+(pa.payment_terms||companySettings.default_payment_terms||'Due on receipt');
@@ -3031,7 +3039,7 @@ function renderG703(pa){
   document.getElementById('g703-body').innerHTML=rows;
   // Auto-apply 20% bulk if this is a brand-new pay app (all lines still at 0%)
   const isNew=(pa.lines||[]).length>0 && (pa.lines||[]).every(r=>parseFloat(r.this_pct||0)===0 && parseFloat(r.prev_pct||0)===0);
-  if(isNew){ const bi=document.getElementById('bulk-pct'); if(bi){ bi.value=20; applyBulk(); } }
+  if(isNew){ const bi=document.getElementById('bulk-pct'); if(bi){ bi.value=20; applyBulk(); setTimeout(()=>{updateG703Totals();updateG702Live();},0); } }
   document.getElementById('g703-foot').innerHTML=`<tr>
     <td colspan="2" class="r">Grand total</td>
     <td class="r">${fmtR(tSV)}</td><td class="r">${fmtR(tPrev)}</td>
@@ -3151,26 +3159,31 @@ async function saveLines(){
 function renderCOs(pa){
   const cos=pa.change_orders||[];
   const list=document.getElementById('co-list');
-  if(!cos.length){list.innerHTML='<div style="font-size:12px;color:var(--text2);padding:8px 0">No change orders yet.</div>';document.getElementById('co-total').textContent='$0.00';return;}
-  list.innerHTML=`<div style="display:grid;grid-template-columns:60px 1fr 130px 110px 130px;gap:8px;font-size:10px;font-weight:600;color:var(--text2);padding-bottom:6px;border-bottom:0.5px solid var(--border)">
-    <div>CO#</div><div>Description</div><div>Amount</div><div>Status</div><div>Actions</div></div>`+
-  cos.map(c=>`
-    <div id="co-row-${c.id}" style="display:grid;grid-template-columns:60px 1fr 130px 110px 130px;gap:8px;align-items:center;padding:8px 0;border-bottom:0.5px solid rgba(0,0,0,0.06)">
-      <div style="font-size:13px;font-weight:600;color:var(--blue)">CO-${c.co_number}</div>
-      <input id="co-desc-${c.id}" style="padding:5px 8px;border:0.5px solid var(--border2);border-radius:5px;font-size:11px;background:var(--bg2);color:var(--text);width:100%" value="${c.description||''}"
-        onkeydown="if(event.key==='Enter'){saveCO(${c.id});event.preventDefault();}"
-        onblur="updateCO(${c.id})"/>
-      <input id="co-amt-${c.id}" style="padding:5px 8px;border:0.5px solid var(--border2);border-radius:5px;font-size:11px;text-align:right;background:var(--bg2);color:var(--text);width:100%" value="${c.amount||0}"
-        onkeydown="if(event.key==='Enter'){saveCO(${c.id});event.preventDefault();}"
-        onblur="updateCO(${c.id});updateCOTotal()"/>
-      <select id="co-stat-${c.id}" style="padding:5px 8px;border:0.5px solid var(--border2);border-radius:5px;font-size:11px;background:var(--bg2);color:var(--text)" onchange="updateCO(${c.id})">
-        <option ${c.status==='pending'?'selected':''}>pending</option>
-        <option ${c.status==='approved'?'selected':''}>approved</option>
-        <option ${c.status==='rejected'?'selected':''}>rejected</option>
-      </select>
-      <div style="display:flex;gap:5px">
-        <button class="btn btn-primary btn-sm" id="co-save-${c.id}" onclick="saveCO(${c.id})" title="Save">✓ Save</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteCO(${c.id})" title="Delete">✕</button>
+  if(!cos.length){list.innerHTML='<div style="font-size:12px;color:var(--text2);padding:12px 0;text-align:center">No change orders yet. Tap "+ Add C/O" above to log one.</div>';document.getElementById('co-total').textContent='$0.00';return;}
+  list.innerHTML=cos.map(c=>`
+    <div id="co-row-${c.id}" style="background:var(--bg2);border:0.5px solid var(--border2);border-radius:8px;padding:12px 14px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="font-size:13px;font-weight:700;color:var(--blue);flex-shrink:0;min-width:44px">CO-${c.co_number}</span>
+        <input id="co-desc-${c.id}" style="flex:1;padding:6px 10px;border:0.5px solid var(--border2);border-radius:6px;font-size:12px;background:var(--bg);color:var(--text)" placeholder="Description" value="${c.description||''}"
+          oninput="showCOSave(${c.id})"
+          onkeydown="if(event.key==='Enter'){saveCO(${c.id});event.preventDefault();}"
+          onblur="updateCO(${c.id})"/>
+        <input id="co-amt-${c.id}" style="width:120px;padding:6px 10px;border:0.5px solid var(--border2);border-radius:6px;font-size:12px;text-align:right;background:var(--bg);color:var(--text)" placeholder="$0" value="${c.amount||0}"
+          oninput="showCOSave(${c.id})"
+          onkeydown="if(event.key==='Enter'){saveCO(${c.id});event.preventDefault();}"
+          onblur="updateCO(${c.id});updateCOTotal()"/>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="min-width:44px"></span>
+        <select id="co-stat-${c.id}" style="flex:1;padding:6px 10px;border:0.5px solid var(--border2);border-radius:6px;font-size:12px;background:var(--bg);color:var(--text)" onchange="updateCO(${c.id});showCOSave(${c.id})">
+          <option ${c.status==='pending'?'selected':''}>pending</option>
+          <option ${c.status==='approved'?'selected':''}>approved</option>
+          <option ${c.status==='rejected'?'selected':''}>rejected</option>
+        </select>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-primary btn-sm" id="co-save-${c.id}" onclick="saveCO(${c.id})" title="Save" style="display:none">✓ Save</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteCO(${c.id})" title="Delete">✕ Delete</button>
+        </div>
       </div>
     </div>`).join('');
   updateCOTotal();
@@ -3187,9 +3200,24 @@ function updateCOTotal(){
 async function addCO(){
   coCounter++;
   try{
-    await api('POST','/payapps/'+currentPAId+'/changeorders',{co_number:coCounter,description:'New change order',amount:0,status:'approved'});
+    const co=await api('POST','/payapps/'+currentPAId+'/changeorders',{co_number:coCounter,description:'',amount:0,status:'approved'});
     currentPAData=await api('GET','/payapps/'+currentPAId);
     renderCOs(currentPAData);
+    // Auto-show Save and focus description for the new row
+    if(co&&co.id){
+      showCOSave(co.id);
+      const desc=document.getElementById('co-desc-'+co.id);
+      if(desc){desc.focus();desc.select();}
+    } else {
+      // Fallback: find last row
+      const rows=document.querySelectorAll('[id^="co-row-"]');
+      if(rows.length){
+        const lastId=parseInt(rows[rows.length-1].id.replace('co-row-',''));
+        showCOSave(lastId);
+        const desc=document.getElementById('co-desc-'+lastId);
+        if(desc){desc.focus();desc.select();}
+      }
+    }
   }catch(e){alert('Error: '+e.message);}
 }
 async function updateCO(id){
@@ -3201,14 +3229,18 @@ async function updateCO(id){
     });
   }catch(e){console.error(e);}
 }
+function showCOSave(id){
+  const btn=document.getElementById('co-save-'+id);
+  if(btn) btn.style.display='';
+}
 async function saveCO(id){
-  // Save and give visual feedback, then focus next row's description if it exists
   const btn=document.getElementById('co-save-'+id);
   try{
     await updateCO(id);
     updateCOTotal();
-    if(btn){const orig=btn.textContent;btn.textContent='✅';btn.disabled=true;setTimeout(()=>{btn.textContent=orig;btn.disabled=false;},1200);}
-    // Move focus to next CO row's description field if it exists
+    // Hide Save button — edit fields will show it again when changed
+    if(btn) btn.style.display='none';
+    // Move focus to next CO row's description or to "+ Add C/O"
     const rows=document.querySelectorAll('[id^="co-row-"]');
     const ids=[...rows].map(r=>parseInt(r.id.replace('co-row-','')));
     const idx=ids.indexOf(id);
@@ -3216,11 +3248,10 @@ async function saveCO(id){
       const nextDesc=document.getElementById('co-desc-'+ids[idx+1]);
       if(nextDesc) nextDesc.focus();
     } else {
-      // Last row — focus the "+ Add C/O" button area
       const addBtn=document.querySelector('[onclick="addCO()"]');
       if(addBtn) addBtn.focus();
     }
-  }catch(e){if(btn){btn.textContent='❌';setTimeout(()=>{btn.textContent='✓ Save';btn.disabled=false;},1500);}}
+  }catch(e){if(btn){btn.textContent='❌';setTimeout(()=>{btn.textContent='✓ Save';btn.style.display='';btn.disabled=false;},1500);}}
 }
 async function deleteCO(id){
   if(!confirm('Delete this change order?')) return;
@@ -3378,7 +3409,7 @@ async function createProject(){
     });
     await api('POST','/projects/'+proj.id+'/sov',{lines:validRows});
     ph('project_created',{sov_line_count:validRows.length,contract_value:parseFloat(document.getElementById('np-contract').value.replace(/,/g,''))});
-    loadProject(proj.id);
+    loadProject(proj.id, {autoNewPayApp: true});
   }catch(e){document.getElementById('np-err-final').textContent=e.message;document.getElementById('np-err-final').classList.remove('hidden');}
 }
 
@@ -3419,7 +3450,7 @@ async function createProjectAndNext(){
   }catch(e){document.getElementById('np-err-final').textContent=e.message;document.getElementById('np-err-final').classList.remove('hidden');}
 }
 function npBackTo3(){ npShowStep(3); }
-function npFinish(){ if(_newProjId) loadProject(_newProjId); }
+function npFinish(){ if(_newProjId) loadProject(_newProjId, {autoNewPayApp: true}); }
 
 async function handleNewProjectContractUpload(input) {
   if (!input.files[0] || !_newProjId) return;
