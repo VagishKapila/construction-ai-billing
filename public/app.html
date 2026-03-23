@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="CAI Billing">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <!-- PostHog — behavioral analytics, session recording, funnels -->
 <script>
 !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]);t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+" (stub)"},o="init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagPayload isFeatureFlagEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey identify alias group resetGroups setPersonProperties groupIdentify reset get_distinct_id getGroups get_session_id get_session_replay_url createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing debug".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
@@ -1454,6 +1455,21 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
           <div class="card" style="margin-bottom:16px">
             <div class="ct">Daily signups — last 30 days</div>
             <div id="admin-signups-chart" style="overflow-x:auto"></div>
+          </div>
+          <!-- Revenue charts -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+            <div class="card">
+              <div class="ct">Monthly billed — last 12 months</div>
+              <canvas id="chart-billed-monthly" height="180"></canvas>
+            </div>
+            <div class="card">
+              <div class="ct">Pay app activity — last 12 months</div>
+              <canvas id="chart-payapp-activity" height="180"></canvas>
+            </div>
+          </div>
+          <div class="card" style="margin-bottom:16px">
+            <div class="ct">Pipeline vs. billed by user (top 10)</div>
+            <canvas id="chart-pipeline-by-user" height="160"></canvas>
           </div>
           <!-- Slow requests -->
           <div class="card" style="margin-bottom:16px">
@@ -3836,13 +3852,22 @@ async function loadAdminSupportRequests() {
   }
 }
 
+function fmtRevenue(n){
+  n = parseFloat(n)||0;
+  if(n>=1000000) return '$'+(n/1000000).toFixed(1)+'M';
+  if(n>=1000) return '$'+(n/1000).toFixed(0)+'K';
+  return '$'+Math.round(n).toLocaleString();
+}
 function renderAdminKPIs(s){
-  const u=s.users, p=s.projects, pa=s.payapps, ev=s.events;
+  const u=s.users, p=s.projects, pa=s.payapps, ev=s.events, rv=s.revenue||{};
   document.getElementById('admin-kpis').innerHTML=`
     <div class="mc"><div class="mv">${u.total}</div><div class="ml">Total users</div><div class="ms">+${u.last7} this week</div></div>
     <div class="mc"><div class="mv">${p.total}</div><div class="ml">Projects</div><div class="ms">+${p.last7} this week</div></div>
     <div class="mc"><div class="mv">${pa.submitted}</div><div class="ml">Submitted pay apps</div><div class="ms">${pa.total} total created</div></div>
     <div class="mc"><div class="mv">${ev.last24h}</div><div class="ml">Events today</div><div class="ms">${ev.total} all time</div></div>
+    <div class="mc" style="border-top:2px solid var(--primary)"><div class="mv" style="color:var(--primary)">${fmtRevenue(rv.pipeline)}</div><div class="ml">Total pipeline</div><div class="ms">Sum of all SOV values</div></div>
+    <div class="mc" style="border-top:2px solid #16a34a"><div class="mv" style="color:#16a34a">${fmtRevenue(rv.total_billed)}</div><div class="ml">Total billed</div><div class="ms">Submitted pay apps</div></div>
+    <div class="mc" style="border-top:2px solid #7c3aed"><div class="mv" style="color:#7c3aed">${fmtRevenue(rv.avg_contract)}</div><div class="ml">Avg contract size</div><div class="ms">Pipeline ÷ projects</div></div>
   `;
 }
 
@@ -3894,6 +3919,89 @@ function renderSignupsChart(rows){
     </div>`;
   }).join('');
   document.getElementById('admin-signups-chart').innerHTML=`<div style="display:flex;align-items:flex-end;padding:8px 0 0">${bars}</div>`;
+}
+
+// Chart.js instances — destroy before re-render to avoid canvas reuse errors
+const _adminCharts = {};
+function destroyChart(id){ if(_adminCharts[id]){_adminCharts[id].destroy();delete _adminCharts[id];} }
+
+function renderBilledMonthlyChart(rows){
+  destroyChart('billed-monthly');
+  const ctx = document.getElementById('chart-billed-monthly');
+  if(!ctx) return;
+  if(!rows||!rows.length){ctx.parentElement.innerHTML+='<div style="color:var(--text2);font-size:12px;padding:8px 0">No submitted pay apps yet</div>';return;}
+  _adminCharts['billed-monthly'] = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels: rows.map(r=>r.month),
+      datasets:[{
+        label:'Amount Billed ($)',
+        data: rows.map(r=>parseFloat(r.billed)||0),
+        backgroundColor:'rgba(59,130,246,0.7)',
+        borderColor:'rgba(59,130,246,1)',
+        borderWidth:1,
+        borderRadius:4,
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>'$'+Math.round(ctx.parsed.y).toLocaleString()}}},
+      scales:{y:{ticks:{callback:v=>'$'+(v>=1000?(v/1000).toFixed(0)+'K':v)},grid:{color:'rgba(0,0,0,0.05)'}},x:{grid:{display:false}}}
+    }
+  });
+}
+
+function renderPayappActivityChart(rows){
+  destroyChart('payapp-activity');
+  const ctx = document.getElementById('chart-payapp-activity');
+  if(!ctx) return;
+  if(!rows||!rows.length){ctx.parentElement.innerHTML+='<div style="color:var(--text2);font-size:12px;padding:8px 0">No activity yet</div>';return;}
+  _adminCharts['payapp-activity'] = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels: rows.map(r=>r.month),
+      datasets:[{
+        label:'Pay Apps Created',
+        data: rows.map(r=>parseInt(r.count)||0),
+        backgroundColor:'rgba(124,58,237,0.15)',
+        borderColor:'rgba(124,58,237,0.9)',
+        borderWidth:2,
+        fill:true,
+        tension:0.4,
+        pointRadius:3,
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{y:{beginAtZero:true,ticks:{precision:0},grid:{color:'rgba(0,0,0,0.05)'}},x:{grid:{display:false}}}
+    }
+  });
+}
+
+function renderPipelineByUserChart(rows){
+  destroyChart('pipeline-by-user');
+  const ctx = document.getElementById('chart-pipeline-by-user');
+  if(!ctx) return;
+  if(!rows||!rows.length){ctx.parentElement.innerHTML+='<div style="color:var(--text2);font-size:12px;padding:8px 0">No pipeline data yet</div>';return;}
+  _adminCharts['pipeline-by-user'] = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels: rows.map(r=>r.name||(r.email||'').split('@')[0]),
+      datasets:[
+        {label:'Pipeline',data:rows.map(r=>parseFloat(r.pipeline)||0),backgroundColor:'rgba(59,130,246,0.7)',borderRadius:3},
+        {label:'Billed',data:rows.map(r=>parseFloat(r.billed)||0),backgroundColor:'rgba(22,163,74,0.7)',borderRadius:3},
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{position:'top',labels:{boxWidth:12,font:{size:11}}},
+        tooltip:{callbacks:{label:ctx=>'$'+Math.round(ctx.parsed.y).toLocaleString()}}
+      },
+      scales:{y:{ticks:{callback:v=>'$'+(v>=1000?(v/1000).toFixed(0)+'K':v)},grid:{color:'rgba(0,0,0,0.05)'}},x:{grid:{display:false}}}
+    }
+  });
 }
 
 function renderSlowReqs(rows){

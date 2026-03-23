@@ -390,7 +390,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
       // New user via Google — auto-verified
       const r = await pool.query(
         'INSERT INTO users(name,email,password_hash,google_id,email_verified) VALUES($1,$2,$3,$4,TRUE) RETURNING *',
-        [profile.name || profile.email.split('@')[0], profile.email, '', profile.id]
+        [(profile.name || profile.email.split('@')[0]).replace(/[^\x00-\x7F]/g, '').trim() || profile.email.split('@')[0], profile.email, '', profile.id]
       );
       user = r.rows[0];
       await logEvent(user.id, 'user_registered', { email: user.email, method: 'google' });
@@ -2337,7 +2337,7 @@ app.post('/api/admin/test-email', adminAuth, async (req, res) => {
 
 app.get('/api/admin/stats', adminAuth, async (req, res) => {
   try {
-    const [users, projects, payapps, events, recentErrors, slowReqs, topEvents, dailySignups, featureUsage] = await Promise.all([
+    const [users, projects, payapps, events, recentErrors, slowReqs, topEvents, dailySignups, featureUsage, pipeline, totalBilled, billedByMonth] = await Promise.all([
       pool.query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE created_at > NOW()-INTERVAL '7 days') as last7 FROM users`),
       pool.query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE created_at > NOW()-INTERVAL '7 days') as last7 FROM projects`),
       pool.query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status='submitted') as submitted, COUNT(*) FILTER (WHERE created_at > NOW()-INTERVAL '7 days') as last7 FROM pay_apps`),
@@ -2347,7 +2347,17 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
       pool.query(`SELECT event, COUNT(*) as count FROM analytics_events WHERE created_at > NOW()-INTERVAL '30 days' GROUP BY event ORDER BY count DESC LIMIT 15`),
       pool.query(`SELECT DATE(created_at) as day, COUNT(*) as signups FROM analytics_events WHERE event='user_registered' AND created_at > NOW()-INTERVAL '30 days' GROUP BY day ORDER BY day`),
       pool.query(`SELECT event, COUNT(*) as count FROM analytics_events WHERE event IN ('payapp_created','payapp_submitted','pdf_downloaded','project_created','payapp_lines_saved') AND created_at > NOW()-INTERVAL '30 days' GROUP BY event ORDER BY count DESC`),
+      // Total pipeline = sum of all SOV scheduled values across all projects
+      pool.query(`SELECT COALESCE(SUM(scheduled_value), 0) as pipeline, COUNT(DISTINCT project_id) as project_count FROM sov_lines`),
+      // Total billed = sum of amount_due on submitted pay apps (using snapshotted values)
+      pool.query(`SELECT COALESCE(SUM(amount_due), 0) as total_billed, COUNT(*) as count FROM pay_apps WHERE status IN ('submitted','approved','paid') AND deleted_at IS NULL`),
+      // Billed by month (last 12 months) for chart
+      pool.query(`SELECT TO_CHAR(DATE_TRUNC('month', submitted_at), 'Mon YYYY') as month, DATE_TRUNC('month', submitted_at) as month_dt, COALESCE(SUM(amount_due), 0) as billed FROM pay_apps WHERE status IN ('submitted','approved','paid') AND submitted_at IS NOT NULL AND deleted_at IS NULL GROUP BY month_dt, month ORDER BY month_dt DESC LIMIT 12`),
     ]);
+    const pipelineTotal = parseFloat(pipeline.rows[0].pipeline) || 0;
+    const billedTotal   = parseFloat(totalBilled.rows[0].total_billed) || 0;
+    const projectCount  = parseInt(pipeline.rows[0].project_count) || 0;
+    const avgContract   = projectCount > 0 ? Math.round(pipelineTotal / projectCount) : 0;
     res.json({
       users:       users.rows[0],
       projects:    projects.rows[0],
@@ -2358,6 +2368,12 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
       topEvents:     topEvents.rows,
       dailySignups:  dailySignups.rows,
       featureUsage:  featureUsage.rows,
+      revenue: {
+        pipeline:     pipelineTotal,
+        total_billed: billedTotal,
+        avg_contract: avgContract,
+        billed_by_month: billedByMonth.rows.reverse(), // chronological order
+      },
     });
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
