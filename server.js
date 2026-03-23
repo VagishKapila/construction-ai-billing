@@ -180,7 +180,7 @@ app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
       [resetToken, user.id]
     );
     const appUrl = process.env.APP_URL || 'https://constructinv.varshyl.com';
-    const resetUrl = `${appUrl}/?reset=${resetToken}`;
+    const resetUrl = `${appUrl}/app.html?reset=${resetToken}`;
     const apiKey   = process.env.RESEND_API_KEY;
     const fromEmail = process.env.FROM_EMAIL || 'noreply@varshyl.com';
     if (!apiKey) {
