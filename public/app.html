@@ -602,7 +602,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
 
   <!-- NAV -->
   <nav class="lp-nav" aria-label="Main navigation">
-    <a href="#lp-top" class="lp-nav-logo" aria-label="Construction AI Billing home">
+    <a href="/" class="lp-nav-logo" aria-label="Construction AI Billing home">
       <img src="/varshyl-logo.png" alt="Varshyl Inc." onerror="this.style.display='none'">
       <span class="lp-nav-brand">Construction <span>AI</span> Billing</span>
     </a>
@@ -621,6 +621,9 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
 
   <!-- HERO -->
   <section class="lp-hero" id="lp-top">
+    <a href="/" style="display:inline-block;margin-bottom:28px">
+      <img src="/varshyl-logo.png" alt="Construction AI Billing" style="width:110px;height:110px;border-radius:22px;object-fit:contain;display:block;box-shadow:0 8px 40px rgba(0,0,0,0.25)" onerror="this.style.display='none'">
+    </a>
     <h1>Stop Doing AIA Billing<br><em>by Hand.</em></h1>
     <p>Construction AI Billing automates your G702/G703 pay applications — from Schedule of Values to a signed, print-ready PDF — in minutes, not hours.</p>
     <div class="lp-hero-cta" id="lp-hero-cta">
@@ -813,7 +816,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
 <div id="auth-screen" class="auth-wrap">
   <div class="auth-card">
     <button onclick="window.location.href='/'" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:12px;padding:0;margin-bottom:14px;display:flex;align-items:center;gap:4px">← Back to home</button>
-<img src="constructinvoice-logo.png" alt="ConstructInvoice AI" style="width:80px;height:80px;border-radius:16px;margin-bottom:8px;object-fit:contain;" onerror="this.style.display='none'">
+<a href="/"><img src="/varshyl-logo.png" alt="Construction AI Billing" style="width:80px;height:80px;border-radius:16px;margin-bottom:8px;object-fit:contain;display:block;" onerror="this.style.display='none'"></a>
     <div class="auth-logo">Construction <span>AI</span> Billing</div>
     <div class="auth-sub">G702 / G703 Pay Application System</div>
     <div id="auth-err" class="err hidden"></div>
@@ -900,6 +903,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
 <!-- Reset Password screen (shown when ?reset=TOKEN in URL) -->
 <div id="reset-screen" class="auth-wrap hidden">
   <div class="auth-card">
+    <a href="/"><img src="/varshyl-logo.png" alt="Construction AI Billing" style="width:80px;height:80px;border-radius:16px;margin-bottom:8px;object-fit:contain;display:block;" onerror="this.style.display='none'"></a>
     <div class="auth-logo">Construction <span>AI</span> Billing</div>
     <div class="auth-sub">Set a new password</div>
     <div id="reset-err" class="err hidden"></div>
