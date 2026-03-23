@@ -1763,9 +1763,10 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               <button class="btn btn-primary" id="iw-generate-btn" onclick="generateAndAttachWaiver()">Generate &amp; Attach</button>
             </div>
           </div>
+          <div style="font-size:11px;color:var(--text2);text-align:center;margin-bottom:6px">Lien waiver is optional — skip if not needed for this pay app</div>
           <div class="pa-step-nav">
             <button class="btn btn-sm" onclick="paTab(3)">← Back</button>
-            <button class="btn btn-sm" onclick="paTab(5)">Skip — no waiver needed →</button>
+            <button class="btn btn-primary btn-sm" onclick="paTab(5)">Next: Preview &amp; Send →</button>
           </div>
         </div>
 
@@ -2822,7 +2823,15 @@ async function loadPayApp(id,tab=0){
     }
     document.getElementById('email-subj').value='Pay Application #'+pa.app_number+' — '+pa.project_name;
     document.getElementById('email-body').value='Please find attached Pay Application #'+pa.app_number+' for the '+pa.project_name+' project ('+(pa.period_label||'')+').\n\nKindly review and certify at your earliest convenience.\n\nThank you.';
-    if(pa.architect_certified) document.getElementById('arch-cert-amt').value=pa.architect_certified;
+    // Amount Certified: use saved value if present, otherwise pre-fill with current payment due
+    const certAmt = document.getElementById('arch-cert-amt');
+    if(certAmt) {
+      if(pa.architect_certified) { certAmt.value=pa.architect_certified; }
+      else {
+        const t0=calcTotals(pa);
+        if(t0.due>0){ certAmt.value=t0.due.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+      }
+    }
     if(pa.architect_name) document.getElementById('arch-cert-name').value=pa.architect_name;
     if(pa.architect_date) document.getElementById('arch-cert-date').value=(pa.architect_date||'').split('T')[0];
     if(pa.period_label) document.getElementById('pa-period-label').value=pa.period_label;
@@ -2851,6 +2860,9 @@ function renderPAHeader(pa){
         <button class="btn btn-sm" onclick="deletePayApp(${pa.id},${pa.project_id},'${(pa.period_label||'Pay App #'+pa.app_number).replace(/'/g,"\\'")}',${pa.app_number})" style="margin-left:auto;background:none;border:1px solid var(--red);color:var(--red);font-size:11px" title="Delete this pay application">🗑 Delete</button>
       </div>
     </div>`;
+  // Update send button text based on whether this pay app has been submitted before
+  const sendBtn=document.getElementById('btn-send-email');
+  if(sendBtn&&!sendBtn.disabled){sendBtn.textContent=submitted?'📤 Resend':'📤 Send & Mark Submitted';}
 }
 function calcTotals(pa){
   let tComp=0,tRet=0,tThis=0,tPrev=0,tPrevCert=0;
@@ -3145,19 +3157,26 @@ function renderCOs(pa){
   const cos=pa.change_orders||[];
   const list=document.getElementById('co-list');
   if(!cos.length){list.innerHTML='<div style="font-size:12px;color:var(--text2);padding:8px 0">No change orders yet.</div>';document.getElementById('co-total').textContent='$0.00';return;}
-  list.innerHTML=`<div style="display:grid;grid-template-columns:60px 1fr 120px 110px 80px;gap:8px;font-size:10px;font-weight:600;color:var(--text2);padding-bottom:6px;border-bottom:0.5px solid var(--border)">
-    <div>CO#</div><div>Description</div><div>Amount</div><div>Status</div><div>Action</div></div>`+
+  list.innerHTML=`<div style="display:grid;grid-template-columns:60px 1fr 130px 110px 130px;gap:8px;font-size:10px;font-weight:600;color:var(--text2);padding-bottom:6px;border-bottom:0.5px solid var(--border)">
+    <div>CO#</div><div>Description</div><div>Amount</div><div>Status</div><div>Actions</div></div>`+
   cos.map(c=>`
-    <div style="display:grid;grid-template-columns:60px 1fr 120px 110px 80px;gap:8px;align-items:center;padding:8px 0;border-bottom:0.5px solid rgba(0,0,0,0.06)">
+    <div id="co-row-${c.id}" style="display:grid;grid-template-columns:60px 1fr 130px 110px 130px;gap:8px;align-items:center;padding:8px 0;border-bottom:0.5px solid rgba(0,0,0,0.06)">
       <div style="font-size:13px;font-weight:600;color:var(--blue)">CO-${c.co_number}</div>
-      <input id="co-desc-${c.id}" style="padding:5px 8px;border:0.5px solid var(--border2);border-radius:5px;font-size:11px;background:var(--bg2);color:var(--text);width:100%" value="${c.description||''}" onchange="updateCO(${c.id})"/>
-      <input id="co-amt-${c.id}" style="padding:5px 8px;border:0.5px solid var(--border2);border-radius:5px;font-size:11px;text-align:right;background:var(--bg2);color:var(--text);width:100%" value="${c.amount||0}" onchange="updateCO(${c.id});updateCOTotal()"/>
+      <input id="co-desc-${c.id}" style="padding:5px 8px;border:0.5px solid var(--border2);border-radius:5px;font-size:11px;background:var(--bg2);color:var(--text);width:100%" value="${c.description||''}"
+        onkeydown="if(event.key==='Enter'){saveCO(${c.id});event.preventDefault();}"
+        onblur="updateCO(${c.id})"/>
+      <input id="co-amt-${c.id}" style="padding:5px 8px;border:0.5px solid var(--border2);border-radius:5px;font-size:11px;text-align:right;background:var(--bg2);color:var(--text);width:100%" value="${c.amount||0}"
+        onkeydown="if(event.key==='Enter'){saveCO(${c.id});event.preventDefault();}"
+        onblur="updateCO(${c.id});updateCOTotal()"/>
       <select id="co-stat-${c.id}" style="padding:5px 8px;border:0.5px solid var(--border2);border-radius:5px;font-size:11px;background:var(--bg2);color:var(--text)" onchange="updateCO(${c.id})">
         <option ${c.status==='pending'?'selected':''}>pending</option>
         <option ${c.status==='approved'?'selected':''}>approved</option>
         <option ${c.status==='rejected'?'selected':''}>rejected</option>
       </select>
-      <button class="btn btn-danger btn-sm" onclick="deleteCO(${c.id})">Delete</button>
+      <div style="display:flex;gap:5px">
+        <button class="btn btn-primary btn-sm" id="co-save-${c.id}" onclick="saveCO(${c.id})" title="Save">✓ Save</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteCO(${c.id})" title="Delete">✕</button>
+      </div>
     </div>`).join('');
   updateCOTotal();
   document.querySelectorAll('[id^="co-amt-"]').forEach(el=>{
@@ -3186,6 +3205,27 @@ async function updateCO(id){
       status:document.getElementById('co-stat-'+id).value
     });
   }catch(e){console.error(e);}
+}
+async function saveCO(id){
+  // Save and give visual feedback, then focus next row's description if it exists
+  const btn=document.getElementById('co-save-'+id);
+  try{
+    await updateCO(id);
+    updateCOTotal();
+    if(btn){const orig=btn.textContent;btn.textContent='✅';btn.disabled=true;setTimeout(()=>{btn.textContent=orig;btn.disabled=false;},1200);}
+    // Move focus to next CO row's description field if it exists
+    const rows=document.querySelectorAll('[id^="co-row-"]');
+    const ids=[...rows].map(r=>parseInt(r.id.replace('co-row-','')));
+    const idx=ids.indexOf(id);
+    if(idx>=0&&idx<ids.length-1){
+      const nextDesc=document.getElementById('co-desc-'+ids[idx+1]);
+      if(nextDesc) nextDesc.focus();
+    } else {
+      // Last row — focus the "+ Add C/O" button area
+      const addBtn=document.querySelector('[onclick="addCO()"]');
+      if(addBtn) addBtn.focus();
+    }
+  }catch(e){if(btn){btn.textContent='❌';setTimeout(()=>{btn.textContent='✓ Save';btn.disabled=false;},1500);}}
 }
 async function deleteCO(id){
   if(!confirm('Delete this change order?')) return;
