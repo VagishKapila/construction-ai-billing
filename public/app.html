@@ -3760,9 +3760,11 @@ async function loadAdminDash(){
   document.getElementById('admin-loading').classList.remove('hidden');
   document.getElementById('admin-content').classList.add('hidden');
   try {
-    const [stats, users] = await Promise.all([
+    const [stats, users, payappActivity, pipelineByUser] = await Promise.all([
       api('GET','/admin/stats'),
       api('GET','/admin/users'),
+      api('GET','/admin/chart/payapp-activity'),
+      api('GET','/admin/chart/pipeline-by-user'),
     ]);
     adminUsersAll = users;
     renderAdminKPIs(stats);
@@ -3772,6 +3774,9 @@ async function loadAdminDash(){
     renderSlowReqs(stats.slowRequests);
     renderAdminUsers(users);
     renderAiHistory();
+    renderBilledMonthlyChart(stats.revenue?.billed_by_month || []);
+    renderPayappActivityChart(payappActivity);
+    renderPipelineByUserChart(pipelineByUser);
     document.getElementById('admin-loading').classList.add('hidden');
     document.getElementById('admin-content').classList.remove('hidden');
     // Load feedback inbox and support requests in parallel (non-blocking)
