@@ -3,8 +3,8 @@
 # not available when server.js tries to spawn parse_sov.py.
 providers = ["node", "python"]
 
-# libvips is required by the optional 'sharp' npm package for server-side
+# vips (libvips) is required by the optional 'sharp' npm package for server-side
 # image compression. If sharp fails to install, the app continues normally
 # (graceful fallback — invoices are never affected).
 [phases.setup]
-nixPkgs = ["libvips"]
+nixPkgs = ["vips"]
