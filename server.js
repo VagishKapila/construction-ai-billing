@@ -357,7 +357,7 @@ app.get('/api/auth/google', (req, res) => {
 
 app.get('/api/auth/google/callback', async (req, res) => {
   const { code, error } = req.query;
-  if (error || !code) return res.redirect('/?auth_error=google_denied');
+  if (error || !code) return res.redirect('/app.html?auth_error=google_denied');
   try {
     const redirectUri = `${process.env.APP_URL || 'http://localhost:3000'}/api/auth/google/callback`;
     // Exchange code for tokens
@@ -385,7 +385,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
       if (!user.google_id) {
         await pool.query('UPDATE users SET google_id=$1, email_verified=TRUE WHERE id=$2', [profile.id, user.id]);
       }
-      if (user.blocked) return res.redirect('/?auth_error=account_blocked');
+      if (user.blocked) return res.redirect('/app.html?auth_error=account_blocked');
     } else {
       // New user via Google — auto-verified
       const r = await pool.query(
@@ -402,10 +402,10 @@ app.get('/api/auth/google/callback', async (req, res) => {
     // Use URL fragment (#) instead of query string — fragments are NOT sent to servers,
     // NOT logged in access logs, and NOT included in Referer headers. This prevents
     // the JWT from leaking through browser history, server logs, or third-party referers.
-    res.redirect(`/#google_token=${tok}`);
+    res.redirect(`/app.html#google_token=${tok}`);
   } catch(e) {
     console.error('Google OAuth error:', e.message);
-    res.redirect('/?auth_error=google_failed');
+    res.redirect('/app.html?auth_error=google_failed');
   }
 });
 
