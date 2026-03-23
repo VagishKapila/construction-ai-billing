@@ -7,6 +7,33 @@ const PDFDocument = require('pdfkit');
 const multer = require('multer');
 let puppeteer = null;
 try { puppeteer = require('puppeteer'); } catch(e) { console.warn('[PDF] Puppeteer not available, falling back to PDFKit'); }
+
+// ── Sharp: optional server-side image compression ─────────────────────────
+// Graceful: if sharp isn't installed or fails to load, compression is skipped
+// silently. Invoices always send regardless. Never crashes the app.
+let sharp = null;
+try { sharp = require('sharp'); console.log('[sharp] Server-side image compression enabled'); }
+catch(e) { console.log('[sharp] Not available — client-side compression only (install sharp + libvips to enable)'); }
+
+async function compressUploadedImage(filePath) {
+  if (!sharp) return; // no sharp = skip silently, original file used as-is
+  const stat = fs.statSync(filePath);
+  if (stat.size < 500 * 1024) return; // skip small files (< 500KB)
+  const tmp = filePath + '.sharp_tmp';
+  try {
+    await sharp(filePath)
+      .resize({ width: 1920, height: 1920, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 85, progressive: true })
+      .toFile(tmp);
+    const newStat = fs.statSync(tmp);
+    fs.renameSync(tmp, filePath);
+    console.log(`[sharp] ${path.basename(filePath)}: ${Math.round(stat.size/1024)}KB → ${Math.round(newStat.size/1024)}KB`);
+  } catch(e) {
+    console.warn('[sharp] Compression failed, using original:', e.message);
+    try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch(_) {}
+    // Original file untouched — invoice processing continues normally
+  }
+}
 const path = require('path');
 const fs = require('fs');
 const { pool, initDB } = require('./db');
@@ -842,6 +869,22 @@ app.put('/api/payapps/:id', auth, async (req,res) => {
   res.json(r.rows[0]);
 });
 
+// Unsubmit: allow owner to revert a submitted pay app back to draft
+app.post('/api/payapps/:id/unsubmit', auth, async (req,res) => {
+  try {
+    const r = await pool.query(
+      `UPDATE pay_apps SET status='draft', submitted_at=NULL
+       WHERE id=$1 AND project_id IN (SELECT id FROM projects WHERE user_id=$2)
+       RETURNING id, status`,
+      [req.params.id, req.user.id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Not found' });
+    await logEvent(req.user.id, 'payapp_unsubmitted', { pay_app_id: parseInt(req.params.id) });
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+
 // ── Soft-delete a pay app (moves to trash, never permanently destroyed) ───────
 // Query param: ?cascade=true → also deletes all subsequent pay apps in the same project
 app.delete('/api/payapps/:id', auth, async (req, res) => {
@@ -1031,10 +1074,15 @@ app.post('/api/payapps/:id/attachments', auth, upload.single('file'), async (req
     try { fs.unlinkSync(req.file.path); } catch(_) {}
     return res.status(400).json({ error: 'File type not allowed. Accepted: PDF, images, Word, Excel, CSV.' });
   }
-  const {originalname,filename,size,mimetype} = req.file;
+  // Server-side compression for image attachments (graceful fallback)
+  if (req.file.mimetype.startsWith('image/')) {
+    await compressUploadedImage(path.join(__dirname, 'uploads', req.file.filename)).catch(()=>{});
+  }
+  const {originalname,filename,mimetype} = req.file;
+  const actualSize = (() => { try { return fs.statSync(path.join(__dirname,'uploads',filename)).size; } catch(_) { return req.file.size; } })();
   const r = await pool.query(
     'INSERT INTO attachments(pay_app_id,filename,original_name,file_size,mime_type) VALUES($1,$2,$3,$4,$5) RETURNING *',
-    [req.params.id,filename,originalname,size,mimetype]
+    [req.params.id,filename,originalname,actualSize,mimetype]
   );
   res.json(r.rows[0]);
 });
@@ -2268,6 +2316,8 @@ app.post('/api/settings', auth, async (req,res) => {
 app.post('/api/settings/logo', auth, upload.single('file'), async (req,res) => {
   if(!req.file) return res.status(400).json({error:'No file'});
   if (rejectFile(req, res, MIME_IMAGE, 'logo')) return;
+  // Server-side compression (graceful — never blocks the save)
+  await compressUploadedImage(path.join(__dirname, 'uploads', req.file.filename)).catch(()=>{});
   // Delete old logo if exists
   const old = await pool.query('SELECT logo_filename FROM company_settings WHERE user_id=$1',[req.user.id]);
   if(old.rows[0]?.logo_filename) {
@@ -2299,6 +2349,7 @@ app.get('/api/settings/logo', auth, async (req,res) => {
 app.post('/api/settings/signature', auth, upload.single('file'), async (req,res) => {
   if(!req.file) return res.status(400).json({error:'No file'});
   if (rejectFile(req, res, MIME_IMAGE, 'signature')) return;
+  await compressUploadedImage(path.join(__dirname, 'uploads', req.file.filename)).catch(()=>{});
   const r = await pool.query(
     `INSERT INTO company_settings(user_id,signature_filename)
      VALUES($1,$2)
