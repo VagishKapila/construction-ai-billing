@@ -22,5 +22,8 @@
     "mammoth": "^1.7.2",
     "puppeteer": "^22.0.0"
   },
+  "optionalDependencies": {
+    "sharp": "^0.33.5"
+  },
   "engines": { "node": ">=18.0.0" }
 }

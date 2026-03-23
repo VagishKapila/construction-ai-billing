@@ -2350,9 +2350,11 @@ function previewLogo(input){
   reader.onload=e=>{
     logoDataURL=e.target.result;
     const box=document.getElementById('logo-preview-box');
-    box.innerHTML=`<img src="${logoDataURL}" style="width:100%;height:100%;object-fit:contain"/>`;
+    if(box) box.innerHTML=`<img src="${logoDataURL}" style="width:100%;height:100%;object-fit:contain"/>`;
   };
   reader.readAsDataURL(file);
+  // Persist to Settings so PDFs always include the logo
+  saveLogoToSettings(file);
 }
 function previewLogoPa(input){
   const file=input.files[0];if(!file)return;
@@ -2360,9 +2362,22 @@ function previewLogoPa(input){
   reader.onload=e=>{
     logoDataURL=e.target.result;
     const box=document.getElementById('preview-logo-box');
-    box.innerHTML=`<img src="${logoDataURL}"/>`;
+    if(box) box.innerHTML=`<img src="${logoDataURL}"/>`;
   };
   reader.readAsDataURL(file);
+  // Persist to Settings so PDFs always include the logo
+  saveLogoToSettings(file);
+}
+// Shared: save logo to company_settings so all PDFs pick it up regardless of where it was uploaded
+async function saveLogoToSettings(file){
+  if(!token) return;
+  try{
+    const compressed=await compressImageFile(file,400,0.90);
+    const fd=new FormData();fd.append('file',compressed);
+    const r=await fetch('/api/settings/logo',{method:'POST',headers:{'Authorization':'Bearer '+token},body:fd});
+    const data=await r.json();
+    if(data.logo_filename) companySettings.logo_filename=data.logo_filename;
+  }catch(e){ console.warn('[logo] Settings sync failed (preview still works):',e.message); }
 }
 function uploadSig(input,type){
   const file=input.files[0];if(!file)return;
@@ -2807,10 +2822,46 @@ function downloadPDFWithLien() {
   }
 }
 
-function downloadPDF(){
+async function downloadPDF(){
   ph('pdf_downloaded',{pay_app_id:currentPAId,project_id:currentPAData?.project_id});
   const token = getToken();
   window.open('/api/payapps/'+currentPAId+'/pdf?token='+encodeURIComponent(token),'_blank');
+  // Auto-mark as submitted on first download — they can unsubmit if needed
+  if(currentPAData && currentPAData.status !== 'submitted'){
+    try{
+      await api('PUT','/payapps/'+currentPAId,{status:'submitted'});
+      currentPAData=await api('GET','/payapps/'+currentPAId);
+      renderPAHeader(currentPAData);
+      if(currentProjects.length){
+        try{const allPAs=await api('GET','/projects/'+currentPAData.project_id+'/payapps');sidebarPACache[currentPAData.project_id]=allPAs;buildSidebarProjects(currentProjects,currentPAData.project_id);}catch(e){}
+      }
+      showToast('✅ Pay App #'+currentPAData.app_number+' marked as submitted. Use Unsubmit if you need to make changes.');
+    }catch(e){ console.warn('[auto-submit]',e.message); }
+  }
+}
+async function unsubmitPayApp(){
+  if(!currentPAData) return;
+  if(!confirm('Unsubmit Pay App #'+currentPAData.app_number+'?\n\nThis will change it back to Draft so you can make edits.')) return;
+  try{
+    await api('POST','/payapps/'+currentPAId+'/unsubmit',{});
+    currentPAData=await api('GET','/payapps/'+currentPAId);
+    renderPAHeader(currentPAData);
+    if(currentProjects.length){
+      try{const allPAs=await api('GET','/projects/'+currentPAData.project_id+'/payapps');sidebarPACache[currentPAData.project_id]=allPAs;buildSidebarProjects(currentProjects,currentPAData.project_id);}catch(e){}
+    }
+    showToast('Pay App #'+currentPAData.app_number+' is back to Draft.');
+  }catch(e){alert('Error: '+e.message);}
+}
+function showToast(msg, durationMs=4000){
+  let t=document.getElementById('_toast');
+  if(!t){
+    t=document.createElement('div');t.id='_toast';
+    t.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:11px 22px;border-radius:8px;font-size:13px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.25);transition:opacity .3s;pointer-events:none';
+    document.body.appendChild(t);
+  }
+  t.textContent=msg;t.style.opacity='1';
+  clearTimeout(t._timer);
+  t._timer=setTimeout(()=>{t.style.opacity='0';},durationMs);
 }
 async function loadPayApp(id,tab=0){
   currentPAId=id;showPage('payapp');paTab(tab);
@@ -2857,7 +2908,8 @@ function renderPAHeader(pa){
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button class="btn btn-sm" onclick="loadProject(${pa.project_id})">Back to project</button>
         ${submitted
-          ?'<button class="btn btn-sm" disabled style="opacity:0.5;cursor:default">✓ Submitted</button>'
+          ?`<button class="btn btn-sm" disabled style="opacity:0.5;cursor:default">✓ Submitted</button>
+             <button class="btn btn-sm" onclick="unsubmitPayApp()" style="font-size:11px;border-color:var(--text3);color:var(--text2)" title="Move back to Draft to make changes">↩ Unsubmit</button>`
           :'<button class="btn btn-amber btn-sm" onclick="markSubmitted()">✓ Mark submitted</button>'}
         <button class="btn btn-primary btn-sm" onclick="paTab(5)">Preview &amp; Send</button>
         <button class="btn btn-sm" onclick="deletePayApp(${pa.id},${pa.project_id},'${(pa.period_label||'Pay App #'+pa.app_number).replace(/'/g,"\\'")}',${pa.app_number})" style="margin-left:auto;background:none;border:1px solid var(--red);color:var(--red);font-size:11px" title="Delete this pay application">🗑 Delete</button>
@@ -3273,8 +3325,39 @@ function renderAttachments(pa){
       <button class="btn btn-danger btn-sm" onclick="deleteAttachment(${a.id})">Remove</button>
     </div>`).join('');
 }
+// ── Client-side image compression using Canvas API ────────────────────────
+// Runs entirely in the browser before bytes leave the device.
+// Falls back silently to the original file if Canvas isn't supported or fails.
+function compressImageFile(file, maxWidth=1200, quality=0.85){
+  return new Promise(resolve=>{
+    // Only compress images over 500KB; leave everything else (PDFs, DOCX) untouched
+    if(!file.type.startsWith('image/')||file.size<512*1024){resolve(file);return;}
+    try{
+      const img=new Image();
+      const url=URL.createObjectURL(file);
+      img.onload=()=>{
+        URL.revokeObjectURL(url);
+        let w=img.width,h=img.height;
+        if(w>maxWidth){h=Math.round(h*maxWidth/w);w=maxWidth;}
+        const canvas=document.createElement('canvas');
+        canvas.width=w;canvas.height=h;
+        const ctx=canvas.getContext('2d');
+        if(!ctx){resolve(file);return;}
+        ctx.drawImage(img,0,0,w,h);
+        canvas.toBlob(blob=>{
+          if(!blob||blob.size>=file.size){resolve(file);return;} // keep original if no gain
+          resolve(new File([blob],file.name.replace(/\.[^.]+$/,'.jpg'),{type:'image/jpeg',lastModified:Date.now()}));
+        },'image/jpeg',quality);
+      };
+      img.onerror=()=>{URL.revokeObjectURL(url);resolve(file);};
+      img.src=url;
+    }catch(e){resolve(file);} // never break on compression failure
+  });
+}
+
 async function uploadFiles(input){
-  for(const file of input.files){
+  for(let file of input.files){
+    file=await compressImageFile(file); // compress photos before upload
     const fd=new FormData();fd.append('file',file);
     try{
       await fetch(API+'/payapps/'+currentPAId+'/attachments',{method:'POST',headers:{'Authorization':'Bearer '+token},body:fd});
@@ -3618,7 +3701,8 @@ async function saveSettings() {
 }
 
 async function uploadLogo(input) {
-  const file = input.files[0]; if (!file) return;
+  let file = input.files[0]; if (!file) return;
+  file = await compressImageFile(file, 400, 0.90); // logos: max 400px, 90% quality
   const fd = new FormData(); fd.append('file', file);
   try {
     const r = await fetch('/api/settings/logo', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token }, body: fd });
@@ -3633,7 +3717,8 @@ async function uploadLogo(input) {
 }
 
 async function uploadSignature(input) {
-  const file = input.files[0]; if (!file) return;
+  let file = input.files[0]; if (!file) return;
+  file = await compressImageFile(file, 600, 0.90); // signatures: max 600px, 90% quality
   const fd = new FormData(); fd.append('file', file);
   try {
     const r = await fetch('/api/settings/signature', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token }, body: fd });
