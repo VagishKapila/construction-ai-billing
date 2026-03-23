@@ -1537,7 +1537,7 @@ app.get('/api/projects/:id/sov/uploads', auth, async (req, res) => {
 // Contract routes handled below in Phase 1 section (lines ~2063+)
 
 // ── Generate a self-contained HTML document that mirrors the on-screen preview ──
-function generatePayAppHTML(pa, lines, cos, totals, logoBase64, sigBase64, photoAttachments=[]) {
+function generatePayAppHTML(pa, lines, cos, totals, logoBase64, sigBase64, photoAttachments=[], docAttachments=[]) {
   const { tComp, tRet, tPrevCert, tCO, contract, earned, due } = totals;
   const fmtM = n => '$' + parseFloat(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 
@@ -1747,6 +1747,22 @@ ${photoAttachments.length ? `
     </div>`).join('')}
   </div>
 </div>` : ''}
+${docAttachments.length ? `
+<div style="page-break-before:${photoAttachments.length?'always':'always'};padding:28px 36px">
+  <div style="border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:18px">
+    <span style="font-size:12pt;font-weight:bold;font-family:'Times New Roman',serif">Supporting Documents — Attachment List</span>
+    <span style="font-size:9pt;color:#555;margin-left:12px">Pay App #${pa.app_number}${pa.period_label ? ' · ' + pa.period_label : ''}</span>
+  </div>
+  ${docAttachments.map((d,i) => `
+  <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:#f7f7f7;border:1px solid #ddd;border-radius:4px;margin-bottom:8px">
+    <span style="font-size:13pt">📄</span>
+    <div>
+      <div style="font-size:10pt;font-weight:600">${d.name}</div>
+      <div style="font-size:8pt;color:#777">Document ${i+1} of ${docAttachments.length}</div>
+    </div>
+  </div>`).join('')}
+  <p style="font-size:8.5pt;color:#666;margin-top:16px;font-style:italic">These documents are attached as separate files in the email alongside this PDF.</p>
+</div>` : ''}
 </body></html>`;
 }
 
@@ -1825,6 +1841,21 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
     return { base64: b64, name: a.original_name || a.filename, filePath: path.join(__dirname, 'uploads', a.filename) };
   }).filter(Boolean);
 
+  // ── Load PDF document attachments (listed as references, not embedded) ─────
+  const docAttsRes = await pool.query(
+    `SELECT filename, original_name FROM attachments WHERE pay_app_id=$1 AND mime_type='application/pdf' ORDER BY uploaded_at`,
+    [req.params.id]
+  );
+  const docAttachments = docAttsRes.rows.map(a => ({ name: a.original_name || a.filename }));
+
+  // ── Debug: log logo status for diagnosing missing logo reports ────────────
+  if (!pa.logo_filename) {
+    console.log(`[PDF] No logo_filename in company_settings for user_id=${decoded.id} (pay_app=${req.params.id})`);
+  } else {
+    const lp = path.join(__dirname, 'uploads', pa.logo_filename);
+    if (!fs.existsSync(lp)) console.log(`[PDF] Logo file missing on disk: ${lp}`);
+  }
+
   const totals = { tComp, tRet, tPrevCert, tCO, contract, earned, due };
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="PayApp_${pa.app_number}_${(pa.pname||'').replace(/\s+/g,'_')}.pdf"`);
@@ -1833,7 +1864,7 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
   if (puppeteer) {
     let browser;
     try {
-      const html = generatePayAppHTML(pa, lines.rows, cos.rows, totals, logoBase64, sigBase64, photoAttachments);
+      const html = generatePayAppHTML(pa, lines.rows, cos.rows, totals, logoBase64, sigBase64, photoAttachments, docAttachments);
       browser = await puppeteer.launch({
         args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu']
       });
@@ -2071,7 +2102,9 @@ app.post('/api/payapps/:id/email', auth, async (req, res) => {
     }).filter(Boolean);
 
     // Generate pay app PDF buffer via Puppeteer
-    const html = generatePayAppHTML(pa, lines.rows, cos.rows, totals, logoBase64, sigBase64, photoAttachments);
+    // NOTE: skip photo attachments in email PDF to stay well under Resend's 40MB limit.
+    // The full PDF (with photos) is always available via the Download button in the app.
+    const html = generatePayAppHTML(pa, lines.rows, cos.rows, totals, logoBase64, sigBase64, []);
     const pdfFilename = `PayApp_${pa.app_number}_${(pa.pname||'').replace(/\s+/g,'_')}.pdf`;
     const emailAttachments = [];
 
@@ -2114,6 +2147,21 @@ app.post('/api/payapps/:id/email', auth, async (req, res) => {
         }
       }
     } catch(lienErr) { console.error('[Email] Lien attach error:', lienErr.message); }
+
+    // Attach any uploaded PDF documents as separate email attachments
+    try {
+      const pdfAttsRes = await pool.query(
+        `SELECT filename, original_name FROM attachments WHERE pay_app_id=$1 AND mime_type='application/pdf' ORDER BY uploaded_at`,
+        [req.params.id]
+      );
+      for (const att of pdfAttsRes.rows) {
+        const attPath = path.join(__dirname, 'uploads', att.filename);
+        if (fs.existsSync(attPath)) {
+          const buf = fs.readFileSync(attPath);
+          emailAttachments.push({ filename: att.original_name || att.filename, content: buf.toString('base64') });
+        }
+      }
+    } catch(attErr) { console.error('[Email] PDF doc attach error:', attErr.message); }
 
     // Build HTML email body
     const safeMsg = (message||'').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
