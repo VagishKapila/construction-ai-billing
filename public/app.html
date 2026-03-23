@@ -2757,10 +2757,24 @@ async function renderPayAppLienStatus(paId) {
     const amtDue = (window._currentPayDue > 0 ? window._currentPayDue
       : (currentPAData && currentPAData.amount_due > 0 ? parseFloat(currentPAData.amount_due) : 0));
     const amtStr = amtDue > 0 ? amtDue.toFixed(2) : '';
+    // Auto-fill helpers — pull from pay app and company settings
+    const today = new Date().toISOString().split('T')[0];
+    const throughDate = (currentPAData && currentPAData.period_end ? currentPAData.period_end.split('T')[0] : '') || today;
+    const makerOfCheck = (currentPAData && currentPAData.owner) || '';
+    const payableTo = (companySettings && companySettings.company_name) || '';
+    const signatoryName = (companySettings && companySettings.contact_name) || '';
+    const signatoryTitle = (companySettings && companySettings.contact_title) || '';
+    // Build opts object for lien modal — shared between conditional and unconditional
+    const lienOpts = (docType) => JSON.stringify({
+      doc_type: docType, pay_app_id: paId, amount: amtStr,
+      through_date: throughDate, maker: makerOfCheck,
+      payable_to: payableTo, signatory: signatoryName, title: signatoryTitle
+    });
     if (!linked.length) {
       el.innerHTML = `<div style="display:inline-flex;align-items:center;gap:8px;padding:7px 12px;background:var(--amber-light);border-radius:var(--radius);font-size:11px;border:1px solid rgba(133,79,11,0.2)">
         <span>📋 No lien waiver linked.</span>
-        <button class="btn btn-sm" onclick="openLienDocModal(${currentProjectId},{doc_type:'conditional_waiver',pay_app_id:${paId},amount:'${amtStr}'})">Generate conditional waiver</button>
+        <button class="btn btn-sm" onclick="openLienDocModal(${currentProjectId},${lienOpts('conditional_waiver')})">Conditional waiver</button>
+        <button class="btn btn-sm" onclick="openLienDocModal(${currentProjectId},${lienOpts('unconditional_waiver')})">Unconditional waiver</button>
       </div>`;
       if (btnWithLien) btnWithLien.style.display = 'none';
       window._linkedLienDocId = null;
@@ -2772,7 +2786,8 @@ async function renderPayAppLienStatus(paId) {
     el.innerHTML = `<div style="display:inline-flex;align-items:center;gap:10px;padding:7px 12px;background:var(--green-light);border-radius:var(--radius);font-size:11px;border:1px solid rgba(59,109,17,0.2)">
       <span>✅ <strong>${typeLabels[d.doc_type]||d.doc_type}</strong> linked · signed by ${d.signatory_name||'—'}</span>
       <a href="/api/lien-docs/${d.id}/pdf?token=${getToken()}" target="_blank" class="btn btn-sm">Download waiver</a>
-      <button class="btn btn-sm" onclick="openLienDocModal(${currentProjectId},{doc_type:'conditional_waiver',pay_app_id:${paId},amount:'${amtStr}'})">+ New</button>
+      <button class="btn btn-sm" onclick="openLienDocModal(${currentProjectId},${lienOpts('conditional_waiver')})">+ Conditional</button>
+      <button class="btn btn-sm" onclick="openLienDocModal(${currentProjectId},${lienOpts('unconditional_waiver')})">+ Unconditional</button>
     </div>`;
     if (btnWithLien) btnWithLien.style.display = '';
   } catch(e) { el.innerHTML = ''; }
@@ -4505,13 +4520,14 @@ function openLienDocModal(projectId, opts) {
   window._lienPayAppId = opts.pay_app_id || null;  // link to pay app if provided
   document.getElementById('lien-doc-modal').classList.remove('hidden');
   document.getElementById('lien-doc-err').classList.add('hidden');
-  // Apply pre-fill values if provided, else clear
+  // Apply pre-fill values — default through_date to today if not provided
+  const defaultToday = new Date().toISOString().split('T')[0];
   document.getElementById('lien-doc-type').value = opts.doc_type || 'conditional_waiver';
-  document.getElementById('lien-doc-through-date').value = opts.through_date || '';
+  document.getElementById('lien-doc-through-date').value = opts.through_date || defaultToday;
   document.getElementById('lien-doc-amount').value = opts.amount != null ? opts.amount : '';
   document.getElementById('lien-doc-maker').value = opts.maker || '';
-  document.getElementById('lien-doc-payable-to').value = opts.payable_to || '';
-  document.getElementById('lien-doc-signatory').value = opts.signatory || '';
+  document.getElementById('lien-doc-payable-to').value = opts.payable_to || (companySettings && companySettings.company_name) || '';
+  document.getElementById('lien-doc-signatory').value = opts.signatory || (companySettings && companySettings.contact_name) || '';
   document.getElementById('lien-doc-title').value = opts.title || '';
   if (opts.jurisdiction) document.getElementById('lien-doc-jurisdiction').value = opts.jurisdiction;
   // Re-enable submit button in case it was disabled from a prior attempt
