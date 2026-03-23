@@ -2734,34 +2734,12 @@ async function newPayApp(){
     const now=new Date();
     const pa=await api('POST','/projects/'+currentProjectId+'/payapps',{app_number:num,period_label:months[now.getMonth()]+' '+now.getFullYear(),period_start:null,period_end:null});
     loadPayApp(pa.id);
-    // Non-blocking prompt to generate conditional lien waiver — pass pay_app_id so it gets linked
-    showLienToast(currentProjectId, pa);
     // Also update pay app preview area to show lien waiver status
     if(typeof renderPayAppLienStatus === 'function') renderPayAppLienStatus(pa.id);
   }catch(e){alert('Error: '+e.message);}
   finally{_creatingPA=false;}
 }
 
-function showLienToast(projectId, pa) {
-  dismissLienToast();
-  const toast = document.createElement('div');
-  toast.id = 'lien-toast';
-  toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#fff;border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 18px;box-shadow:0 4px 24px rgba(0,0,0,0.14);z-index:600;display:flex;align-items:flex-start;gap:12px;max-width:360px';
-  toast.innerHTML = `
-    <div style="font-size:20px;flex-shrink:0;margin-top:1px">📋</div>
-    <div style="flex:1">
-      <div style="font-weight:600;font-size:12px;margin-bottom:4px">Pay App #${pa.app_number} created</div>
-      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">Generate a conditional lien waiver to accompany this pay application?</div>
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-primary btn-sm" onclick="dismissLienToast();openLienDocModal(${projectId},{doc_type:'conditional_waiver',pay_app_id:${pa.id}})">Generate waiver</button>
-        <button class="btn btn-sm" onclick="dismissLienToast()">Not now</button>
-      </div>
-    </div>
-    <button onclick="dismissLienToast()" style="border:none;background:none;cursor:pointer;color:var(--text3);font-size:16px;line-height:1;flex-shrink:0">✕</button>`;
-  document.body.appendChild(toast);
-  setTimeout(dismissLienToast, 18000);
-}
-function dismissLienToast(){const t=document.getElementById('lien-toast');if(t)t.remove();}
 
 async function renderPayAppLienStatus(paId) {
   const el = document.getElementById('pa-lien-status');

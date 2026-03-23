@@ -757,7 +757,7 @@ app.put('/api/payapps/:id', auth, async (req,res) => {
         WHERE pal.pay_app_id=$1`, [req.params.id]);
       if (snap.rows[0]) {
         await pool.query(
-          'UPDATE pay_apps SET amount_due=$1, retention_held=$2 WHERE id=$3',
+          'UPDATE pay_apps SET amount_due=$1, retention_held=$2, submitted_at=COALESCE(submitted_at, NOW()) WHERE id=$3',
           [snap.rows[0].amount_due||0, snap.rows[0].retention_held||0, req.params.id]
         );
       }
@@ -2352,7 +2352,7 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
       // Total billed = sum of amount_due on submitted pay apps (using snapshotted values)
       pool.query(`SELECT COALESCE(SUM(amount_due), 0) as total_billed, COUNT(*) as count FROM pay_apps WHERE status IN ('submitted','approved','paid') AND deleted_at IS NULL`),
       // Billed by month (last 12 months) for chart
-      pool.query(`SELECT TO_CHAR(DATE_TRUNC('month', submitted_at), 'Mon YYYY') as month, DATE_TRUNC('month', submitted_at) as month_dt, COALESCE(SUM(amount_due), 0) as billed FROM pay_apps WHERE status IN ('submitted','approved','paid') AND submitted_at IS NOT NULL AND deleted_at IS NULL GROUP BY month_dt, month ORDER BY month_dt DESC LIMIT 12`),
+      pool.query(`SELECT TO_CHAR(DATE_TRUNC('month', COALESCE(submitted_at, created_at)), 'Mon YYYY') as month, DATE_TRUNC('month', COALESCE(submitted_at, created_at)) as month_dt, COALESCE(SUM(amount_due), 0) as billed FROM pay_apps WHERE status IN ('submitted','approved','paid') AND deleted_at IS NULL GROUP BY month_dt, month ORDER BY month_dt DESC LIMIT 12`),
     ]);
     const pipelineTotal = parseFloat(pipeline.rows[0].pipeline) || 0;
     const billedTotal   = parseFloat(totalBilled.rows[0].total_billed) || 0;
