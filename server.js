@@ -2378,6 +2378,43 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// Chart: pay app creation count by month (last 12 months)
+app.get('/api/admin/chart/payapp-activity', adminAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'Mon YYYY') as month,
+             DATE_TRUNC('month', created_at) as month_dt,
+             COUNT(*) as count
+      FROM pay_apps
+      WHERE created_at > NOW() - INTERVAL '12 months'
+        AND deleted_at IS NULL
+      GROUP BY month_dt, month
+      ORDER BY month_dt ASC
+    `);
+    res.json(r.rows);
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// Chart: pipeline vs billed by user (top 10 by pipeline)
+app.get('/api/admin/chart/pipeline-by-user', adminAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT u.name, u.email,
+             COALESCE(SUM(sl.scheduled_value), 0) as pipeline,
+             COALESCE(SUM(pa.amount_due) FILTER (WHERE pa.status IN ('submitted','approved','paid') AND pa.deleted_at IS NULL), 0) as billed
+      FROM users u
+      LEFT JOIN projects p ON p.user_id = u.id
+      LEFT JOIN sov_lines sl ON sl.project_id = p.id
+      LEFT JOIN pay_apps pa ON pa.project_id = p.id
+      GROUP BY u.id, u.name, u.email
+      HAVING COALESCE(SUM(sl.scheduled_value), 0) > 0
+      ORDER BY pipeline DESC
+      LIMIT 10
+    `);
+    res.json(r.rows);
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 app.get('/api/admin/errors', adminAuth, async (req, res) => {
   try {
     const r = await pool.query(
