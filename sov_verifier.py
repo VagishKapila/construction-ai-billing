@@ -42,12 +42,21 @@ OVERHEAD_KEYWORDS = [
     'supervision fee', 'management fee',
 ]
 
+# Keywords that identify fee/tax add-on rows — NOT part of the subtotal
+# but ARE part of the grand total. These sit between subtotal and total.
+FEE_TAX_KEYWORDS = [
+    'service fee', 'service charge', 'gratuity', 'tip',
+    'tax', 'sales tax', 'use tax', 'hst', 'gst', 'vat',
+    'delivery fee', 'delivery charge', 'shipping',
+]
+
 # Keywords that identify rows which are NEVER real line items
 # (pure document totals / running sums)
 NEVER_LINE_ITEM = [
     'subtotal', 'sub total', 'sub-total',
     'grand total', 'total amount',
     'balance due', 'amount paid', 'amount due',
+    'total due',
 ]
 
 
@@ -61,6 +70,12 @@ def _is_never_line_item(desc):
     """Check if a description is a pure total/subtotal — never a real line item."""
     d = desc.lower().strip()
     return any(kw in d for kw in NEVER_LINE_ITEM)
+
+
+def _is_fee_or_tax(desc):
+    """Check if a description is a fee/tax add-on (between subtotal and total)."""
+    d = desc.lower().strip()
+    return any(kw in d for kw in FEE_TAX_KEYWORDS)
 
 
 def _amounts_match(a, b, tol=TOLERANCE):
@@ -278,24 +293,41 @@ def verify_sov(rows, summary, anthropic_api_key=None):
     Returns:
         dict with verified rows, removed rows, match status, and method used
     """
-    reported_total = summary.get('total') or summary.get('balance_due')
+    # ── Smart total detection ────────────────────────────────────────────────
+    # Strategy: Try ALL candidate totals and pick whichever one matches.
+    # This handles both construction SOVs (line items = total) and invoices
+    # (line items = subtotal, subtotal + tax/fees = total).
+    grand_total = summary.get('total') or summary.get('balance_due')
+    subtotal = summary.get('subtotal')
 
-    # If no reported total, we can't verify — return as-is
-    if not reported_total or reported_total <= 0:
-        computed = round(sum(r['scheduled_value'] for r in rows), 2)
-        return {
-            'rows': rows,
-            'removed': [],
-            'computed_total': computed,
-            'reported_total': None,
-            'match': False,
-            'method': 'none',
-            'message': 'No document total found — cannot verify. Please review line items manually.'
-        }
+    # Build list of candidate targets to try, in priority order
+    candidates = []
+    if grand_total and grand_total > 0:
+        candidates.append(('total', round(grand_total, 2)))
+    if subtotal and subtotal > 0 and subtotal != grand_total:
+        candidates.append(('subtotal', round(subtotal, 2)))
 
-    target = round(reported_total, 2)
+    if not candidates:
+        # ── Biggest-dollar-amount fallback ────────────────────────────────
+        # No labeled total found. The biggest dollar amount in the document
+        # is likely the grand total — but ONLY if it's formatted as dollars
+        # (already $ amounts via extract_amounts) and much bigger than others.
+        all_amounts = sorted([r['scheduled_value'] for r in rows], reverse=True)
+        if len(all_amounts) >= 2 and all_amounts[0] > all_amounts[1] * 2:
+            candidates.append(('inferred', round(all_amounts[0], 2)))
+        else:
+            computed = round(sum(r['scheduled_value'] for r in rows), 2)
+            return {
+                'rows': rows,
+                'removed': [],
+                'computed_total': computed,
+                'reported_total': None,
+                'match': False,
+                'method': 'none',
+                'message': 'No document total found — cannot verify. Please review line items manually.'
+            }
 
-    # First, remove any rows that are NEVER line items (subtotal, total, etc.)
+    # ── First, remove rows that are NEVER line items (subtotal, total, etc.) ──
     clean_rows = []
     auto_removed = []
     for r in rows:
@@ -303,44 +335,63 @@ def verify_sov(rows, summary, anthropic_api_key=None):
             auto_removed.append(r)
         else:
             clean_rows.append(r)
-    rows = clean_rows
 
-    # Layer 1a: Check if rows already match
-    result = _try_exact_match(rows, target)
-    if result:
-        keep, removed, method, msg = result
-        return _build_result(keep, removed + auto_removed, target, method, msg)
+    # ── Separate fee/tax rows for subtotal matching ──
+    fee_tax_rows = []
+    line_item_rows = []
+    for r in clean_rows:
+        if _is_fee_or_tax(r['description']):
+            fee_tax_rows.append(r)
+        else:
+            line_item_rows.append(r)
 
-    # Layer 1b: Try removing overhead/markup rows
-    result = _try_remove_overhead(rows, target)
-    if result:
-        keep, removed, method, msg = result
-        return _build_result(keep, removed + auto_removed, target, method, msg)
+    # ── Try each candidate target ─────────────────────────────────────────
+    # For each target, try all verification methods.
+    # When targeting subtotal, exclude fee/tax rows from the match.
+    for target_type, target in candidates:
+        use_rows = line_item_rows if target_type == 'subtotal' else clean_rows
+        extra_removed = fee_tax_rows if target_type == 'subtotal' else []
 
-    # Layer 1c: Try subset matching (brute force for small row counts)
-    result = _try_subset_match(rows, target)
-    if result:
-        keep, removed, method, msg = result
-        return _build_result(keep, removed + auto_removed, target, method, msg)
-
-    # Layer 2: AI fallback
-    if anthropic_api_key:
-        result = _try_ai_verification(rows, summary, target, anthropic_api_key)
+        # Layer 1a: Check if rows already match
+        result = _try_exact_match(use_rows, target)
         if result:
             keep, removed, method, msg = result
-            return _build_result(keep, removed + auto_removed, target, method, msg)
+            return _build_result(keep, removed + auto_removed + extra_removed, target, method,
+                                 msg + (f' (vs {target_type})' if len(candidates) > 1 else ''))
 
-    # Nothing worked — return all rows with a warning
-    computed = round(sum(r['scheduled_value'] for r in rows), 2)
-    diff = round(abs(computed - target), 2)
+        # Layer 1b: Try removing overhead/markup rows
+        result = _try_remove_overhead(use_rows, target)
+        if result:
+            keep, removed, method, msg = result
+            return _build_result(keep, removed + auto_removed + extra_removed, target, method,
+                                 msg + (f' (vs {target_type})' if len(candidates) > 1 else ''))
+
+        # Layer 1c: Try subset matching (brute force for small row counts)
+        result = _try_subset_match(use_rows, target)
+        if result:
+            keep, removed, method, msg = result
+            return _build_result(keep, removed + auto_removed + extra_removed, target, method,
+                                 msg + (f' (vs {target_type})' if len(candidates) > 1 else ''))
+
+    # Layer 2: AI fallback (use grand total as target)
+    best_target = candidates[0][1]
+    if anthropic_api_key:
+        result = _try_ai_verification(clean_rows, summary, best_target, anthropic_api_key)
+        if result:
+            keep, removed, method, msg = result
+            return _build_result(keep, removed + auto_removed, best_target, method, msg)
+
+    # Nothing worked — return all rows with a warning (use first candidate)
+    computed = round(sum(r['scheduled_value'] for r in clean_rows), 2)
+    diff = round(abs(computed - best_target), 2)
     return {
-        'rows': rows,
+        'rows': clean_rows,
         'removed': auto_removed,
         'computed_total': computed,
-        'reported_total': target,
+        'reported_total': best_target,
         'match': False,
         'method': 'unresolved',
-        'message': f'Line items (${computed:,.2f}) differ from document total (${target:,.2f}) by ${diff:,.2f}. Please review and adjust manually.'
+        'message': f'Line items (${computed:,.2f}) differ from document total (${best_target:,.2f}) by ${diff:,.2f}. Please review and adjust manually.'
     }
 
 

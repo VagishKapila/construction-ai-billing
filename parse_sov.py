@@ -139,8 +139,17 @@ def parse_pdf(filepath):
                 if SKIP_RE.search(desc):
                     continue
 
+                # ── Smart dedup: aggregate repeated descriptions ──
+                # If the same description appears multiple times (e.g. "Event Beer" ×20),
+                # sum their amounts into one row instead of keeping only the first.
+                # This handles invoices, bar tabs, and any doc with repeated line items.
                 key = desc.lower()
                 if key in seen:
+                    # Find existing row and add to it
+                    for existing in rows:
+                        if existing['description'].lower() == key:
+                            existing['scheduled_value'] = round(existing['scheduled_value'] + total, 2)
+                            break
                     continue
                 seen.add(key)
 
@@ -165,8 +174,15 @@ def parse_docx(filepath):
         desc = clean_desc(desc)
         if len(desc) < 4 or SKIP_RE.search(desc):
             return
+        if amt <= 0:
+            return
         key = desc.lower()
-        if key in seen or amt <= 0:
+        if key in seen:
+            # Smart dedup: aggregate repeated descriptions
+            for existing in rows:
+                if existing['description'].lower() == key:
+                    existing['scheduled_value'] = round(existing['scheduled_value'] + amt, 2)
+                    break
             return
         seen.add(key)
         rows.append({
