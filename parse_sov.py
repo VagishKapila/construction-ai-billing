@@ -22,15 +22,13 @@ SKIP_RE = re.compile(
 
 # ── Financial summary rows: captured as metadata, NOT added as line items ──────
 # These are document totals / running sums, not individual billable scope items.
-# Includes overhead/tax/markup when they appear as summary-level line items
-# (they are often already included in per-line totals and would double-count).
+# IMPORTANT: Tax IS a real billable line item — do NOT exclude it here.
+# Only exclude rows that are pure totals/subtotals or overhead that is already
+# baked into per-line totals (double-counting).
 SUMMARY_RE = re.compile(
     r'^(subtotal|sub[\s\-]total|grand[\s\-]total|total[\s\-]amount|'
     r'balance[\s\-]due|amount[\s\-]paid|amount[\s\-]due|'
     r'total[\s\(\$\-]|total\s*$'          # "total", "total (...)", "total -", "total $"
-    r'|company\s+overhead|overhead\s*$'    # "Company Overhead" — usually sum of per-line overhead
-    r'|tax\b|state\s+tax|sales\s+tax'     # tax lines — real cost but tracked in summary
-    r'|markup|profit\s+and\s+overhead'     # markup/P&O summary lines
     r')',
     re.IGNORECASE
 )
@@ -259,40 +257,31 @@ def main():
 
         # ── Human-first validation: trust the document total, verify line items match ──
         # If the document reports a total, check if line items sum matches.
-        # If line items overshoot, some summary rows (overhead, tax) may have leaked in
-        # as line items when they're already included in per-line totals.
+        # If line items overshoot, some summary rows (overhead, markup) may be
+        # double-counted because their amounts are already in per-line totals.
+        # Tax is a REAL cost — never remove tax. Only remove overhead/markup rows
+        # if doing so brings the total closer to the document's reported total.
         reported_total = summary.get('total') or summary.get('balance_due')
         if reported_total and reported_total > 0:
             computed = round(sum(r['scheduled_value'] for r in rows), 2)
             if computed > reported_total * 1.005:  # more than 0.5% over = likely double-count
-                # Try removing rows whose amounts match known summary values
-                summary_amounts = set()
-                for k, v in summary.items():
-                    if k not in ('total', 'balance_due', 'amount_paid') and v > 0:
-                        summary_amounts.add(round(v, 2))
-                # Also check if any row amount exactly matches a summary value
+                # Try removing rows with overhead/markup labels (NOT tax — tax is real)
+                overhead_keywords = ['overhead', 'markup', 'profit and overhead', 'p&o',
+                                     'general conditions']
                 filtered = []
                 removed_summary = {}
                 for r in rows:
-                    sv = round(r['scheduled_value'], 2)
                     desc_lower = r['description'].lower()
-                    # Check if this row's amount matches a known summary value
-                    # AND the description looks like a summary/overhead/tax label
-                    is_summary_like = (
-                        sv in summary_amounts and
-                        any(kw in desc_lower for kw in
-                            ['overhead', 'tax', 'markup', 'profit', 'fee', 'subtotal'])
-                    )
-                    if is_summary_like:
+                    is_overhead = any(kw in desc_lower for kw in overhead_keywords)
+                    if is_overhead:
                         key = re.sub(r'[^a-z0-9_]', '_', desc_lower)[:30]
-                        removed_summary[key] = sv
+                        removed_summary[key] = round(r['scheduled_value'], 2)
                     else:
                         filtered.append(r)
                 # Only use filtered list if it brings us closer to the reported total
                 filtered_total = round(sum(r['scheduled_value'] for r in filtered), 2)
                 if abs(filtered_total - reported_total) < abs(computed - reported_total):
                     rows = filtered
-                    # Merge removed rows into summary metadata
                     for k, v in removed_summary.items():
                         if k not in summary:
                             summary[k] = v
