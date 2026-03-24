@@ -1943,7 +1943,7 @@ let sigContractor=null;
 let sigArchitect=null;
 let currentProjects=[];
 let sidebarPACache={};       // projectId -> payapps[] — populated on navigate
-let collapsedProjects=new Set(); // IDs manually collapsed; absent = expanded by default
+let expandedProjects=new Set(); // IDs manually expanded; only active project auto-expands
 
 const fmt=n=>'$'+parseFloat(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 // Password eye toggle
@@ -2546,7 +2546,7 @@ function buildSidebarProjects(projects, activeId){
     sorted.map(p=>{
       const isActive=p.id===activeId;
       const pPAs=sidebarPACache[p.id]||[];
-      const isCollapsed=collapsedProjects.has(p.id);
+      const isCollapsed=!(isActive||expandedProjects.has(p.id));
       const toggleBtn=pPAs.length
         ?`<span onclick="event.stopPropagation();toggleSidebarProj(${p.id})" title="${isCollapsed?'Expand':'Collapse'}" style="padding:0 5px;font-size:15px;font-weight:300;color:var(--text3);cursor:pointer;line-height:1;flex-shrink:0">${isCollapsed?'+':'−'}</span>`
         :'';
@@ -2562,8 +2562,8 @@ function buildSidebarProjects(projects, activeId){
     }).join('');
 }
 function toggleSidebarProj(id){
-  if(collapsedProjects.has(id)) collapsedProjects.delete(id);
-  else collapsedProjects.add(id);
+  if(expandedProjects.has(id)) expandedProjects.delete(id);
+  else expandedProjects.add(id);
   buildSidebarProjects(currentProjects, currentProjectId);
 }
 async function loadProject(id, opts={}){
@@ -2755,7 +2755,7 @@ async function newPayApp(){
     const num=payapps.length+1;
     const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
     const now=new Date();
-    const pa=await api('POST','/projects/'+currentProjectId+'/payapps',{app_number:num,period_label:months[now.getMonth()]+' '+now.getFullYear(),period_start:null,period_end:null});
+    const pa=await api('POST','/projects/'+currentProjectId+'/payapps',{app_number:num,period_label:months[now.getMonth()]+' '+now.getDate()+', '+now.getFullYear(),period_start:null,period_end:null});
     loadPayApp(pa.id);
     // Also update pay app preview area to show lien waiver status
     if(typeof renderPayAppLienStatus === 'function') renderPayAppLienStatus(pa.id);
@@ -2871,6 +2871,10 @@ async function loadPayApp(id,tab=0){
     renderPAHeader(pa);renderG702(pa);renderG703(pa);renderCOs(pa);renderAttachments(pa);
     renderAIAPreview(pa);
     renderPayAppLienStatus(id);
+    // Auto-fill billing % based on pay app number: PA#1→20%, PA#2→25%, PA#3+→20%
+    // Different defaults signal to the user the field was auto-filled, not stale data
+    const bulkPct=document.getElementById('bulk-pct');
+    if(bulkPct) bulkPct.value = pa.app_number===2 ? 25 : 20;
     // Refresh sidebar: highlight active pay app under its project
     if(currentProjects.length){
       try{const allPAs=await api('GET','/projects/'+pa.project_id+'/payapps');sidebarPACache[pa.project_id]=allPAs;buildSidebarProjects(currentProjects,pa.project_id);}catch(e){}
