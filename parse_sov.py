@@ -12,8 +12,6 @@ logging.getLogger('pdfminer').setLevel(logging.ERROR)
 logging.getLogger('pdfplumber').setLevel(logging.ERROR)
 
 # ── Lines to skip entirely (document boilerplate, not scope or money) ─────────
-# NOTE: "company overhead", "tax" are NOT skipped — they are real billable line items.
-# Only skip meta/summary rows handled by SUMMARY_RE, and pure boilerplate.
 SKIP_RE = re.compile(
     r'^(\*|•|·|–|—|-{2,})'               # bullet / sub-item lines
     r'|^(terms\s+and\s+conditions|signature|page \d+\s*/|files\+|note[:\s]|excludes'
@@ -24,10 +22,16 @@ SKIP_RE = re.compile(
 
 # ── Financial summary rows: captured as metadata, NOT added as line items ──────
 # These are document totals / running sums, not individual billable scope items.
+# Includes overhead/tax/markup when they appear as summary-level line items
+# (they are often already included in per-line totals and would double-count).
 SUMMARY_RE = re.compile(
     r'^(subtotal|sub[\s\-]total|grand[\s\-]total|total[\s\-]amount|'
     r'balance[\s\-]due|amount[\s\-]paid|amount[\s\-]due|'
-    r'total[\s\(\$\-]|total\s*$)',   # "total", "total (...)", "total -", "total $"
+    r'total[\s\(\$\-]|total\s*$'          # "total", "total (...)", "total -", "total $"
+    r'|company\s+overhead|overhead\s*$'    # "Company Overhead" — usually sum of per-line overhead
+    r'|tax\b|state\s+tax|sales\s+tax'     # tax lines — real cost but tracked in summary
+    r'|markup|profit\s+and\s+overhead'     # markup/P&O summary lines
+    r')',
     re.IGNORECASE
 )
 
@@ -253,8 +257,47 @@ def main():
             print(json.dumps({'error': 'No line items with dollar amounts found in this file.'}))
             sys.exit(1)
 
-        computed_total = round(sum(r['scheduled_value'] for r in rows), 2)
+        # ── Human-first validation: trust the document total, verify line items match ──
+        # If the document reports a total, check if line items sum matches.
+        # If line items overshoot, some summary rows (overhead, tax) may have leaked in
+        # as line items when they're already included in per-line totals.
         reported_total = summary.get('total') or summary.get('balance_due')
+        if reported_total and reported_total > 0:
+            computed = round(sum(r['scheduled_value'] for r in rows), 2)
+            if computed > reported_total * 1.005:  # more than 0.5% over = likely double-count
+                # Try removing rows whose amounts match known summary values
+                summary_amounts = set()
+                for k, v in summary.items():
+                    if k not in ('total', 'balance_due', 'amount_paid') and v > 0:
+                        summary_amounts.add(round(v, 2))
+                # Also check if any row amount exactly matches a summary value
+                filtered = []
+                removed_summary = {}
+                for r in rows:
+                    sv = round(r['scheduled_value'], 2)
+                    desc_lower = r['description'].lower()
+                    # Check if this row's amount matches a known summary value
+                    # AND the description looks like a summary/overhead/tax label
+                    is_summary_like = (
+                        sv in summary_amounts and
+                        any(kw in desc_lower for kw in
+                            ['overhead', 'tax', 'markup', 'profit', 'fee', 'subtotal'])
+                    )
+                    if is_summary_like:
+                        key = re.sub(r'[^a-z0-9_]', '_', desc_lower)[:30]
+                        removed_summary[key] = sv
+                    else:
+                        filtered.append(r)
+                # Only use filtered list if it brings us closer to the reported total
+                filtered_total = round(sum(r['scheduled_value'] for r in filtered), 2)
+                if abs(filtered_total - reported_total) < abs(computed - reported_total):
+                    rows = filtered
+                    # Merge removed rows into summary metadata
+                    for k, v in removed_summary.items():
+                        if k not in summary:
+                            summary[k] = v
+
+        computed_total = round(sum(r['scheduled_value'] for r in rows), 2)
 
         sys.stdout.write(json.dumps({
             'rows':           rows,
