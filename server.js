@@ -3293,7 +3293,9 @@ app.get('/api/lien-docs/:id/pdf', async (req, res) => {
   if (!r.rows[0]) return res.status(404).json({ error: 'Not found' });
   const lien = r.rows[0];
 
-  // Regenerate PDF on-the-fly with current logo from settings
+  const fp = path.resolve(__dirname, 'uploads', lien.filename);
+
+  // Try to regenerate PDF with current logo from settings
   try {
     let pay_app_ref = null;
     if (lien.pay_app_id) {
@@ -3305,7 +3307,6 @@ app.get('/api/lien-docs/:id/pdf', async (req, res) => {
       company_name: lien.company_name, location: lien.location_contact,
       city: lien.city, state: lien.state, logo_filename: lien.logo_filename
     };
-    const fp = path.join(__dirname, 'uploads', lien.filename);
     await generateLienDocPDF({
       fpath: fp, doc_type: lien.doc_type, project,
       through_date: lien.through_date, amount: lien.amount,
@@ -3314,16 +3315,17 @@ app.get('/api/lien-docs/:id/pdf', async (req, res) => {
       signedAt: new Date(lien.signed_at), ip: lien.signatory_ip || 'on file',
       jurisdiction: lien.jurisdiction || 'california', pay_app_ref
     });
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${lien.doc_type}_${lien.id}.pdf"`);
-    res.sendFile(fp);
-  } catch(e) {
-    console.error('[Lien PDF regen error]', e.message);
-    // Fallback: serve existing file if regeneration fails
-    const fp = path.join(__dirname, 'uploads', lien.filename);
-    if (fs.existsSync(fp)) { res.setHeader('Content-Type', 'application/pdf'); res.sendFile(fp); }
-    else res.status(500).json({ error: 'PDF generation failed' });
+  } catch(regenErr) {
+    console.error('[Lien PDF regen error]', regenErr.message);
   }
+
+  // Serve the file (regenerated or original)
+  if (fs.existsSync(fp)) {
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${lien.doc_type}_${lien.id}.pdf"`);
+    return res.sendFile(fp, (err) => { if (err && !res.headersSent) res.status(500).json({ error: 'File send failed' }); });
+  }
+  return res.status(404).json({ error: 'PDF file not found' });
 });
 
 // ── Shared helper: render a lien waiver into an open PDFDocument at current position ──
