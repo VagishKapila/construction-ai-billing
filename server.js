@@ -3175,9 +3175,9 @@ app.get('/api/auth/accept-invite/:token', async (req, res) => {
        RETURNING *`,
       [req.params.token]
     );
-    if (!r.rows[0]) return res.redirect('/?invite_error=invalid_or_expired');
-    res.redirect('/?invite_accepted=1');
-  } catch(e) { res.redirect('/?invite_error=server'); }
+    if (!r.rows[0]) return res.redirect('/app.html?invite_error=invalid_or_expired');
+    res.redirect('/app.html?invite_accepted=1');
+  } catch(e) { res.redirect('/app.html?invite_error=server'); }
 });
 
 async function sendTeamInviteEmail(toEmail, toName, inviter, token) {
@@ -4489,7 +4489,7 @@ async function sendReminderEmail({ to, cc, replyTo, subject, html, attachments }
   }
   try {
     const payload = {
-      from: `${fromName} <${fromEmail}>`,
+      from: fromEmail,
       to: Array.isArray(to) ? to : [to],
       subject,
       html,
