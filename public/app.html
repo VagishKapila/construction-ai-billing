@@ -1725,8 +1725,8 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
             </div>
           </div>
           <div class="card">
-            <div class="ct">Special notes &amp; conditions</div>
-            <textarea id="pa-special-notes" rows="3" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;resize:vertical" placeholder="e.g. 50% due upfront, Net 30 on balance. Material stored on-site per agreement dated 1/15/2026." onchange="savePAMeta()"></textarea>
+            <div class="ct">Notes</div>
+            <textarea id="pa-special-notes" rows="4" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;resize:vertical" placeholder="e.g. ACH info, payment terms, special conditions..." onchange="savePAMeta()"></textarea>
           </div>
           <div id="g702-contract-warn"></div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
@@ -1877,9 +1877,9 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               </div>
             </div>
 
-            <!-- Special notes -->
+            <!-- Notes -->
             <div id="prev-special-notes-box" style="display:none;margin-top:8px;padding:6px 10px;background:#fafafa;border:1px solid #ddd;border-radius:4px;font-size:8pt;color:#333">
-              <strong>Notes &amp; Conditions:</strong> <span id="prev-special-notes"></span>
+              <strong>Notes:</strong> <span id="prev-special-notes" style="white-space:pre-line"></span>
             </div>
 
             <!-- G703 PREVIEW -->
