@@ -654,6 +654,24 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
 .wg-btn-back{background:#f1f5f9;color:#475569}.wg-btn-back:hover{background:#e2e8f0}
 .wg-btn-next{background:#185FA5;color:#fff}.wg-btn-next:hover{background:#0C3B6B}
 @media(max-width:500px){.wg-modal{max-height:95vh;border-radius:12px}.wg-header{padding:16px}.wg-card{padding:16px}.wg-footer{padding:12px 16px}}
+/* ── Pro Upgrade Nudge Banner ─────────────────────────────── */
+.nudge-banner{background:linear-gradient(135deg,#f0f6ff,#e8f0fe);border:1px solid #c7dff7;border-radius:var(--radius-lg);padding:14px 20px;margin-bottom:18px;display:flex;align-items:center;gap:14px;animation:wgFadeIn .3s ease}
+.nudge-banner .nudge-icon{font-size:24px;flex-shrink:0}
+.nudge-banner .nudge-body{flex:1}
+.nudge-banner .nudge-title{font-size:13px;font-weight:700;color:#0a1f3c;margin-bottom:2px}
+.nudge-banner .nudge-msg{font-size:12px;color:#475569;line-height:1.5}
+.nudge-banner .nudge-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
+.nudge-btn-pro{background:#185FA5;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}.nudge-btn-pro:hover{background:#0C3B6B}
+.nudge-btn-later{background:none;border:none;color:#94a3b8;font-size:12px;cursor:pointer;padding:6px 10px}.nudge-btn-later:hover{color:#64748b}
+.upgrade-card{background:linear-gradient(135deg,#f0f6ff,#e0ecff);border:2px solid #185FA5;border-radius:var(--radius-lg);padding:20px;margin-bottom:18px}
+.upgrade-card .uc-title{font-size:15px;font-weight:700;color:#0a1f3c;margin-bottom:4px}
+.upgrade-card .uc-sub{font-size:12px;color:#475569;line-height:1.5;margin-bottom:14px}
+.upgrade-card .uc-price{font-size:28px;font-weight:700;color:#185FA5;margin-bottom:2px}
+.upgrade-card .uc-period{font-size:12px;color:#64748b;margin-bottom:14px}
+.upgrade-card .uc-perks{list-style:none;padding:0;margin:0 0 16px}
+.upgrade-card .uc-perks li{font-size:12px;color:#334155;padding:3px 0}
+.upgrade-card .uc-perks li::before{content:'✓ ';color:#059669;font-weight:700}
+@media(max-width:600px){.nudge-banner{flex-direction:column;text-align:center}.nudge-banner .nudge-actions{justify-content:center}}
 </style>
 </head>
 <body>
@@ -1145,6 +1163,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
             </div>
           </div>
         </div>
+        <div id="settings-upgrade-card"></div>
         <div class="card">
           <div class="ct">Help &amp; guided tour</div>
           <p style="font-size:12px;color:var(--text2);margin-bottom:12px">New to ConstructInvoice AI? Take a quick guided tour to learn the key features.</p>
@@ -1189,6 +1208,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
 
       <!-- DASHBOARD -->
       <div class="pg on" id="pg-dash">
+        <div id="nudge-banner-container"></div>
         <div class="ptitle">Dashboard</div>
         <div class="psub">All your projects and billing activity</div>
         <div class="mg">
@@ -2759,6 +2779,8 @@ async function loadDash(){
     document.getElementById('dash-total-billed').textContent=fmt(parseFloat(stats.total_billed)||0);
     document.getElementById('dash-total-ret').textContent=fmt(parseFloat(stats.total_retainage)||0);
     buildSidebarProjects(projects);
+    // Module 6: show upgrade nudge based on trial age / usage
+    checkAndShowNudge(totalPAs);
   }catch(e){console.error(e);}
 }
 function buildSidebarProjects(projects, activeId){
@@ -3957,6 +3979,8 @@ async function loadSettings() {
     if (companySettings.signature_filename) loadSigPreview();
     // Load team
     loadTeam().catch(()=>{});
+    // Module 6: render upgrade card
+    renderSettingsUpgradeCard();
   } catch(e) { console.log('No settings yet'); }
 }
 
@@ -5339,6 +5363,124 @@ async function removeTeamMember(id) {
     await api('DELETE', '/team/'+id);
     await loadTeam();
   } catch(e) { alert(e.message); }
+}
+
+// ── PRO UPGRADE NUDGES (Module 6) ───────────────────────────────────────────
+const NUDGE_DISMISS_KEY = 'caib_nudge_dismissed';
+const NUDGE_DISMISS_DAYS = 7;
+
+function getNudgeDismissed() {
+  try {
+    const raw = localStorage.getItem(NUDGE_DISMISS_KEY);
+    if (!raw) return false;
+    const ts = parseInt(raw);
+    if (Date.now() - ts < NUDGE_DISMISS_DAYS * 86400000) return true;
+    localStorage.removeItem(NUDGE_DISMISS_KEY);
+    return false;
+  } catch(_) { return false; }
+}
+
+function dismissNudge() {
+  try { localStorage.setItem(NUDGE_DISMISS_KEY, String(Date.now())); } catch(_) {}
+  const el = document.getElementById('nudge-banner-container');
+  if (el) el.innerHTML = '';
+}
+
+function checkAndShowNudge(payAppCount) {
+  const container = document.getElementById('nudge-banner-container');
+  if (!container || !currentUser) return;
+  // Don't show if already pro, free_override, or admin
+  const status = currentUser.subscription_status || 'trial';
+  if (['active','free_override'].includes(status)) { container.innerHTML = ''; return; }
+  // Don't show if dismissed within last 7 days
+  if (getNudgeDismissed()) { container.innerHTML = ''; return; }
+  // Calculate trial age in days
+  const trialStart = currentUser.trial_start_date ? new Date(currentUser.trial_start_date) : null;
+  const daysSinceStart = trialStart ? Math.floor((Date.now() - trialStart.getTime()) / 86400000) : 0;
+  const trialEnd = currentUser.trial_end_date ? new Date(currentUser.trial_end_date) : null;
+  const daysLeft = trialEnd ? Math.max(0, Math.ceil((trialEnd.getTime() - Date.now()) / 86400000)) : 90;
+
+  let icon = '', title = '', msg = '';
+
+  // Priority: trial expiring soon > 5th pay app > 60 days > 30 days
+  if (daysLeft <= 7 && daysLeft > 0) {
+    icon = '⏰';
+    title = `Your trial ends in ${daysLeft} day${daysLeft===1?'':'s'}`;
+    msg = 'Upgrade to Pro to keep creating pay apps, sending invoices, and generating lien waivers. $40/month — cancel anytime.';
+  } else if (daysLeft === 0) {
+    icon = '🔒';
+    title = 'Your trial has ended';
+    msg = 'Upgrade to Pro ($40/month) to continue billing. Can\'t afford it? Email vaakapila@gmail.com — we\'ll work something out.';
+  } else if (payAppCount >= 5 && daysSinceStart >= 7) {
+    icon = '🎉';
+    title = `You've created ${payAppCount} pay applications!`;
+    msg = 'Pro users get advanced reporting, priority AI support, and help keep this free for contractors who need it.';
+  } else if (daysSinceStart >= 60) {
+    icon = '💪';
+    title = 'Your trial ends in ' + daysLeft + ' days';
+    msg = 'Want to lock in Pro now? $40/month — cancel anytime. Your support helps other contractors use this for free.';
+  } else if (daysSinceStart >= 30) {
+    icon = '👋';
+    title = 'Enjoying ConstructInvoice AI?';
+    msg = 'Going Pro helps us keep this free for contractors who need it most, and helps us cover hosting costs.';
+  } else {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="nudge-banner">
+      <div class="nudge-icon">${icon}</div>
+      <div class="nudge-body">
+        <div class="nudge-title">${title}</div>
+        <div class="nudge-msg">${msg}</div>
+      </div>
+      <div class="nudge-actions">
+        <button class="nudge-btn-pro" onclick="window.open('/app.html#settings','_self')">Upgrade to Pro</button>
+        <button class="nudge-btn-later" onclick="dismissNudge()">Not now</button>
+      </div>
+    </div>`;
+}
+
+function renderSettingsUpgradeCard() {
+  const container = document.getElementById('settings-upgrade-card');
+  if (!container || !currentUser) return;
+  const status = currentUser.subscription_status || 'trial';
+  if (['active','free_override'].includes(status)) {
+    container.innerHTML = `<div class="card" style="border:2px solid #059669">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <span style="font-size:20px">✅</span>
+        <div class="ct" style="margin:0;color:#059669">Pro Plan Active</div>
+      </div>
+      <p style="font-size:12px;color:var(--text2)">Thank you for supporting ConstructInvoice AI! Your Pro plan is active.</p>
+    </div>`;
+    return;
+  }
+  const trialEnd = currentUser.trial_end_date ? new Date(currentUser.trial_end_date) : null;
+  const daysLeft = trialEnd ? Math.max(0, Math.ceil((trialEnd.getTime() - Date.now()) / 86400000)) : 90;
+  container.innerHTML = `
+    <div class="upgrade-card">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div>
+          <div class="uc-title">Upgrade to Pro</div>
+          <div class="uc-sub">${daysLeft > 0 ? daysLeft + ' days left in your free trial.' : 'Your trial has ended.'} Your support helps other contractors use this for free and keeps our servers running.</div>
+          <div class="uc-price">$40<span style="font-size:14px;font-weight:400;color:#64748b">/month</span></div>
+          <div class="uc-period">Cancel anytime. No contracts.</div>
+        </div>
+        <div>
+          <ul class="uc-perks">
+            <li>Unlimited pay apps &amp; projects</li>
+            <li>Accept payments through invoices</li>
+            <li>Advanced reporting with filters</li>
+            <li>Priority AI assistant</li>
+            <li>Custom email templates</li>
+            <li>Bulk operations</li>
+          </ul>
+        </div>
+      </div>
+      <button class="nudge-btn-pro" style="width:100%;padding:12px;font-size:14px">Upgrade to Pro — $40/month</button>
+      <p style="font-size:11px;color:#64748b;text-align:center;margin-top:8px">Can't afford it? Email vaakapila@gmail.com — we'll work something out.</p>
+    </div>`;
 }
 
 // ── WELCOME GUIDE (visual walkthrough with mockup screens) ──────────────────
