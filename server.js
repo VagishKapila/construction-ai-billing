@@ -1706,8 +1706,8 @@ body{font-family:'Times New Roman',Times,serif;font-size:9pt;color:#000;backgrou
 .aia-title h1{font-size:12pt;font-weight:bold;margin-bottom:2px}
 .aia-title h2{font-size:9.5pt;font-weight:normal;color:#444;margin-bottom:5px}
 .aia-title p{font-size:8.5pt;margin:2px 0}
-.aia-appnum{flex:0 0 145px;text-align:right;font-size:8.5pt;line-height:1.5}
-.aia-appnum .big{font-size:15pt;font-weight:bold;display:block}
+.aia-appnum{flex:0 0 180px;text-align:right;font-size:8.5pt;line-height:1.5}
+.aia-appnum .big{font-size:15pt;font-weight:bold}
 /* Payment terms */
 .aia-payment-terms{font-size:8.5pt;background:#f5f9ff;border:1px solid #c8daf5;padding:4px 9px;border-radius:3px;margin-bottom:8px}
 /* Summary grid */
@@ -1760,7 +1760,7 @@ td{border:1px solid #ddd;padding:2px 5px}
     <div>Period: ${pa.period_label||'—'}</div>
     <div>Contract date: ${contractDate}</div>
     <div>Project No: ${pa.pnum||'—'}</div>
-    ${pa.po_number ? `<div style="margin-top:2px">PO #: <strong>${pa.po_number}</strong></div>` : ''}
+    ${pa.po_number ? `<div style="margin-top:2px;font-size:7.5pt;word-break:break-all;max-width:145px">PO #: <span style="font-weight:600">${pa.po_number}</span></div>` : ''}
   </div>
 </div>
 

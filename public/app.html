@@ -141,7 +141,7 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
 
 /* AIA G702 Preview styles */
 .aia-preview{background:#fff;border:1px solid #ccc;border-radius:4px;padding:20px;font-family:'Times New Roman',serif;font-size:9pt;color:#000;max-width:800px}
-.aia-header{display:grid;grid-template-columns:120px 1fr auto;gap:10px;align-items:start;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:8px}
+.aia-header{display:grid;grid-template-columns:120px 1fr 180px;gap:10px;align-items:start;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:8px}
 .aia-logo-box{width:110px;height:60px;border:1px dashed #ccc;display:flex;align-items:center;justify-content:center;font-size:9px;color:#999;cursor:pointer;border-radius:4px;overflow:hidden}
 .aia-logo-box img{width:100%;height:100%;object-fit:contain}
 .aia-title{text-align:center}
@@ -149,7 +149,7 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
 .aia-title h2{font-size:10pt;font-weight:normal}
 .aia-title p{font-size:8pt;color:#555}
 .aia-appnum{text-align:right;font-size:9pt}
-.aia-appnum strong{font-size:14pt;display:block}
+.aia-appnum strong{font-size:14pt}
 .aia-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid #000;margin-bottom:6px}
 .aia-cell{padding:4px 8px;border-right:1px solid #000;border-bottom:1px solid #000;font-size:8.5pt}
 .aia-cell:nth-child(even){border-right:none}
@@ -183,8 +183,8 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
 .settings-logo-box{width:160px;height:90px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--bg3);display:flex;align-items:center;justify-content:center}
 .aia-logo-area{width:120px;height:70px;border:1px dashed #ccc;display:flex;align-items:center;justify-content:center;font-size:9px;color:#999;cursor:pointer;border-radius:3px;overflow:hidden}
 .aia-logo-area img{width:100%;height:100%;object-fit:contain}
-.aia-appnum{text-align:right;font-size:9pt;white-space:nowrap}
-.aia-appnum strong{font-size:14pt;display:block}
+.aia-appnum{text-align:right;font-size:9pt}
+.aia-appnum strong{font-size:14pt}
 .aia-cell-H{background:#fffbe6}
 .aia-dist-grid{display:flex;gap:20px}
 .aia-dist-item{display:flex;align-items:center;gap:6px}
@@ -1823,7 +1823,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
                 Application #<strong id="prev-appnum"></strong>
                 <div style="font-size:8pt;margin-top:4px">Period: <span id="prev-period"></span></div>
                 <div style="font-size:8pt">Contract date: <span id="prev-contract-date"></span></div>
-                <div id="prev-po-line" style="font-size:8pt;margin-top:2px;display:none">PO #: <strong id="prev-po"></strong></div>
+                <div id="prev-po-line" style="font-size:7.5pt;margin-top:2px;display:none;word-break:break-all;max-width:145px">PO #: <span id="prev-po" style="font-weight:600"></span></div>
               </div>
             </div>
 
