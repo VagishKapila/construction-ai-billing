@@ -597,8 +597,8 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
 /* ── Onboarding Tour ────────────────────────────────────── */
 .tour-overlay{position:fixed;inset:0;z-index:10000;pointer-events:none;transition:opacity .3s}
 .tour-overlay.active{pointer-events:all}
-.tour-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000}
-.tour-highlight{position:absolute;z-index:10001;border-radius:8px;box-shadow:0 0 0 4px #185FA5,0 0 0 9999px rgba(0,0,0,.55);pointer-events:none;transition:all .4s cubic-bezier(.4,0,.2,1)}
+.tour-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:10000}
+.tour-highlight{position:absolute;z-index:10001;border-radius:8px;box-shadow:0 0 0 4px #185FA5,0 0 0 9999px rgba(0,0,0,.35);pointer-events:none;transition:all .4s cubic-bezier(.4,0,.2,1)}
 .tour-tooltip{position:absolute;z-index:10002;background:#fff;border-radius:12px;padding:20px;max-width:340px;width:calc(100vw - 40px);box-shadow:0 8px 40px rgba(0,0,0,.22);animation:tourFadeIn .3s ease}
 @keyframes tourFadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 .tour-tooltip h3{font-size:15px;font-weight:700;color:#0a1f3c;margin:0 0 6px}
@@ -612,6 +612,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
 .tour-btn-next{background:#185FA5;color:#fff}.tour-btn-next:hover{background:#0C3B6B}
 .tour-btn-back{background:#f1f5f9;color:#475569}.tour-btn-back:hover{background:#e2e8f0}
 .tour-step-num{font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:4px}
+.tour-close{position:absolute;top:8px;right:10px;background:none;border:none;font-size:20px;color:#94a3b8;cursor:pointer;padding:4px 8px;line-height:1}.tour-close:hover{color:#475569}
 @media(max-width:600px){.tour-tooltip{max-width:calc(100vw - 32px);padding:16px}.tour-tooltip h3{font-size:14px}.tour-tooltip p{font-size:12px}}
 </style>
 </head>
@@ -4531,7 +4532,7 @@ const ARIA_SCRIPTS = [
   {keys:['bug','broken','not working','error','issue','problem','crash','fail'],reply:"Ugh, I'm sorry that's happening! 😔 Please describe what went wrong and I'll send it straight to our engineering team. You can also attach a screenshot with the 📎 button. We usually fix critical bugs within 24 hours."},
   {keys:['feature','idea','suggestion','request','wish','add','missing'],reply:"Love hearing ideas! 💡 Tell me what you're envisioning — even a rough description helps. I'll log it in our product backlog with your account info so the team can follow up. What would make your billing life easier?"},
   {keys:['slow','performance','loading','lag'],reply:"Noticed some sluggishness? Thanks for flagging it. Most slowness happens on large SOV files or when generating multi-page PDFs. Try refreshing, and if it persists please let me know the project size and I'll escalate to our infra team. ⚡"},
-  {keys:['price','pricing','cost','charge','subscription','free','pay'],reply:"Construction AI Billing is currently free to use! We're focused on building the best billing tool for contractors. No credit card required. If you run into any limits just let me know. 🎉"},
+  {keys:['price','pricing','cost','charge','subscription','free','pay','trial','upgrade','pro'],reply:"ConstructInvoice AI is free for 90 days — full features, no credit card required! After that it is $40/month for Pro. If you are a small contractor who cannot afford it, email us at vaakapila@gmail.com and we will waive the fee until you are making money. We want every contractor to have access to great billing tools. 🎉"},
   {keys:['account','login','password','sign in','register','verify'],reply:"For account issues — login problems, verification emails, or password resets — try the login page first. If you're stuck, describe the issue here and I'll escalate it to our support team right away. 🔐"},
   {keys:['team','invite','member','role','accountant','executive','field'],reply:"You can invite team members from your Settings page — assign roles like Accountant, Executive, PM, or Field. They'll get an email invite. The Accountant role gets access to the Revenue & billing history view. 👥"},
   {keys:['g702','g703','format','standard'],reply:"G702 is the Application and Certificate for Payment cover sheet — it shows your total contract, % complete, and amount due. G703 is the Continuation Sheet with the full Schedule of Values breakdown. We generate both automatically from your SOV. 📐"},
@@ -4593,6 +4594,7 @@ function appendAriaTyping() {
 }
 function removeAriaTyping() { const t = document.getElementById('aria-typing'); if (t) t.remove(); }
 
+let _ariaChatHistory = [];
 async function sendAIMsg() {
   const input = document.getElementById('ai-chat-input');
   const text = input.value.trim();
@@ -4602,25 +4604,42 @@ async function sendAIMsg() {
   if (aiScreenshotFile) appendAriaMsg('📎 ' + aiScreenshotFile.name, 'user');
   document.getElementById('ai-quick-btns').style.display = 'none';
   appendAriaTyping();
-  try {
-    const fd = new FormData();
-    fd.append('category', detectCategory(text));
-    fd.append('message', text || '(screenshot attached)');
-    fd.append('page_context', window.location.hash || document.title);
-    if (aiScreenshotFile) fd.append('screenshot', aiScreenshotFile);
-    await fetch('/api/feedback', { method:'POST', headers:{Authorization:'Bearer '+getToken()}, body:fd });
-  } catch(_) {}
+  // Log feedback for bugs/features
+  const cat = detectCategory(text);
+  if (cat !== 'general') {
+    try {
+      const fd = new FormData();
+      fd.append('category', cat);
+      fd.append('message', text || '(screenshot attached)');
+      fd.append('page_context', window.location.hash || document.title);
+      if (aiScreenshotFile) fd.append('screenshot', aiScreenshotFile);
+      await fetch('/api/feedback', { method:'POST', headers:{Authorization:'Bearer '+getToken()}, body:fd });
+    } catch(_) {}
+  }
   aiScreenshotFile = null;
   document.getElementById('ai-screenshot-input').value = '';
   document.getElementById('ai-screenshot-preview').classList.add('hidden');
-  setTimeout(() => {
+  // Try AI API first, fall back to keyword matching
+  _ariaChatHistory.push({role:'user',content:text});
+  try {
+    const r = await api('POST','/ai/ask',{question:text,history:_ariaChatHistory.slice(-10)});
+    removeAriaTyping();
+    const answer = r.answer || getAriaReply(text);
+    appendAriaMsg(answer, 'ai');
+    _ariaChatHistory.push({role:'assistant',content:answer});
+    if (cat !== 'general') {
+      setTimeout(() => appendAriaMsg("I have also logged this with our team and they will review it shortly. Thank you for helping us improve! 🙌", 'ai'), 900);
+    }
+  } catch(e) {
+    // Fallback to keyword matching if API unavailable
     removeAriaTyping();
     const reply = getAriaReply(text);
     appendAriaMsg(reply, 'ai');
-    if (text && detectCategory(text) !== 'general') {
-      setTimeout(() => appendAriaMsg("I've logged this with our team and they'll review it shortly. Thank you for helping us improve! 🙌", 'ai'), 900);
+    _ariaChatHistory.push({role:'assistant',content:reply});
+    if (cat !== 'general') {
+      setTimeout(() => appendAriaMsg("I have also logged this with our team and they will review it shortly. Thank you for helping us improve! 🙌", 'ai'), 900);
     }
-  }, 900 + Math.random() * 400);
+  }
 }
 
 function aiQuickReply(text) {
@@ -5121,11 +5140,12 @@ async function removeTeamMember(id) {
 
 // ── ONBOARDING GUIDED TOUR ──────────────────────────────────────────────────
 const TOUR_STEPS=[
-  {target:'#nav-new-proj',title:'Create your first project',desc:'Start here! Click "+ New project" to set up a project, upload your Schedule of Values, and start billing.', pos:'right'},
-  {target:'#nav-dash',title:'Your Dashboard',desc:'See all your projects, recent pay apps, and billing totals at a glance. This is your home base.',pos:'right'},
-  {target:'#nav-revenue',title:'Revenue tracking',desc:'Track how much you have billed, what is outstanding, and view revenue trends across all your projects.',pos:'right'},
-  {target:'.topbar-right .btn[onclick="showSettings()"]',title:'Company settings',desc:'Upload your company logo, signature, and set billing defaults. This info auto-fills on every new project.',pos:'below'},
-  {target:'#ai-avatar-wrap',title:'AI Assistant',desc:'Got a question? Ask our AI anything about construction billing, G702/G703 forms, lien waivers, or how to use the app.',pos:'above'}
+  {target:'#nav-new-proj',title:'Step 1: Create a project',desc:'Click "+ New project" to start. You will enter the project name, owner, and contract details, then upload your Schedule of Values (SOV). We accept Excel, CSV, PDF, and Word files.',pos:'right'},
+  {target:'#nav-dash',title:'Step 2: Your Dashboard',desc:'All your projects live here. Click any project to open it, view pay apps, and start billing.',pos:'right'},
+  {target:'#nav-revenue',title:'Step 3: Track revenue',desc:'See total billed, retention held, and net received across all projects. Filter by month, quarter, or year.',pos:'right'},
+  {target:'.topbar-right .btn[onclick="showSettings()"]',title:'Step 4: Set up your company',desc:'Upload your company logo and signature — they appear on every PDF. Set default payment terms and retainage. Your info auto-fills on new projects.',pos:'below'},
+  {target:'#nav-new-proj',title:'Inside a pay app',desc:'Once your project is set up: open it, click "+ New Pay App", enter % complete per line, then Download PDF. You can also add change orders, PO numbers, and special notes. Hit "Send" to email it directly to the owner.',pos:'right'},
+  {target:'#ai-fab',title:'Need help? Ask Aria!',desc:'Our AI assistant can answer questions about billing, lien waivers, change orders, or anything else. Click the avatar anytime.',pos:'above'},
 ];
 let _tourStep=0;
 let _tourActive=false;
@@ -5148,6 +5168,8 @@ async function checkOnboardingTour(){
 function startOnboardingTour(){
   _tourStep=0;
   _tourActive=true;
+  // Reset onboarding flag so it can be re-triggered
+  api('POST','/onboarding/reset',{}).catch(()=>{});
   // Navigate to dashboard first so all tour targets are visible
   showDash();
   // Create overlay elements if they don't exist
@@ -5155,6 +5177,7 @@ function startOnboardingTour(){
     _tourBackdrop=document.createElement('div');
     _tourBackdrop.className='tour-backdrop';
     _tourBackdrop.style.display='none';
+    _tourBackdrop.onclick=()=>skipTour();
     document.body.appendChild(_tourBackdrop);
   }
   if(!_tourHighlight){
@@ -5176,7 +5199,7 @@ function showTourStep(){
   if(_tourStep<0||_tourStep>=TOUR_STEPS.length){endTour();return;}
   const step=TOUR_STEPS[_tourStep];
   const el=document.querySelector(step.target);
-  if(!el){_tourStep++;showTourStep();return;} // skip missing elements
+  if(!el||el.offsetParent===null||el.style.display==='none'||el.getBoundingClientRect().width===0){_tourStep++;showTourStep();return;} // skip missing or hidden elements
   // Scroll element into view
   el.scrollIntoView({behavior:'smooth',block:'center'});
   setTimeout(()=>{
@@ -5196,7 +5219,8 @@ function showTourStep(){
     const isLast=_tourStep===TOUR_STEPS.length-1;
     const nextLabel=isLast?'Finish':'Next';
     _tourTooltip.innerHTML=`
-      <div class="tour-step-num">Step ${_tourStep+1} of ${TOUR_STEPS.length}</div>
+      <button class="tour-close" onclick="skipTour()" title="Close tour">&times;</button>
+      <div class="tour-step-num">${_tourStep+1} of ${TOUR_STEPS.length}</div>
       <h3>${step.title}</h3>
       <p>${step.desc}</p>
       <div class="tour-tooltip-actions">
@@ -5260,6 +5284,8 @@ async function endTour(){
 }
 // Handle window resize during tour
 window.addEventListener('resize',()=>{if(_tourActive)showTourStep();});
+// Escape key closes tour
+document.addEventListener('keydown',(e)=>{if(e.key==='Escape'&&_tourActive)skipTour();});
 </script>
 <!-- ── AI AVATAR ASSISTANT ─────────────────────────────────────────── -->
 <div id="ai-avatar-wrap" style="display:none">
@@ -5287,9 +5313,11 @@ window.addEventListener('resize',()=>{if(_tourActive)showTourStep();});
     <!-- Quick replies -->
     <div class="ai-chat-quick" id="ai-quick-btns">
       <button class="ai-quick-btn" onclick="aiQuickReply('How do I create a pay app?')">Pay app help</button>
-      <button class="ai-quick-btn" onclick="aiQuickReply('What is a lien waiver?')">Lien waiver?</button>
+      <button class="ai-quick-btn" onclick="aiQuickReply('How do I upload my SOV?')">Upload SOV</button>
+      <button class="ai-quick-btn" onclick="aiQuickReply('How do I generate a lien waiver?')">Lien waiver</button>
+      <button class="ai-quick-btn" onclick="aiQuickReply('What file formats can I upload?')">File formats</button>
+      <button class="ai-quick-btn" onclick="aiQuickReply('How do I add a change order?')">Change orders</button>
       <button class="ai-quick-btn" onclick="aiQuickReply('Something is broken')">Report a bug</button>
-      <button class="ai-quick-btn" onclick="aiQuickReply('I have a feature idea')">Feature idea</button>
     </div>
     <!-- Screenshot preview -->
     <div class="ai-chat-screenshot-preview hidden" id="ai-screenshot-preview">
