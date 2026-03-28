@@ -594,6 +594,25 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
   .content{padding:10px}
   .ptitle{font-size:16px}
 }
+/* ── Onboarding Tour ────────────────────────────────────── */
+.tour-overlay{position:fixed;inset:0;z-index:10000;pointer-events:none;transition:opacity .3s}
+.tour-overlay.active{pointer-events:all}
+.tour-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000}
+.tour-highlight{position:absolute;z-index:10001;border-radius:8px;box-shadow:0 0 0 4px #185FA5,0 0 0 9999px rgba(0,0,0,.55);pointer-events:none;transition:all .4s cubic-bezier(.4,0,.2,1)}
+.tour-tooltip{position:absolute;z-index:10002;background:#fff;border-radius:12px;padding:20px;max-width:340px;width:calc(100vw - 40px);box-shadow:0 8px 40px rgba(0,0,0,.22);animation:tourFadeIn .3s ease}
+@keyframes tourFadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.tour-tooltip h3{font-size:15px;font-weight:700;color:#0a1f3c;margin:0 0 6px}
+.tour-tooltip p{font-size:13px;color:#475569;margin:0 0 16px;line-height:1.5}
+.tour-tooltip-actions{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.tour-dots{display:flex;gap:5px}
+.tour-dot{width:7px;height:7px;border-radius:50%;background:#cbd5e1}
+.tour-dot.active{background:#185FA5;width:18px;border-radius:4px}
+.tour-btn{padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s}
+.tour-btn-skip{background:none;color:#94a3b8;padding:8px 10px}.tour-btn-skip:hover{color:#64748b}
+.tour-btn-next{background:#185FA5;color:#fff}.tour-btn-next:hover{background:#0C3B6B}
+.tour-btn-back{background:#f1f5f9;color:#475569}.tour-btn-back:hover{background:#e2e8f0}
+.tour-step-num{font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:4px}
+@media(max-width:600px){.tour-tooltip{max-width:calc(100vw - 32px);padding:16px}.tour-tooltip h3{font-size:14px}.tour-tooltip p{font-size:12px}}
 </style>
 </head>
 <body>
@@ -1084,6 +1103,11 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               <button class="btn btn-primary" id="team-invite-btn" onclick="inviteTeamMember()">+ Invite</button>
             </div>
           </div>
+        </div>
+        <div class="card">
+          <div class="ct">Help &amp; guided tour</div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:12px">New to ConstructInvoice AI? Take a quick guided tour to learn the key features.</p>
+          <button class="btn btn-primary" onclick="startOnboardingTour()">Take the tour</button>
         </div>
         <div class="br"><button class="btn" onclick="showDash()">← Back to dashboard</button></div>
       </div>
@@ -2309,6 +2333,8 @@ function setAuth(data){
   checkTrialStatus();
   showDash();
   ['np-contract','ep-contract','arch-cert-amt'].forEach(id=>setupCommaInput(document.getElementById(id)));
+  // Check if onboarding tour should be shown (first-time users)
+  checkOnboardingTour();
 }
 function showAuthErr(msg){const el=document.getElementById('auth-err');el.textContent=msg;el.classList.remove('hidden');}
 function dismissVerifyBanner(){document.getElementById('verify-banner').classList.add('hidden');}
@@ -5092,6 +5118,148 @@ async function removeTeamMember(id) {
     await loadTeam();
   } catch(e) { alert(e.message); }
 }
+
+// ── ONBOARDING GUIDED TOUR ──────────────────────────────────────────────────
+const TOUR_STEPS=[
+  {target:'#nav-new-proj',title:'Create your first project',desc:'Start here! Click "+ New project" to set up a project, upload your Schedule of Values, and start billing.', pos:'right'},
+  {target:'#nav-dash',title:'Your Dashboard',desc:'See all your projects, recent pay apps, and billing totals at a glance. This is your home base.',pos:'right'},
+  {target:'#nav-revenue',title:'Revenue tracking',desc:'Track how much you have billed, what is outstanding, and view revenue trends across all your projects.',pos:'right'},
+  {target:'.topbar-right .btn[onclick="showSettings()"]',title:'Company settings',desc:'Upload your company logo, signature, and set billing defaults. This info auto-fills on every new project.',pos:'below'},
+  {target:'#ai-avatar-wrap',title:'AI Assistant',desc:'Got a question? Ask our AI anything about construction billing, G702/G703 forms, lien waivers, or how to use the app.',pos:'above'}
+];
+let _tourStep=0;
+let _tourActive=false;
+let _tourHighlight=null;
+let _tourTooltip=null;
+let _tourBackdrop=null;
+
+async function checkOnboardingTour(){
+  if(!currentUser)return;
+  // Check from server whether user has completed onboarding
+  try{
+    const r=await api('GET','/onboarding/status');
+    if(!r.has_completed_onboarding){
+      // Small delay so the dashboard fully renders first
+      setTimeout(()=>startOnboardingTour(),800);
+    }
+  }catch(e){/* silent — don't block login */}
+}
+
+function startOnboardingTour(){
+  _tourStep=0;
+  _tourActive=true;
+  // Navigate to dashboard first so all tour targets are visible
+  showDash();
+  // Create overlay elements if they don't exist
+  if(!_tourBackdrop){
+    _tourBackdrop=document.createElement('div');
+    _tourBackdrop.className='tour-backdrop';
+    _tourBackdrop.style.display='none';
+    document.body.appendChild(_tourBackdrop);
+  }
+  if(!_tourHighlight){
+    _tourHighlight=document.createElement('div');
+    _tourHighlight.className='tour-highlight';
+    _tourHighlight.style.display='none';
+    document.body.appendChild(_tourHighlight);
+  }
+  if(!_tourTooltip){
+    _tourTooltip=document.createElement('div');
+    _tourTooltip.className='tour-tooltip';
+    _tourTooltip.style.display='none';
+    document.body.appendChild(_tourTooltip);
+  }
+  showTourStep();
+}
+
+function showTourStep(){
+  if(_tourStep<0||_tourStep>=TOUR_STEPS.length){endTour();return;}
+  const step=TOUR_STEPS[_tourStep];
+  const el=document.querySelector(step.target);
+  if(!el){_tourStep++;showTourStep();return;} // skip missing elements
+  // Scroll element into view
+  el.scrollIntoView({behavior:'smooth',block:'center'});
+  setTimeout(()=>{
+    const rect=el.getBoundingClientRect();
+    const pad=6;
+    // Position highlight around target element
+    _tourBackdrop.style.display='block';
+    _tourHighlight.style.display='block';
+    _tourTooltip.style.display='block';
+    _tourHighlight.style.top=(rect.top-pad+window.scrollY)+'px';
+    _tourHighlight.style.left=(rect.left-pad)+'px';
+    _tourHighlight.style.width=(rect.width+pad*2)+'px';
+    _tourHighlight.style.height=(rect.height+pad*2)+'px';
+    // Build tooltip content
+    const dots=TOUR_STEPS.map((_,i)=>`<div class="tour-dot${i===_tourStep?' active':''}"></div>`).join('');
+    const backBtn=_tourStep>0?`<button class="tour-btn tour-btn-back" onclick="tourBack()">Back</button>`:'';
+    const isLast=_tourStep===TOUR_STEPS.length-1;
+    const nextLabel=isLast?'Finish':'Next';
+    _tourTooltip.innerHTML=`
+      <div class="tour-step-num">Step ${_tourStep+1} of ${TOUR_STEPS.length}</div>
+      <h3>${step.title}</h3>
+      <p>${step.desc}</p>
+      <div class="tour-tooltip-actions">
+        <button class="tour-btn tour-btn-skip" onclick="skipTour()">Skip tour</button>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="tour-dots">${dots}</div>
+          ${backBtn}
+          <button class="tour-btn tour-btn-next" onclick="tourNext()">${nextLabel}</button>
+        </div>
+      </div>`;
+    // Position tooltip relative to target
+    positionTooltip(rect,step.pos);
+  },350);
+}
+
+function positionTooltip(rect,pos){
+  const tt=_tourTooltip;
+  const gap=14;
+  tt.style.top='';tt.style.left='';tt.style.right='';tt.style.bottom='';
+  // Calculate position
+  const ttW=Math.min(340,window.innerWidth-40);
+  if(pos==='right'){
+    let top=rect.top+window.scrollY-10;
+    let left=rect.right+gap;
+    if(left+ttW>window.innerWidth-20){left=Math.max(20,rect.left-ttW-gap);} // flip left
+    if(top+200>window.innerHeight+window.scrollY)top=rect.bottom+window.scrollY-200;
+    tt.style.top=top+'px';tt.style.left=left+'px';
+  }else if(pos==='below'){
+    let top=rect.bottom+window.scrollY+gap;
+    let left=Math.max(20,Math.min(rect.left,window.innerWidth-ttW-20));
+    tt.style.top=top+'px';tt.style.left=left+'px';
+  }else if(pos==='above'){
+    let left=Math.max(20,rect.left-ttW/2);
+    if(left+ttW>window.innerWidth-20)left=window.innerWidth-ttW-20;
+    tt.style.top=(rect.top+window.scrollY-gap-180)+'px';tt.style.left=left+'px';
+  }else{
+    // default: below
+    tt.style.top=(rect.bottom+window.scrollY+gap)+'px';
+    tt.style.left=Math.max(20,rect.left)+'px';
+  }
+}
+
+function tourNext(){
+  _tourStep++;
+  if(_tourStep>=TOUR_STEPS.length){endTour();return;}
+  showTourStep();
+}
+function tourBack(){
+  if(_tourStep>0){_tourStep--;showTourStep();}
+}
+function skipTour(){
+  endTour();
+}
+async function endTour(){
+  _tourActive=false;
+  if(_tourBackdrop)_tourBackdrop.style.display='none';
+  if(_tourHighlight)_tourHighlight.style.display='none';
+  if(_tourTooltip)_tourTooltip.style.display='none';
+  // Mark as completed on server
+  try{await api('POST','/onboarding/complete',{});}catch(e){}
+}
+// Handle window resize during tour
+window.addEventListener('resize',()=>{if(_tourActive)showTourStep();});
 </script>
 <!-- ── AI AVATAR ASSISTANT ─────────────────────────────────────────── -->
 <div id="ai-avatar-wrap" style="display:none">

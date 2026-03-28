@@ -163,7 +163,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     await logEvent(r.rows[0].id, 'user_registered', { email, method: 'email' });
     // Send verification email (non-blocking — don't fail registration if email fails)
     sendVerificationEmail(email, name, vTok).catch(e => console.error('Verify email error:', e.message));
-    res.json({token:tok,user:{...r.rows[0],email_verified:false,trial_start_date:r.rows[0].trial_start_date,trial_end_date:r.rows[0].trial_end_date,subscription_status:r.rows[0].subscription_status,plan_type:r.rows[0].plan_type}});
+    res.json({token:tok,user:{...r.rows[0],email_verified:false,trial_start_date:r.rows[0].trial_start_date,trial_end_date:r.rows[0].trial_end_date,subscription_status:r.rows[0].subscription_status,plan_type:r.rows[0].plan_type,has_completed_onboarding:false}});
   } catch(e) {
     if(e.code==='23505') return res.status(400).json({error:'Email already registered'});
     console.error('[API Error]', e.message); res.status(500).json({error:'Internal server error'});
@@ -188,7 +188,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     if(user.blocked) return res.status(403).json({error:'Your account has been suspended. Please contact support.'});
     const tok = jwt.sign({id:user.id,email:email},JWT_SECRET,{expiresIn:'30d'});
     await logEvent(user.id, 'user_login', { method: 'email' });
-    res.json({token:tok,user:{id:user.id,name:user.name,email:user.email,email_verified:user.email_verified,trial_start_date:user.trial_start_date,trial_end_date:user.trial_end_date,subscription_status:user.subscription_status,plan_type:user.plan_type}});
+    res.json({token:tok,user:{id:user.id,name:user.name,email:user.email,email_verified:user.email_verified,trial_start_date:user.trial_start_date,trial_end_date:user.trial_end_date,subscription_status:user.subscription_status,plan_type:user.plan_type,has_completed_onboarding:user.has_completed_onboarding}});
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({error:'Internal server error'}); }
 });
 
@@ -2792,6 +2792,29 @@ app.get('/api/subscription', auth, async (req, res) => {
       is_admin: isAdmin,
       has_stripe: !!user.stripe_customer_id
     });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── Onboarding status ────────────────────────────────────────────────────────
+app.post('/api/onboarding/complete', auth, async (req, res) => {
+  try {
+    await pool.query('UPDATE users SET has_completed_onboarding = TRUE WHERE id=$1', [req.user.id]);
+    await logEvent(req.user.id, 'onboarding_completed', {});
+    res.json({ ok: true });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.post('/api/onboarding/reset', auth, async (req, res) => {
+  try {
+    await pool.query('UPDATE users SET has_completed_onboarding = FALSE WHERE id=$1', [req.user.id]);
+    res.json({ ok: true });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.get('/api/onboarding/status', auth, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT has_completed_onboarding FROM users WHERE id=$1', [req.user.id]);
+    res.json({ has_completed_onboarding: r.rows[0]?.has_completed_onboarding || false });
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
