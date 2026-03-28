@@ -221,36 +221,171 @@ Retainage is per-line (can vary). Default from project settings.
 
 ---
 
-## Pending Features (approved, not built yet)
+## Pending Features — Master Roadmap (updated Mar 28 2026)
 
-### 1. Net 30 as default payment terms (tiny, safe)
+> **THIS IS THE SINGLE SOURCE OF TRUTH for all planned features.**
+> Every new Claude session should read this section first.
+> Features are organized by module. Status: ⬜ Not started | 🟡 In progress | ✅ Done
+
+---
+
+### Module 1: Trial & Subscription System (`feature/trial`) — PRIORITY 1
+**Status: ⬜ Not started**
+**Pricing model:** $40/month, 90-day free trial, NO credit card at signup
+
+**Database changes:**
+- Add to `users` table: `trial_start_date` (timestamp, set on registration), `trial_end_date` (timestamp, trial_start + 90 days), `subscription_status` (enum: 'trial', 'active', 'canceled', 'past_due', 'free_override'), `stripe_customer_id` (text, nullable), `stripe_subscription_id` (text, nullable), `plan_type` (enum: 'free_trial', 'pro', 'free_override')
+- Existing users: set `trial_start_date` = their `created_at`, `subscription_status` = 'trial', `plan_type` = 'free_trial'
+
+**Soft block after trial expires:**
+- Users can still log in and VIEW existing projects, pay apps, and reports (read-only)
+- BLOCKED: creating new projects, creating new pay apps, sending emails, generating PDFs, signing lien waivers
+- Show a banner: "Your 90-day trial has ended. Upgrade to Pro ($40/month) to continue. Can't afford it? Email vaakapila@gmail.com — we'll work something out."
+- If someone wants to pay DURING the trial, show an option: "Want to go Pro now? Your support helps us keep this free for contractors who can't afford it yet, and helps us cover hosting costs."
+
+**Stripe integration:**
+- Stripe Checkout for payment collection (NOT at signup — only when they choose to upgrade or trial ends)
+- Stripe Customer created when they first pay, not at registration
+- Stripe Subscription with no trial (since our trial is managed in-app)
+- Webhooks: `invoice.paid`, `invoice.payment_failed`, `customer.subscription.deleted`
+- Branch: `feature/trial`
+
+**Pro tier extras (beyond free trial features):**
+- Accept payments through invoices (Stripe Connect — future)
+- Advanced reporting with sort/filter by job, date, week
+- Priority AI assistant
+- Mobile-optimized PWA with offline access
+- Custom email templates
+- Bulk operations (send multiple pay apps)
+- Occasional gentle nudge: "Going Pro helps other contractors use this for free and helps us keep the servers running"
+
+---
+
+### Module 2: Super Admin Controls — PRIORITY 2
+**Status: ⬜ Not started**
+**Requires:** Module 1 (trial system DB schema)
+
+**Admin dashboard additions (ADMIN_EMAILS users only):**
+- User table: show `subscription_status`, `trial_end_date`, `plan_type` for each user
+- Action buttons per user: "Extend Trial" (add X days), "Set Free Override" (waive payment indefinitely), "Upgrade to Pro" (manual), "Reset to Trial"
+- KPI cards: total trial users, total pro users, total free-override users, trials expiring this week
+- Revenue dashboard: MRR (monthly recurring revenue), churn rate, conversion rate (trial → pro)
+- Ability to send a manual email to any user from admin dashboard
+
+---
+
+### Module 3: Onboarding Walkthrough (Guided Tour) — PRIORITY 3
+**Status: ⬜ Not started**
+
+**First-time user overlay/tooltip tour:**
+- Triggers on first login (track via `has_completed_onboarding` boolean in users table)
+- Step-by-step highlights with overlay dimming:
+  1. "Welcome! Let's create your first project" → highlights New Project button
+  2. "Upload your Schedule of Values" → highlights SOV upload area
+  3. "Enter this period's progress" → highlights the pay app grid
+  4. "Download your G702/G703 PDF" → highlights Download button
+  5. "Send it directly to the owner" → highlights Email button
+  6. "Need a lien waiver? Generate one here" → highlights Lien Waiver button
+  7. "Ask our AI anything about billing" → highlights AI chat
+  8. "Update your company logo and signature in Settings" → highlights Settings nav
+- Must work on mobile (single-column layout, touch-friendly)
+- "Skip tour" and "Show me later" options
+- Can be re-triggered from Settings or Help menu
+- Lightweight implementation: no external library, pure CSS/JS overlay
+
+---
+
+### Module 4: AI Assistant Training (Product Help) — PRIORITY 4
+**Status: ⬜ Not started**
+
+**Enhance the existing AI chat to answer product questions:**
+- "How do I create a lien waiver?"
+- "Where do I upload my Schedule of Values?"
+- "How do I add a change order?"
+- "How do I send my pay app to the owner?"
+- "What file formats can I upload?"
+- "How do I change my company logo?"
+- "How do I generate a report?"
+
+**Implementation:** Add a product knowledge system prompt to the existing AI chat that includes all feature documentation, step-by-step instructions, and FAQ. The AI should detect when someone is asking a "how to use the product" question vs a construction billing question and respond accordingly.
+
+**Also needed:** A help/FAQ page or section accessible from the nav that has common questions, possibly auto-generated from the AI knowledge base.
+
+---
+
+### Module 5: Reporting Module (Sort/Filter Invoices) — PRIORITY 5
+**Status: ⬜ Not started**
+
+**Expand existing revenue/billing views:**
+- Currently: admin dashboard shows total pipeline, total billed, revenue charts
+- New: a dedicated "Reports" section accessible to ALL users (not just admin)
+- Sort/filter pay apps by: project name, date submitted, date range, week, month, status (draft/submitted/paid)
+- Export filtered results as CSV or PDF
+- Summary cards: total billed this month, total outstanding, total paid
+- Per-project drill-down: all pay apps for a project with running totals
+- Chart: monthly billing trend per project
+
+---
+
+### Module 6: Pro Upgrade Nudges + Early Payment — PRIORITY 6
+**Status: ⬜ Not started**
+**Requires:** Module 1 (trial system)
+
+**During trial, occasional gentle prompts:**
+- After 30 days: "Enjoying ConstructInvoice AI? Going Pro helps us keep this free for contractors who need it."
+- After 60 days: "Your trial ends in 30 days. Want to lock in Pro now? $40/month — cancel anytime."
+- After creating 5th pay app: "You've generated 5 pay applications! Pro users get advanced reporting and priority AI support."
+- NEVER aggressive or annoying. Max 1 nudge per session. Dismissible with "Not now" that stays dismissed for 7 days.
+
+**Early payment option:**
+- In Settings, always show: "Upgrade to Pro — $40/month" button even during trial
+- Message: "Your support helps other contractors use this for free and keeps our servers running."
+
+---
+
+### Module 7: QA & Testing Automation — ONGOING
+**Status: ⬜ Not started**
+
+**Phase A: API Integration Tests (expand qa_test.js)**
+- Test every critical endpoint with real HTTP requests
+- Lien waiver download → verify response is PDF, not HTML
+- Email send → verify Resend API called with correct attachments
+- Pay app save → verify notes/PO persist correctly
+- SOV upload → verify parser returns correct line items
+- Auth flows → verify JWT, Google OAuth, password reset
+
+**Phase B: Playwright End-to-End Browser Tests (new file: e2e_test.js)**
+- Full user flows in real Chromium browser
+- Create account → create project → upload SOV → generate pay app → download PDF → send email
+- Verify PDF opens correctly (not HTML)
+- Verify lien waiver downloads correctly
+- Mobile viewport testing
+- Screenshot comparisons for visual regression
+
+---
+
+### Previously Approved (Still Valid)
+
+#### Net 30 as default payment terms (tiny, safe)
 - Change hardcoded fallback from `"Due on receipt"` to `"Net 30"` in server.js and app.html
 - DB migration to update existing users who never changed it
 - Branch: can go directly to staging
 
-### 2. Payment follow-up emails + "Mark as Paid" (`feature/followup`)
-Full design agreed:
+#### Payment follow-up emails + "Mark as Paid" (`feature/followup`)
 - Daily cron job checks submitted pay apps where `payment_due_date` is approaching/past
-- Sends follow-up to owner email (from pay app), CC contractor
-- Same run sends contractor a "Did you get paid?" email with Yes/No magic links
-- Yes → marks pay app as `paid`, cancels all future follow-ups
-- No → follow-up schedule continues
+- Sends follow-up to owner email, CC contractor
+- "Did you get paid?" email with Yes/No magic links
 - Follow-up schedule: Net 7 → day 5; Net 15 → day 9 + day 16; Net 30 → day 23 + day 37
-- New DB table: `followup_log` (tracks what was sent, when, to whom — prevents duplicates)
+- New DB table: `followup_log`
 - New pay app status: `paid` / `payment_received`
-- Branch: `feature/followup` → staging only, never main until fully tested
+- Branch: `feature/followup`
 
-### 3. Stripe $129/month subscription (`feature/stripe`)
-- Simple Stripe Checkout — "Support Us" button on pricing page and in app settings
-- NOT a hard paywall — app stays free, this is voluntary support
-- Branch: `feature/stripe` — discuss timing with Vagish before building
-
-### 4. Stripe Connect payment pipeline (`feature/stripe-connect`)
-- Escrow model: owner pays contractor through platform, platform takes fee
-- Stripe Connect handles contractor KYC/onboarding (not us)
-- ACH preferred for large amounts (0.8% capped at $5 vs 2.9% for cards)
+#### Stripe Connect Payment Pipeline (`feature/stripe-connect`) — FUTURE
+- Escrow model: owner pays contractor through platform
+- Stripe Connect handles contractor KYC/onboarding
+- ACH preferred for large amounts
 - Major feature — 2-3 week build minimum
-- DO NOT START until explicitly approved and scoped
+- Part of Pro tier — DO NOT START until Modules 1-2 are complete and stable
 
 ---
 
@@ -281,7 +416,7 @@ Full design agreed:
 - **Do NOT** push to GitHub — Vagish does this via GitHub Desktop
 - **Do NOT** use display name format in Resend `from` field — plain email only
 - **Do NOT** redirect to `/` or `/?` from server — always use `/app.html` or `/app.html?`
-- **Do NOT** start any payment/Stripe/escrow work without explicit approval from Vagish
+- **Do NOT** start Stripe Connect/escrow work without explicit approval from Vagish (basic Stripe Checkout for $40/month subscription IS approved)
 - **Do NOT** make changes to email sending logic without discussing first (risk of spamming users)
 
 ---

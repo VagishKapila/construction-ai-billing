@@ -225,6 +225,21 @@ async function initDB() {
     ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS payment_received BOOLEAN DEFAULT FALSE;
     ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS payment_received_at TIMESTAMPTZ;
 
+    -- Module 1: Trial & Subscription System (Mar 28 2026)
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_start_date TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_end_date TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(50) DEFAULT 'trial';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_type VARCHAR(50) DEFAULT 'free_trial';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(200);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_subscription_id VARCHAR(200);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS has_completed_onboarding BOOLEAN DEFAULT FALSE;
+
+    -- Backfill existing users: set trial dates based on their registration date
+    UPDATE users SET trial_start_date = created_at WHERE trial_start_date IS NULL;
+    UPDATE users SET trial_end_date = created_at + INTERVAL '90 days' WHERE trial_end_date IS NULL;
+    UPDATE users SET subscription_status = 'trial' WHERE subscription_status IS NULL;
+    UPDATE users SET plan_type = 'free_trial' WHERE plan_type IS NULL;
+
     CREATE TABLE IF NOT EXISTS reminder_log (
       id SERIAL PRIMARY KEY,
       user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,

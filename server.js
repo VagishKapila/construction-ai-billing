@@ -156,14 +156,14 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     const hash  = await bcrypt.hash(password, 10);
     const vTok  = generateToken();
     const r = await pool.query(
-      'INSERT INTO users(name,email,password_hash,verification_token,verification_sent_at) VALUES($1,$2,$3,$4,NOW()) RETURNING id,name,email,email_verified',
+      'INSERT INTO users(name,email,password_hash,verification_token,verification_sent_at,trial_start_date,trial_end_date,subscription_status,plan_type) VALUES($1,$2,$3,$4,NOW(),NOW(),NOW()+INTERVAL \'90 days\',\'trial\',\'free_trial\') RETURNING id,name,email,email_verified,trial_start_date,trial_end_date,subscription_status,plan_type',
       [name, email, hash, vTok]
     );
     const tok = jwt.sign({id:r.rows[0].id,email:email},JWT_SECRET,{expiresIn:'30d'});
     await logEvent(r.rows[0].id, 'user_registered', { email, method: 'email' });
     // Send verification email (non-blocking — don't fail registration if email fails)
     sendVerificationEmail(email, name, vTok).catch(e => console.error('Verify email error:', e.message));
-    res.json({token:tok,user:{...r.rows[0],email_verified:false}});
+    res.json({token:tok,user:{...r.rows[0],email_verified:false,trial_start_date:r.rows[0].trial_start_date,trial_end_date:r.rows[0].trial_end_date,subscription_status:r.rows[0].subscription_status,plan_type:r.rows[0].plan_type}});
   } catch(e) {
     if(e.code==='23505') return res.status(400).json({error:'Email already registered'});
     console.error('[API Error]', e.message); res.status(500).json({error:'Internal server error'});
@@ -188,7 +188,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     if(user.blocked) return res.status(403).json({error:'Your account has been suspended. Please contact support.'});
     const tok = jwt.sign({id:user.id,email:email},JWT_SECRET,{expiresIn:'30d'});
     await logEvent(user.id, 'user_login', { method: 'email' });
-    res.json({token:tok,user:{id:user.id,name:user.name,email:user.email,email_verified:user.email_verified}});
+    res.json({token:tok,user:{id:user.id,name:user.name,email:user.email,email_verified:user.email_verified,trial_start_date:user.trial_start_date,trial_end_date:user.trial_end_date,subscription_status:user.subscription_status,plan_type:user.plan_type}});
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({error:'Internal server error'}); }
 });
 
@@ -416,7 +416,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
     } else {
       // New user via Google — auto-verified
       const r = await pool.query(
-        'INSERT INTO users(name,email,password_hash,google_id,email_verified) VALUES($1,$2,$3,$4,TRUE) RETURNING *',
+        'INSERT INTO users(name,email,password_hash,google_id,email_verified,trial_start_date,trial_end_date,subscription_status,plan_type) VALUES($1,$2,$3,$4,TRUE,NOW(),NOW()+INTERVAL \'90 days\',\'trial\',\'free_trial\') RETURNING *',
         [(profile.name || profile.email.split('@')[0]).replace(/[^\x00-\x7F]/g, '').trim() || profile.email.split('@')[0], profile.email, '', profile.id]
       );
       user = r.rows[0];
@@ -2581,7 +2581,7 @@ app.post('/api/admin/test-email', adminAuth, async (req, res) => {
 
 app.get('/api/admin/stats', adminAuth, async (req, res) => {
   try {
-    const [users, projects, payapps, events, recentErrors, slowReqs, topEvents, dailySignups, featureUsage, pipeline, totalBilled, billedByMonth] = await Promise.all([
+    const [users, projects, payapps, events, recentErrors, slowReqs, topEvents, dailySignups, featureUsage, pipeline, totalBilled, billedByMonth, subscriptionStats] = await Promise.all([
       pool.query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE created_at > NOW()-INTERVAL '7 days') as last7 FROM users`),
       pool.query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE created_at > NOW()-INTERVAL '7 days') as last7 FROM projects`),
       pool.query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status='submitted') as submitted, COUNT(*) FILTER (WHERE created_at > NOW()-INTERVAL '7 days') as last7 FROM pay_apps`),
@@ -2597,6 +2597,15 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
       pool.query(`SELECT COALESCE(SUM(amount_due), 0) as total_billed, COUNT(*) as count FROM pay_apps WHERE status IN ('submitted','approved','paid') AND deleted_at IS NULL`),
       // Billed by month (last 12 months) for chart
       pool.query(`SELECT TO_CHAR(DATE_TRUNC('month', COALESCE(submitted_at, created_at)), 'Mon YYYY') as month, DATE_TRUNC('month', COALESCE(submitted_at, created_at)) as month_dt, COALESCE(SUM(amount_due), 0) as billed FROM pay_apps WHERE status IN ('submitted','approved','paid') AND deleted_at IS NULL GROUP BY month_dt, month ORDER BY month_dt DESC LIMIT 12`),
+      // Subscription stats
+      pool.query(`SELECT
+        COUNT(*) FILTER (WHERE subscription_status='trial') as trial_users,
+        COUNT(*) FILTER (WHERE subscription_status='active') as pro_users,
+        COUNT(*) FILTER (WHERE subscription_status='free_override') as free_override_users,
+        COUNT(*) FILTER (WHERE subscription_status='canceled') as canceled_users,
+        COUNT(*) FILTER (WHERE subscription_status='trial' AND trial_end_date < NOW()) as expired_trials,
+        COUNT(*) FILTER (WHERE subscription_status='trial' AND trial_end_date BETWEEN NOW() AND NOW()+INTERVAL '7 days') as expiring_this_week
+      FROM users`),
     ]);
     const pipelineTotal = parseFloat(pipeline.rows[0].pipeline) || 0;
     const billedTotal   = parseFloat(totalBilled.rows[0].total_billed) || 0;
@@ -2618,6 +2627,7 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
         avg_contract: avgContract,
         billed_by_month: billedByMonth.rows.reverse(), // chronological order
       },
+      subscriptions: subscriptionStats.rows[0] || {},
     });
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -2673,6 +2683,7 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
     const r = await pool.query(`
       SELECT u.id, u.name, u.email, u.created_at,
         u.email_verified, u.blocked, u.google_id,
+        u.trial_start_date, u.trial_end_date, u.subscription_status, u.plan_type,
         COUNT(DISTINCT p.id) as project_count,
         COUNT(DISTINCT pa.id) as payapp_count,
         COUNT(DISTINCT pa.id) FILTER (WHERE pa.status='submitted') as submitted_count,
@@ -2731,6 +2742,81 @@ app.post('/api/admin/users/:id/reset-password', adminAuth, async (req, res) => {
     // Return a fresh login token so admin can hand it off to the user if needed
     const tok = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
     res.json({ ok: true, email: user.email, token: tok });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── SUBSCRIPTION & TRIAL STATUS ──────────────────────────────────────────────
+app.get('/api/subscription', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT trial_start_date, trial_end_date, subscription_status, plan_type, stripe_customer_id FROM users WHERE id=$1',
+      [req.user.id]
+    );
+    const user = r.rows[0];
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const now = new Date();
+    const trialEnd = user.trial_end_date ? new Date(user.trial_end_date) : null;
+    const daysLeft = trialEnd ? Math.max(0, Math.ceil((trialEnd - now) / (1000*60*60*24))) : 0;
+    const trialExpired = trialEnd ? now > trialEnd : false;
+    // Admin users are always 'active' — never blocked
+    const isAdmin = isAdminEmail(req.user.email);
+    res.json({
+      trial_start_date: user.trial_start_date,
+      trial_end_date: user.trial_end_date,
+      subscription_status: isAdmin ? 'active' : user.subscription_status,
+      plan_type: isAdmin ? 'pro' : user.plan_type,
+      days_left: daysLeft,
+      trial_expired: isAdmin ? false : trialExpired,
+      is_admin: isAdmin,
+      has_stripe: !!user.stripe_customer_id
+    });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── Admin: Manage user trials & subscriptions ────────────────────────────────
+app.post('/api/admin/users/:id/extend-trial', adminAuth, async (req, res) => {
+  const { days } = req.body;
+  if (!days || days < 1 || days > 365) return res.status(400).json({ error: 'Days must be between 1 and 365' });
+  try {
+    await pool.query(
+      'UPDATE users SET trial_end_date = COALESCE(trial_end_date, NOW()) + ($1 || \' days\')::INTERVAL, subscription_status = \'trial\', plan_type = \'free_trial\' WHERE id=$2',
+      [days.toString(), req.params.id]
+    );
+    await logEvent(req.user.id, 'admin_trial_extended', { target_user_id: parseInt(req.params.id), days });
+    res.json({ ok: true });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.post('/api/admin/users/:id/set-free-override', adminAuth, async (req, res) => {
+  try {
+    await pool.query(
+      'UPDATE users SET subscription_status = \'free_override\', plan_type = \'free_override\', trial_end_date = NOW() + INTERVAL \'100 years\' WHERE id=$1',
+      [req.params.id]
+    );
+    await logEvent(req.user.id, 'admin_free_override', { target_user_id: parseInt(req.params.id) });
+    res.json({ ok: true });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.post('/api/admin/users/:id/upgrade-pro', adminAuth, async (req, res) => {
+  try {
+    await pool.query(
+      'UPDATE users SET subscription_status = \'active\', plan_type = \'pro\' WHERE id=$1',
+      [req.params.id]
+    );
+    await logEvent(req.user.id, 'admin_upgrade_pro', { target_user_id: parseInt(req.params.id) });
+    res.json({ ok: true });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.post('/api/admin/users/:id/reset-trial', adminAuth, async (req, res) => {
+  try {
+    await pool.query(
+      'UPDATE users SET trial_start_date = NOW(), trial_end_date = NOW() + INTERVAL \'90 days\', subscription_status = \'trial\', plan_type = \'free_trial\' WHERE id=$1',
+      [req.params.id]
+    );
+    await logEvent(req.user.id, 'admin_trial_reset', { target_user_id: parseInt(req.params.id) });
+    res.json({ ok: true });
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 

@@ -951,6 +951,27 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
       <a onclick="dismissVerifyBanner()" style="text-decoration:none;color:var(--text3)">✕</a>
     </div>
   </div>
+  <!-- Trial status banner -->
+  <div id="trial-banner" class="hidden" style="background:linear-gradient(135deg,#e0f2fe,#f0f9ff);border-bottom:1px solid #7dd3fc;padding:10px 20px;font-size:13px;color:#0c4a6e;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;flex-wrap:wrap">
+    <span id="trial-banner-text"></span>
+    <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <a id="trial-upgrade-link" onclick="showUpgradeModal()" style="color:#0369a1;font-weight:600;cursor:pointer;text-decoration:underline;font-size:12px">Upgrade to Pro</a>
+      <a onclick="dismissTrialBanner()" style="text-decoration:none;color:#94a3b8;cursor:pointer">✕</a>
+    </div>
+  </div>
+  <!-- Trial expired soft-block overlay -->
+  <div id="trial-expired-overlay" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px">
+    <div style="background:#fff;border-radius:16px;padding:36px;max-width:480px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+      <div style="font-size:40px;margin-bottom:12px">⏰</div>
+      <h2 style="font-size:22px;font-weight:700;color:#1a1a2e;margin-bottom:8px">Your 90-day trial has ended</h2>
+      <p style="color:#4a5568;font-size:14px;line-height:1.6;margin-bottom:20px">Thanks for trying ConstructInvoice AI! To continue creating pay applications, generating PDFs, and sending invoices, upgrade to Pro.</p>
+      <p style="color:#4a5568;font-size:13px;margin-bottom:20px">All your projects, pay applications, and data are safe — they'll be right here when you're ready.</p>
+      <button onclick="showUpgradeModal()" style="background:linear-gradient(135deg,#d97706,#f59e0b);color:#fff;border:none;padding:14px 32px;border-radius:50px;font-size:16px;font-weight:700;cursor:pointer;width:100%;margin-bottom:12px">Continue — $40/month</button>
+      <p style="font-size:12px;color:#94a3b8;margin-bottom:12px">Cancel anytime. No contracts.</p>
+      <p style="font-size:12px;color:#64748b;line-height:1.5">Startup, small company, or going through a tough stretch?<br>Email <a href="mailto:vaakapila@gmail.com" style="color:#0369a1">vaakapila@gmail.com</a> — we'll waive your fee until you're making money.</p>
+      <div style="margin-top:16px"><a onclick="dismissTrialExpired()" style="color:#94a3b8;font-size:12px;cursor:pointer;text-decoration:underline">Continue in read-only mode</a></div>
+    </div>
+  </div>
   <div class="main">
     <div id="sb-backdrop" onclick="closeSidebar()" aria-hidden="true"></div>
     <nav class="sidebar" id="app-sidebar" role="navigation" aria-label="Main navigation">
@@ -2275,11 +2296,60 @@ function setAuth(data){
   } else {
     document.getElementById('verify-banner').classList.add('hidden');
   }
+  // Check trial/subscription status
+  checkTrialStatus();
   showDash();
   ['np-contract','ep-contract','arch-cert-amt'].forEach(id=>setupCommaInput(document.getElementById(id)));
 }
 function showAuthErr(msg){const el=document.getElementById('auth-err');el.textContent=msg;el.classList.remove('hidden');}
 function dismissVerifyBanner(){document.getElementById('verify-banner').classList.add('hidden');}
+let _trialDismissed=false;
+let _trialExpiredDismissed=false;
+let _subscriptionData=null;
+async function checkTrialStatus(){
+  try{
+    _subscriptionData=await api('GET','/subscription');
+    const s=_subscriptionData;
+    // Admin users bypass everything
+    if(s.is_admin){
+      document.getElementById('trial-banner').classList.add('hidden');
+      document.getElementById('trial-expired-overlay').classList.add('hidden');
+      return;
+    }
+    // Pro or free-override users — no banner needed
+    if(s.subscription_status==='active'||s.subscription_status==='free_override'){
+      document.getElementById('trial-banner').classList.add('hidden');
+      document.getElementById('trial-expired-overlay').classList.add('hidden');
+      return;
+    }
+    // Trial expired — show soft block
+    if(s.trial_expired&&!_trialExpiredDismissed){
+      document.getElementById('trial-expired-overlay').classList.remove('hidden');
+      document.getElementById('trial-banner').classList.add('hidden');
+      return;
+    }
+    // Trial active — show banner with days remaining
+    if(!_trialDismissed&&s.days_left<=30){
+      const bannerEl=document.getElementById('trial-banner');
+      const textEl=document.getElementById('trial-banner-text');
+      if(s.days_left<=7){
+        bannerEl.style.background='linear-gradient(135deg,#fef3c7,#fffbeb)';
+        bannerEl.style.borderColor='#fbbf24';
+        bannerEl.style.color='#92400e';
+        textEl.innerHTML=`⚠️ Your free trial ends in <strong>${s.days_left} day${s.days_left!==1?'s':''}</strong>. Upgrade to Pro ($40/month) to keep all features.`;
+      } else {
+        textEl.innerHTML=`You have <strong>${s.days_left} days</strong> left in your free trial. Enjoying ConstructInvoice AI? <a onclick="showUpgradeModal()" style="color:#0369a1;cursor:pointer;text-decoration:underline">Go Pro — $40/month</a>`;
+      }
+      bannerEl.classList.remove('hidden');
+    }
+  }catch(e){console.error('Trial check failed:',e.message);}
+}
+function dismissTrialBanner(){_trialDismissed=true;document.getElementById('trial-banner').classList.add('hidden');}
+function dismissTrialExpired(){_trialExpiredDismissed=true;document.getElementById('trial-expired-overlay').classList.add('hidden');}
+function showUpgradeModal(){
+  // For now, show a message directing to email. When Stripe is integrated, this opens Stripe Checkout.
+  alert('To upgrade to Pro ($40/month), please email vaakapila@gmail.com. We will get you set up! Stripe payment integration coming soon.');
+}
 async function resendVerification(){
   try{
     await api('POST','/auth/resend-verification',{});
@@ -4045,7 +4115,7 @@ function fmtRevenue(n){
   return '$'+Math.round(n).toLocaleString();
 }
 function renderAdminKPIs(s){
-  const u=s.users, p=s.projects, pa=s.payapps, ev=s.events, rv=s.revenue||{};
+  const u=s.users, p=s.projects, pa=s.payapps, ev=s.events, rv=s.revenue||{}, sub=s.subscriptions||{};
   document.getElementById('admin-kpis').innerHTML=`
     <div class="mc"><div class="mv">${u.total}</div><div class="ml">Total users</div><div class="ms">+${u.last7} this week</div></div>
     <div class="mc"><div class="mv">${p.total}</div><div class="ml">Projects</div><div class="ms">+${p.last7} this week</div></div>
@@ -4054,6 +4124,9 @@ function renderAdminKPIs(s){
     <div class="mc" style="border-top:2px solid var(--primary)"><div class="mv" style="color:var(--primary)">${fmtRevenue(rv.pipeline)}</div><div class="ml">Total pipeline</div><div class="ms">Sum of all SOV values</div></div>
     <div class="mc" style="border-top:2px solid #16a34a"><div class="mv" style="color:#16a34a">${fmtRevenue(rv.total_billed)}</div><div class="ml">Total billed</div><div class="ms">Submitted pay apps</div></div>
     <div class="mc" style="border-top:2px solid #7c3aed"><div class="mv" style="color:#7c3aed">${fmtRevenue(rv.avg_contract)}</div><div class="ml">Avg contract size</div><div class="ms">Pipeline ÷ projects</div></div>
+    <div class="mc" style="border-top:2px solid #0ea5e9"><div class="mv" style="color:#0ea5e9">${sub.trial_users||0}</div><div class="ml">Trial users</div><div class="ms">${sub.expired_trials||0} expired</div></div>
+    <div class="mc" style="border-top:2px solid #f59e0b"><div class="mv" style="color:#f59e0b">${sub.pro_users||0}</div><div class="ml">Pro users</div><div class="ms">$${(parseInt(sub.pro_users)||0)*40}/mo MRR</div></div>
+    <div class="mc" style="border-top:2px solid #ec4899"><div class="mv" style="color:#ec4899">${sub.free_override_users||0}</div><div class="ml">Free overrides</div><div class="ms">${sub.expiring_this_week||0} expiring this week</div></div>
   `;
 }
 
@@ -4211,6 +4284,16 @@ function renderAdminUsers(users){
       ?`<span class="badge badge-green">verified</span>`
       :`<span class="badge" style="background:var(--amber-light);color:var(--amber)">unverified</span>`;
     const googleBadge=u.google_id?`<span class="badge badge-blue" style="margin-left:3px">G</span>`:'';
+    // Trial/subscription badge
+    const trialEnd=u.trial_end_date?new Date(u.trial_end_date):null;
+    const now=new Date();
+    const daysLeft=trialEnd?Math.max(0,Math.ceil((trialEnd-now)/(1000*60*60*24))):0;
+    const trialExpired=trialEnd?now>trialEnd:false;
+    let planBadge='';
+    if(u.plan_type==='pro'||u.subscription_status==='active') planBadge=`<span class="badge" style="background:#fef3c7;color:#d97706;margin-left:3px">PRO</span>`;
+    else if(u.subscription_status==='free_override') planBadge=`<span class="badge" style="background:#fce7f3;color:#ec4899;margin-left:3px">FREE ∞</span>`;
+    else if(trialExpired) planBadge=`<span class="badge" style="background:var(--red-light);color:var(--red);margin-left:3px">EXPIRED</span>`;
+    else planBadge=`<span class="badge" style="background:#e0f2fe;color:#0ea5e9;margin-left:3px">${daysLeft}d left</span>`;
     // Action buttons
     const blockBtn=u.blocked
       ?`<button class="btn btn-sm" onclick="adminUnblockUser(${u.id})" style="color:var(--green);border-color:var(--green)">Unblock</button>`
@@ -4219,6 +4302,15 @@ function renderAdminUsers(users){
       :`<button class="btn btn-sm" onclick="adminVerifyUser(${u.id})" style="color:var(--blue);border-color:var(--blue)">Verify</button>`;
     const deleteBtn=`<button class="btn btn-sm btn-danger" onclick="adminDeleteUser(${u.id},'${u.name.replace(/'/g,"\\'")}')">Delete</button>`;
     const resetPwdBtn=`<button class="btn btn-sm" onclick="adminResetUserPassword(${u.id},'${u.email.replace(/'/g,"\\'")}','${u.name.replace(/'/g,"\\'")}')">Reset Pwd</button>`;
+    // Trial management buttons
+    const extendBtn=`<button class="btn btn-sm" onclick="adminExtendTrial(${u.id})" style="color:#0ea5e9;border-color:#0ea5e9" title="Add days to trial">+Days</button>`;
+    const freeBtn=u.subscription_status==='free_override'?'':`<button class="btn btn-sm" onclick="adminSetFreeOverride(${u.id},'${u.name.replace(/'/g,"\\'")}','${u.email.replace(/'/g,"\\'")}','${u.name.replace(/'/g,"\\'")}')">Reset Pwd</button>`;
+    // Only show subscription management buttons that make sense for the current state
+    let subBtns='';
+    if(u.subscription_status!=='free_override') subBtns+=`<button class="btn btn-sm" onclick="adminSetFreeOverride(${u.id},'${u.name.replace(/'/g,"\\'")}') " style="color:#ec4899;border-color:#ec4899" title="Waive fee forever">Free∞</button>`;
+    if(u.subscription_status!=='active'&&u.plan_type!=='pro') subBtns+=`<button class="btn btn-sm" onclick="adminUpgradePro(${u.id})" style="color:#d97706;border-color:#d97706" title="Set as Pro">Pro</button>`;
+    subBtns+=extendBtn;
+    if(u.subscription_status!=='trial') subBtns+=`<button class="btn btn-sm" onclick="adminResetTrial(${u.id})" style="color:#6366f1;border-color:#6366f1" title="Reset to 90-day trial">Reset Trial</button>`;
     return `<tr>
       <td style="padding:6px 8px">${u.name}</td>
       <td style="padding:6px 8px;color:var(--text2)">${u.email}</td>
@@ -4227,8 +4319,8 @@ function renderAdminUsers(users){
       <td class="r" style="padding:6px 8px">${u.payapp_count}</td>
       <td class="r" style="padding:6px 8px;color:${u.submitted_count>0?'var(--green)':'var(--text2)'}">${u.submitted_count}</td>
       <td style="padding:6px 8px;color:var(--text2);font-size:11px">${u.last_active?new Date(u.last_active).toLocaleDateString():'—'}</td>
-      <td style="padding:6px 8px;white-space:nowrap">${blockedBadge}${verifiedBadge}${googleBadge}</td>
-      <td style="padding:6px 8px;white-space:nowrap;display:flex;gap:5px;flex-wrap:wrap">${blockBtn}${verifyBtn}${resetPwdBtn}${deleteBtn}</td>
+      <td style="padding:6px 8px;white-space:nowrap">${blockedBadge}${verifiedBadge}${googleBadge}${planBadge}</td>
+      <td style="padding:6px 8px;white-space:nowrap;display:flex;gap:4px;flex-wrap:wrap">${blockBtn}${verifyBtn}${resetPwdBtn}${deleteBtn}${subBtns}</td>
     </tr>`;
   }).join('');
 }
@@ -4288,6 +4380,27 @@ async function adminDoResetPwd(id){
     document.getElementById('admin-reset-modal').remove();
     alert(`✅ Password updated for ${r.email}`);
   }catch(e){errEl.textContent=e.message;errEl.classList.remove('hidden');}
+}
+
+async function adminExtendTrial(id){
+  const days=prompt('How many days to add to trial?','30');
+  if(!days||isNaN(days))return;
+  try{await api('POST','/admin/users/'+id+'/extend-trial',{days:parseInt(days)});loadAdminDash();}
+  catch(e){alert('Error: '+e.message);}
+}
+async function adminSetFreeOverride(id,name){
+  if(!confirm(`Set "${name}" as FREE FOREVER? Their fee will be waived indefinitely.`))return;
+  try{await api('POST','/admin/users/'+id+'/set-free-override',{});loadAdminDash();}
+  catch(e){alert('Error: '+e.message);}
+}
+async function adminUpgradePro(id){
+  try{await api('POST','/admin/users/'+id+'/upgrade-pro',{});loadAdminDash();}
+  catch(e){alert('Error: '+e.message);}
+}
+async function adminResetTrial(id){
+  if(!confirm('Reset this user to a fresh 90-day trial?'))return;
+  try{await api('POST','/admin/users/'+id+'/reset-trial',{});loadAdminDash();}
+  catch(e){alert('Error: '+e.message);}
 }
 
 function filterAdminUsers(q){
