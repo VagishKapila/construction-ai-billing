@@ -2474,7 +2474,7 @@ function renderSOVPreview(){
     <tr>
       <td><input class="sov-edit" style="width:75px" value="${r.item_id||''}" onchange="sovRows[${i}].item_id=this.value"/></td>
       <td><input class="sov-edit" value="${r.description||''}" onchange="sovRows[${i}].description=this.value"/></td>
-      <td><input class="sov-edit" style="width:110px;text-align:right" value="${r.scheduled_value||0}" onchange="sovRows[${i}].scheduled_value=parseFloat(this.value.replace(/[$,]/g,''))||0;updateSOVTotal()"/></td>
+      <td><input class="sov-edit" style="width:110px;text-align:right" value="${r.scheduled_value||''}" onchange="sovRows[${i}].scheduled_value=parseFloat(this.value.replace(/[$,]/g,''))||0;updateSOVTotal()"/></td>
       <td style="text-align:center"><button onclick="deleteSOVRow(${i})" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:16px;line-height:1">×</button></td>
     </tr>`).join('');
   document.getElementById('sov-row-count').textContent=sovRows.length+' lines';
@@ -3057,6 +3057,10 @@ function renderAIAPreview(pa){
       const ret=comp*parseFloat(r.retainage_pct)/100;
       const bal=sv-comp;
       tSV+=sv;tPrev+=prev;tThis+=thisPer;tComp+=comp;tRet2+=ret;
+      if(sv===0) return`<tr style="border-bottom:0.5px solid #ddd;background:#f9f9f9;color:#888">
+        <td style="border:1px solid #ddd;padding:2px 4px">${r.item_id}</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;font-style:italic" colspan="9">${r.description}</td>
+      </tr>`;
       return`<tr style="border-bottom:0.5px solid #ddd">
         <td style="border:1px solid #ddd;padding:2px 4px">${r.item_id}</td>
         <td style="border:1px solid #ddd;padding:2px 4px">${r.description}</td>
@@ -3098,6 +3102,11 @@ function renderG703(pa){
     const totPct=sv>0?comp/sv*100:0;
     tSV+=sv;tPrev+=prev;tThis+=thisPer;tRet+=ret;tComp+=comp;tBal+=bal;
     const changed=parseFloat(r.this_pct)>0;
+    // Lump sum scope lines ($0 scheduled value): show as informational row, no dollar columns
+    if(sv===0) return`<tr style="background:#f9f9f9;color:#888">
+      <td style="font-size:10px">${r.item_id}</td>
+      <td style="font-size:12px;font-style:italic" colspan="10">${r.description}</td>
+    </tr>`;
     return`<tr>
       <td style="font-size:10px;color:var(--text2)">${r.item_id}</td>
       <td style="font-size:12px">${r.description}</td>

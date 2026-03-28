@@ -1661,6 +1661,10 @@ function generatePayAppHTML(pa, lines, cos, totals, logoBase64, sigBase64, photo
     const ret  = comp * parseFloat(r.retainage_pct) / 100;
     const bal  = sv - comp;
     tSV += sv; tPrev2 += prev; tThis2 += thisPer; tComp2 += comp; tRet2 += ret;
+    if (sv === 0) return `<tr style="background:#f9f9f9;color:#888">
+      <td style="border:1px solid #ccc;padding:3px 5px">${r.item_id||''}</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;font-style:italic" colspan="9">${r.description||''}</td>
+    </tr>`;
     return `<tr>
       <td style="border:1px solid #ccc;padding:3px 5px">${r.item_id||''}</td>
       <td style="border:1px solid #ccc;padding:3px 5px">${r.description||''}</td>
@@ -2067,8 +2071,15 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
     tSV2+=sv; tPrev2+=prev; tThis2+=thisPer; tComp2+=comp; tRet2+=ret;
     if(doc.y>700){ doc.addPage(); doc.fontSize(7); }
     const y=doc.y;
-    [r.item_id,r.description,fmt(sv),fmt(prev),parseFloat(r.prev_pct).toFixed(0)+'%',fmt(thisPer),fmt(comp),parseFloat(r.retainage_pct).toFixed(0)+'%',fmt(ret),fmt(bal)]
-      .forEach((v,i)=>doc.text(v,cx[i],y,{width:cw[i],align:i>1?'right':'left'}));
+    if(sv===0){
+      // Scope-only line: just show code + description, skip dollar columns
+      doc.fillColor('#888').text(r.item_id||'',cx[0],y,{width:cw[0]});
+      doc.text(r.description||'',cx[1],y,{width:440});
+      doc.fillColor('#000');
+    } else {
+      [r.item_id,r.description,fmt(sv),fmt(prev),parseFloat(r.prev_pct).toFixed(0)+'%',fmt(thisPer),fmt(comp),parseFloat(r.retainage_pct).toFixed(0)+'%',fmt(ret),fmt(bal)]
+        .forEach((v,i)=>doc.text(v,cx[i],y,{width:cw[i],align:i>1?'right':'left'}));
+    }
   });
   doc.moveDown(0.3);
   doc.moveTo(45,doc.y).lineTo(567,doc.y).lineWidth(0.5).stroke();
