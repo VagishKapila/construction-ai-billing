@@ -2728,6 +2728,20 @@ app.post('/api/admin/users/:id/verify-email', adminAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Admin: resend verification email to any user ─────────────────────────────
+app.post('/api/admin/users/:id/resend-verification', adminAuth, async (req, res) => {
+  try {
+    const user = (await pool.query('SELECT id, email, name, email_verified FROM users WHERE id=$1', [req.params.id])).rows[0];
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.email_verified) return res.json({ ok: true, message: 'Already verified' });
+    const token = generateToken();
+    await pool.query('UPDATE users SET verification_token=$1, verification_sent_at=NOW() WHERE id=$2', [token, user.id]);
+    await sendVerificationEmail(user.email, user.name, token);
+    await logEvent(req.user.id, 'admin_resend_verification', { target_user_id: user.id, target_email: user.email });
+    res.json({ ok: true });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // ── Admin: reset any user's password directly (no email needed) ─────────────
 app.post('/api/admin/users/:id/reset-password', adminAuth, async (req, res) => {
   const { new_password } = req.body;

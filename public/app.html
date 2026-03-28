@@ -4311,9 +4311,9 @@ function renderAdminUsers(users){
       :`<button class="btn btn-sm" onclick="adminVerifyUser(${u.id})" style="color:var(--blue);border-color:var(--blue)">Verify</button>`;
     const deleteBtn=`<button class="btn btn-sm btn-danger" onclick="adminDeleteUser(${u.id},'${u.name.replace(/'/g,"\\'")}')">Delete</button>`;
     const resetPwdBtn=`<button class="btn btn-sm" onclick="adminResetUserPassword(${u.id},'${u.email.replace(/'/g,"\\'")}','${u.name.replace(/'/g,"\\'")}')">Reset Pwd</button>`;
+    const resendVerifyBtn=u.email_verified?'':`<button class="btn btn-sm" onclick="adminResendVerification(${u.id},'${u.email.replace(/'/g,"\\'")}') " style="color:#8b5cf6;border-color:#8b5cf6" title="Resend verification email">Resend Verify</button>`;
     // Trial management buttons
     const extendBtn=`<button class="btn btn-sm" onclick="adminExtendTrial(${u.id})" style="color:#0ea5e9;border-color:#0ea5e9" title="Add days to trial">+Days</button>`;
-    const freeBtn=u.subscription_status==='free_override'?'':`<button class="btn btn-sm" onclick="adminSetFreeOverride(${u.id},'${u.name.replace(/'/g,"\\'")}','${u.email.replace(/'/g,"\\'")}','${u.name.replace(/'/g,"\\'")}')">Reset Pwd</button>`;
     // Only show subscription management buttons that make sense for the current state
     let subBtns='';
     if(u.subscription_status!=='free_override') subBtns+=`<button class="btn btn-sm" onclick="adminSetFreeOverride(${u.id},'${u.name.replace(/'/g,"\\'")}') " style="color:#ec4899;border-color:#ec4899" title="Waive fee forever">Free∞</button>`;
@@ -4329,7 +4329,7 @@ function renderAdminUsers(users){
       <td class="r" style="padding:6px 8px;color:${u.submitted_count>0?'var(--green)':'var(--text2)'}">${u.submitted_count}</td>
       <td style="padding:6px 8px;color:var(--text2);font-size:11px">${u.last_active?new Date(u.last_active).toLocaleDateString():'—'}</td>
       <td style="padding:6px 8px;white-space:nowrap">${blockedBadge}${verifiedBadge}${googleBadge}${planBadge}</td>
-      <td style="padding:6px 8px;white-space:nowrap;display:flex;gap:4px;flex-wrap:wrap">${blockBtn}${verifyBtn}${resetPwdBtn}${deleteBtn}${subBtns}</td>
+      <td style="padding:6px 8px;white-space:nowrap;display:flex;gap:4px;flex-wrap:wrap">${blockBtn}${resendVerifyBtn}${resetPwdBtn}${deleteBtn}${subBtns}</td>
     </tr>`;
   }).join('');
 }
@@ -4409,6 +4409,11 @@ async function adminUpgradePro(id){
 async function adminResetTrial(id){
   if(!confirm('Reset this user to a fresh 90-day trial?'))return;
   try{await api('POST','/admin/users/'+id+'/reset-trial',{});loadAdminDash();}
+  catch(e){alert('Error: '+e.message);}
+}
+async function adminResendVerification(id,email){
+  if(!confirm(`Resend verification email to ${email}?`))return;
+  try{await api('POST','/admin/users/'+id+'/resend-verification',{});alert('Verification email sent to '+email);loadAdminDash();}
   catch(e){alert('Error: '+e.message);}
 }
 
