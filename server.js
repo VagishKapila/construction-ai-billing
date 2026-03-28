@@ -2296,22 +2296,47 @@ app.post('/api/payapps/:id/email', auth, async (req, res) => {
       }
     }
 
-    // Attach lien waiver PDF if one is linked
+    // Attach lien waiver PDF if one is linked — regenerate with current logo (safe temp file approach)
     try {
       const lienRes = await pool.query(
-        `SELECT ld.filename, ld.doc_type FROM lien_documents ld
+        `SELECT ld.*, p.name, p.owner, p.contractor, p.location, p.city, p.state, p.contact as location_contact,
+                cs.logo_filename, cs.company_name
+         FROM lien_documents ld
          JOIN projects p ON p.id=ld.project_id
+         LEFT JOIN company_settings cs ON cs.user_id=p.user_id
          WHERE ld.pay_app_id=$1 AND p.user_id=$2
          ORDER BY ld.created_at DESC LIMIT 1`,
         [req.params.id, req.user.id]
       );
       if (lienRes.rows[0]) {
-        const lienPath = path.join(__dirname, 'uploads', lienRes.rows[0].filename);
+        const lien = lienRes.rows[0];
+        const lienPath = path.join(__dirname, 'uploads', lien.filename);
+        // Regenerate to temp file, then replace original if successful
+        try {
+          const tmpLien = lienPath + '.email.tmp';
+          const lienProject = { name: lien.name, owner: lien.owner, contractor: lien.contractor || lien.company_name,
+            company_name: lien.company_name, location: lien.location_contact, city: lien.city, state: lien.state, logo_filename: lien.logo_filename };
+          const lienRef = `Pay App #${pa.app_number}${pa.period_label ? ' — ' + pa.period_label : ''}`;
+          await generateLienDocPDF({ fpath: tmpLien, doc_type: lien.doc_type, project: lienProject,
+            through_date: lien.through_date, amount: lien.amount, maker_of_check: lien.maker_of_check,
+            check_payable_to: lien.check_payable_to, signatory_name: lien.signatory_name,
+            signatory_title: lien.signatory_title, signedAt: new Date(lien.signed_at),
+            ip: lien.signatory_ip || 'on file', jurisdiction: lien.jurisdiction || 'california', pay_app_ref: lienRef });
+          if (fs.existsSync(tmpLien) && fs.statSync(tmpLien).size > 100) {
+            fs.renameSync(tmpLien, lienPath); // Update the stored file too
+          } else {
+            try { fs.unlinkSync(tmpLien); } catch(_) {}
+          }
+        } catch(regenErr) {
+          console.error('[Email] Lien regen error:', regenErr.message);
+          try { const tmp = lienPath + '.email.tmp'; if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch(_) {}
+        }
+        // Attach the file (either freshly regenerated or original)
         if (fs.existsSync(lienPath)) {
           const lienBuf = fs.readFileSync(lienPath);
           if (lienBuf.length > 0) {
             emailAttachments.push({
-              filename: `Lien_Waiver_${(lienRes.rows[0].doc_type||'waiver').replace(/\s+/g,'_')}_PayApp${pa.app_number}.pdf`,
+              filename: `Lien_Waiver_${(lien.doc_type||'waiver').replace(/\s+/g,'_')}_PayApp${pa.app_number}.pdf`,
               content: lienBuf.toString('base64')
             });
           }
@@ -2350,10 +2375,7 @@ app.post('/api/payapps/:id/email', auth, async (req, res) => {
           <tr style="background:#f7f7f7"><td style="padding:5px 8px;color:#555;font-weight:bold">Current Payment Due</td>
             <td style="padding:5px 8px;font-weight:bold;color:#185FA5;font-size:11pt">$${due.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>
         </table>
-        <p style="margin-top:16px;font-size:9pt;color:#888">
-          ${emailAttachments.length > 0 ? `Pay application PDF${emailAttachments.length>1?' and lien waiver are':' is'} attached.` : ''}
-          <a href="https://constructinv.varshyl.com" style="color:#185FA5">View online</a>
-        </p>
+        ${emailAttachments.length > 0 ? `<p style="margin-top:16px;font-size:9pt;color:#888">Pay application PDF${emailAttachments.length>1?' and lien waiver are':' is'} attached.</p>` : ''}
       </div>
       <div style="padding:10px 24px;font-size:8pt;color:#aaa;text-align:center">
         Sent via <a href="https://constructinv.varshyl.com" style="color:#aaa">ConstructInvoice AI</a> · Varshyl Inc.
@@ -3263,64 +3285,95 @@ app.post('/api/projects/:id/lien-docs', auth, async (req, res) => {
 
 // Serve lien document PDF
 app.get('/api/lien-docs/:id/pdf', async (req, res) => {
-  const token = req.query.token || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
-  let decoded;
-  try { decoded = jwt.verify(token, JWT_SECRET); } catch(e) { return res.status(401).json({ error: 'Invalid token' }); }
-
-  const r = await pool.query(
-    `SELECT ld.*, p.name, p.owner, p.contractor, p.location, p.city, p.state, p.contact as location_contact,
-            cs.logo_filename, cs.company_name
-     FROM lien_documents ld
-     JOIN projects p ON p.id=ld.project_id
-     LEFT JOIN company_settings cs ON cs.user_id=p.user_id
-     WHERE ld.id=$1 AND p.user_id=$2`,
-    [req.params.id, decoded.id]
-  );
-  if (!r.rows[0]) return res.status(404).json({ error: 'Not found' });
-  const lien = r.rows[0];
-
-  const fp = path.resolve(__dirname, 'uploads', lien.filename);
-
-  // Try to regenerate PDF with current logo (write to temp file first to avoid corrupting original)
   try {
-    let pay_app_ref = null;
-    if (lien.pay_app_id) {
-      const paRow = await pool.query('SELECT app_number, period_label FROM pay_apps WHERE id=$1', [lien.pay_app_id]);
-      if (paRow.rows[0]) pay_app_ref = `Pay App #${paRow.rows[0].app_number}${paRow.rows[0].period_label ? ' — ' + paRow.rows[0].period_label : ''}`;
-    }
-    const project = {
-      name: lien.name, owner: lien.owner, contractor: lien.contractor || lien.company_name,
-      company_name: lien.company_name, location: lien.location_contact,
-      city: lien.city, state: lien.state, logo_filename: lien.logo_filename
-    };
-    const tmpPath = fp + '.tmp';
-    await generateLienDocPDF({
-      fpath: tmpPath, doc_type: lien.doc_type, project,
-      through_date: lien.through_date, amount: lien.amount,
-      maker_of_check: lien.maker_of_check, check_payable_to: lien.check_payable_to,
-      signatory_name: lien.signatory_name, signatory_title: lien.signatory_title,
-      signedAt: new Date(lien.signed_at), ip: lien.signatory_ip || 'on file',
-      jurisdiction: lien.jurisdiction || 'california', pay_app_ref
-    });
-    // Only replace original if temp file was successfully generated
-    if (fs.existsSync(tmpPath) && fs.statSync(tmpPath).size > 100) {
-      fs.renameSync(tmpPath, fp);
-    } else {
-      try { fs.unlinkSync(tmpPath); } catch(_) {}
-    }
-  } catch(regenErr) {
-    console.error('[Lien PDF regen error]', regenErr.message);
-    // Clean up temp file if it exists
-    try { const tmp = fp + '.tmp'; if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch(_) {}
-  }
+    const token = req.query.token || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
+    let decoded;
+    try { decoded = jwt.verify(token, JWT_SECRET); } catch(e) { return res.status(401).json({ error: 'Invalid token' }); }
 
-  // Serve the file (regenerated or original)
-  if (fs.existsSync(fp)) {
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${lien.doc_type}_${lien.id}.pdf"`);
-    return res.sendFile(fp, (err) => { if (err && !res.headersSent) res.status(500).json({ error: 'File send failed' }); });
+    const r = await pool.query(
+      `SELECT ld.*, p.name, p.owner, p.contractor, p.location, p.city, p.state, p.contact as location_contact,
+              cs.logo_filename, cs.company_name
+       FROM lien_documents ld
+       JOIN projects p ON p.id=ld.project_id
+       LEFT JOIN company_settings cs ON cs.user_id=p.user_id
+       WHERE ld.id=$1 AND p.user_id=$2`,
+      [req.params.id, decoded.id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Not found' });
+    const lien = r.rows[0];
+
+    const fp = path.resolve(__dirname, 'uploads', lien.filename);
+
+    // Try to regenerate PDF with current logo (write to temp file first to avoid corrupting original)
+    try {
+      let pay_app_ref = null;
+      if (lien.pay_app_id) {
+        const paRow = await pool.query('SELECT app_number, period_label FROM pay_apps WHERE id=$1', [lien.pay_app_id]);
+        if (paRow.rows[0]) pay_app_ref = `Pay App #${paRow.rows[0].app_number}${paRow.rows[0].period_label ? ' — ' + paRow.rows[0].period_label : ''}`;
+      }
+      const project = {
+        name: lien.name, owner: lien.owner, contractor: lien.contractor || lien.company_name,
+        company_name: lien.company_name, location: lien.location_contact,
+        city: lien.city, state: lien.state, logo_filename: lien.logo_filename
+      };
+      const tmpPath = fp + '.tmp';
+      await generateLienDocPDF({
+        fpath: tmpPath, doc_type: lien.doc_type, project,
+        through_date: lien.through_date, amount: lien.amount,
+        maker_of_check: lien.maker_of_check, check_payable_to: lien.check_payable_to,
+        signatory_name: lien.signatory_name, signatory_title: lien.signatory_title,
+        signedAt: new Date(lien.signed_at), ip: lien.signatory_ip || 'on file',
+        jurisdiction: lien.jurisdiction || 'california', pay_app_ref
+      });
+      if (fs.existsSync(tmpPath) && fs.statSync(tmpPath).size > 100) {
+        fs.renameSync(tmpPath, fp);
+      } else {
+        try { fs.unlinkSync(tmpPath); } catch(_) {}
+      }
+    } catch(regenErr) {
+      console.error('[Lien PDF regen error]', regenErr.message);
+      try { const tmp = fp + '.tmp'; if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch(_) {}
+    }
+
+    // If file is still missing/empty after regen attempt, try direct generation as last resort
+    if (!fs.existsSync(fp) || fs.statSync(fp).size === 0) {
+      console.log('[Lien PDF] File missing or empty, attempting direct generation to:', fp);
+      try {
+        let pay_app_ref2 = null;
+        if (lien.pay_app_id) {
+          const paRow2 = await pool.query('SELECT app_number, period_label FROM pay_apps WHERE id=$1', [lien.pay_app_id]);
+          if (paRow2.rows[0]) pay_app_ref2 = `Pay App #${paRow2.rows[0].app_number}${paRow2.rows[0].period_label ? ' — ' + paRow2.rows[0].period_label : ''}`;
+        }
+        const proj2 = {
+          name: lien.name, owner: lien.owner, contractor: lien.contractor || lien.company_name,
+          company_name: lien.company_name, location: lien.location_contact,
+          city: lien.city, state: lien.state, logo_filename: lien.logo_filename
+        };
+        await generateLienDocPDF({
+          fpath: fp, doc_type: lien.doc_type, project: proj2,
+          through_date: lien.through_date, amount: lien.amount,
+          maker_of_check: lien.maker_of_check, check_payable_to: lien.check_payable_to,
+          signatory_name: lien.signatory_name, signatory_title: lien.signatory_title,
+          signedAt: new Date(lien.signed_at), ip: lien.signatory_ip || 'on file',
+          jurisdiction: lien.jurisdiction || 'california', pay_app_ref: pay_app_ref2
+        });
+        console.log('[Lien PDF] Direct generation succeeded, size:', fs.statSync(fp).size);
+      } catch(lastErr) {
+        console.error('[Lien PDF] Direct generation also failed:', lastErr.message, lastErr.stack);
+      }
+    }
+
+    // Serve the file
+    if (fs.existsSync(fp) && fs.statSync(fp).size > 0) {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${lien.doc_type}_${lien.id}.pdf"`);
+      return res.sendFile(fp, (err) => { if (err && !res.headersSent) res.status(500).json({ error: 'File send failed' }); });
+    }
+    return res.status(404).json({ error: 'Lien waiver PDF could not be generated' });
+  } catch(outerErr) {
+    console.error('[Lien PDF route error]', outerErr.message, outerErr.stack);
+    if (!res.headersSent) return res.status(500).json({ error: 'Internal server error' });
   }
-  return res.status(404).json({ error: 'PDF file not found' });
 });
 
 // ── Shared helper: render a lien waiver into an open PDFDocument at current position ──
