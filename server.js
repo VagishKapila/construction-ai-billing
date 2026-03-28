@@ -2296,21 +2296,37 @@ app.post('/api/payapps/:id/email', auth, async (req, res) => {
       }
     }
 
-    // Attach lien waiver PDF if one is linked
+    // Attach lien waiver PDF if one is linked — regenerate with current logo
     try {
       const lienRes = await pool.query(
-        `SELECT ld.filename, ld.doc_type FROM lien_documents ld
+        `SELECT ld.*, p.name, p.owner, p.contractor, p.location, p.city, p.state, p.contact as location_contact,
+                cs.logo_filename, cs.company_name
+         FROM lien_documents ld
          JOIN projects p ON p.id=ld.project_id
+         LEFT JOIN company_settings cs ON cs.user_id=p.user_id
          WHERE ld.pay_app_id=$1 AND p.user_id=$2
          ORDER BY ld.created_at DESC LIMIT 1`,
         [req.params.id, req.user.id]
       );
       if (lienRes.rows[0]) {
-        const lienPath = path.join(__dirname, 'uploads', lienRes.rows[0].filename);
+        const lien = lienRes.rows[0];
+        const lienPath = path.join(__dirname, 'uploads', lien.filename);
+        // Regenerate with current logo
+        try {
+          let lienPayAppRef = null;
+          if (lien.pay_app_id) { lienPayAppRef = `Pay App #${pa.app_number}${pa.period_label ? ' — ' + pa.period_label : ''}`; }
+          const lienProject = { name: lien.name, owner: lien.owner, contractor: lien.contractor || lien.company_name,
+            company_name: lien.company_name, location: lien.location_contact, city: lien.city, state: lien.state, logo_filename: lien.logo_filename };
+          await generateLienDocPDF({ fpath: lienPath, doc_type: lien.doc_type, project: lienProject,
+            through_date: lien.through_date, amount: lien.amount, maker_of_check: lien.maker_of_check,
+            check_payable_to: lien.check_payable_to, signatory_name: lien.signatory_name,
+            signatory_title: lien.signatory_title, signedAt: new Date(lien.signed_at),
+            ip: lien.signatory_ip || 'on file', jurisdiction: lien.jurisdiction || 'california', pay_app_ref: lienPayAppRef });
+        } catch(regenErr) { console.error('[Email] Lien regen error:', regenErr.message); }
         if (fs.existsSync(lienPath)) {
           const lienBuf = fs.readFileSync(lienPath);
           emailAttachments.push({
-            filename: `Lien_Waiver_${(lienRes.rows[0].doc_type||'waiver').replace(/\s+/g,'_')}_PayApp${pa.app_number}.pdf`,
+            filename: `Lien_Waiver_${(lien.doc_type||'waiver').replace(/\s+/g,'_')}_PayApp${pa.app_number}.pdf`,
             content: lienBuf.toString('base64')
           });
         }
@@ -3266,15 +3282,48 @@ app.get('/api/lien-docs/:id/pdf', async (req, res) => {
   try { decoded = jwt.verify(token, JWT_SECRET); } catch(e) { return res.status(401).json({ error: 'Invalid token' }); }
 
   const r = await pool.query(
-    'SELECT ld.* FROM lien_documents ld JOIN projects p ON p.id=ld.project_id WHERE ld.id=$1 AND p.user_id=$2',
+    `SELECT ld.*, p.name, p.owner, p.contractor, p.location, p.city, p.state, p.contact as location_contact,
+            cs.logo_filename, cs.company_name
+     FROM lien_documents ld
+     JOIN projects p ON p.id=ld.project_id
+     LEFT JOIN company_settings cs ON cs.user_id=p.user_id
+     WHERE ld.id=$1 AND p.user_id=$2`,
     [req.params.id, decoded.id]
   );
   if (!r.rows[0]) return res.status(404).json({ error: 'Not found' });
-  const fp = path.join(__dirname, 'uploads', r.rows[0].filename);
-  if (!fs.existsSync(fp)) return res.status(404).json({ error: 'File not found' });
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${r.rows[0].doc_type}_${r.rows[0].id}.pdf"`);
-  res.sendFile(fp);
+  const lien = r.rows[0];
+
+  // Regenerate PDF on-the-fly with current logo from settings
+  try {
+    let pay_app_ref = null;
+    if (lien.pay_app_id) {
+      const paRow = await pool.query('SELECT app_number, period_label FROM pay_apps WHERE id=$1', [lien.pay_app_id]);
+      if (paRow.rows[0]) pay_app_ref = `Pay App #${paRow.rows[0].app_number}${paRow.rows[0].period_label ? ' — ' + paRow.rows[0].period_label : ''}`;
+    }
+    const project = {
+      name: lien.name, owner: lien.owner, contractor: lien.contractor || lien.company_name,
+      company_name: lien.company_name, location: lien.location_contact,
+      city: lien.city, state: lien.state, logo_filename: lien.logo_filename
+    };
+    const fp = path.join(__dirname, 'uploads', lien.filename);
+    await generateLienDocPDF({
+      fpath: fp, doc_type: lien.doc_type, project,
+      through_date: lien.through_date, amount: lien.amount,
+      maker_of_check: lien.maker_of_check, check_payable_to: lien.check_payable_to,
+      signatory_name: lien.signatory_name, signatory_title: lien.signatory_title,
+      signedAt: new Date(lien.signed_at), ip: lien.signatory_ip || 'on file',
+      jurisdiction: lien.jurisdiction || 'california', pay_app_ref
+    });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${lien.doc_type}_${lien.id}.pdf"`);
+    res.sendFile(fp);
+  } catch(e) {
+    console.error('[Lien PDF regen error]', e.message);
+    // Fallback: serve existing file if regeneration fails
+    const fp = path.join(__dirname, 'uploads', lien.filename);
+    if (fs.existsSync(fp)) { res.setHeader('Content-Type', 'application/pdf'); res.sendFile(fp); }
+    else res.status(500).json({ error: 'PDF generation failed' });
+  }
 });
 
 // ── Shared helper: render a lien waiver into an open PDFDocument at current position ──
