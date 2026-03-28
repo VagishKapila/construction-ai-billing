@@ -636,6 +636,9 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
 .wg-grid .cell{padding:3px 0;color:#334155}.wg-grid .money{text-align:right;font-weight:600;color:#0a1f3c}
 .wg-tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}
 .wg-tag.soon{background:#fef3c7;color:#d97706}.wg-tag.new{background:#dcfce7;color:#16a34a}
+.wg-arrow{display:block;background:#e8f0fe;border-left:3px solid #185FA5;border-radius:0 6px 6px 0;padding:6px 10px;margin-top:8px;font-size:11px;font-weight:600;color:#185FA5;line-height:1.4}
+.wg-arrow::before{content:'👉 ';font-size:13px}
+.wg-arrow-inline{background:#e8f0fe;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700;color:#185FA5;white-space:nowrap;margin-left:8px}
 .wg-footer{padding:14px 24px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center}
 .wg-dots{display:flex;gap:5px}
 .wg-dot{width:8px;height:8px;border-radius:50%;background:#cbd5e1;cursor:pointer;transition:all .2s}
@@ -5345,25 +5348,24 @@ const WG_CARDS=[
       <div class="cell">3</div><div class="cell">Concrete Foundation</div><div class="money">$67,200</div><div class="money">0%</div>
       <div class="cell">4</div><div class="cell">Structural Steel</div><div class="money">$124,800</div><div class="money">0%</div>
     </div>
-    <div style="position:relative;text-align:right;margin-top:6px">
-      <span style="color:#185FA5;font-size:11px;font-weight:700;position:absolute;left:0;top:2px">&#8593; Your line items appear here automatically</span>
-      <strong style="color:#0a1f3c">Total: $319,500</strong>
-    </div>
+    <div style="text-align:right;margin-top:6px"><strong style="color:#0a1f3c">Total: $319,500</strong></div>
+    <div class="wg-arrow">Your line items appear here automatically — we detect the columns from your file</div>
   </div>`},
 
   {title:'Create pay apps with PO & notes',body:'Fill in % complete per line. Add a PO number, application notes, and memos — they all print on the G702 cover sheet.',
    mockup:`<div class="wg-mockup">
     <div class="wg-mockup-title">Pay Application #1 — in progress</div>
-    <div class="wg-mockup-row"><span class="wg-mockup-label">PO Number</span><span class="wg-mockup-value">PO-2026-0847</span><span style="color:#185FA5;font-size:10px;font-weight:700;margin-left:6px">&#8592; PO number</span></div>
+    <div class="wg-mockup-row"><span class="wg-mockup-label">PO Number</span><span class="wg-mockup-value">PO-2026-0847</span><span class="wg-arrow-inline">PO number prints on G702</span></div>
     <div class="wg-mockup-row"><span class="wg-mockup-label">Period</span><span class="wg-mockup-value">Mar 1 — Mar 31, 2026</span></div>
-    <div class="wg-mockup-row"><span class="wg-mockup-label">Notes</span><span style="color:#475569;font-size:11px;font-style:italic">"Foundation 100% complete."</span><span style="color:#185FA5;font-size:10px;font-weight:700;margin-left:6px">&#8592; Notes</span></div>
+    <div class="wg-mockup-row"><span class="wg-mockup-label">Notes</span><span style="color:#475569;font-size:11px;font-style:italic">"Foundation 100% complete."</span><span class="wg-arrow-inline">Add memos here</span></div>
     <div class="wg-grid" style="margin-top:10px">
       <div class="hdr">#</div><div class="hdr">Description</div><div class="hdr" style="text-align:right">This period</div><div class="hdr" style="text-align:right">Due</div>
       <div class="cell">1</div><div class="cell">General Conditions</div><div class="money">25%</div><div class="money">$11,250</div>
       <div class="cell">2</div><div class="cell">Sitework &amp; Grading</div><div class="money">100%</div><div class="money">$82,500</div>
       <div class="cell">3</div><div class="cell">Concrete Foundation</div><div class="money">100%</div><div class="money">$67,200</div>
     </div>
-    <div style="text-align:right;margin-top:6px"><strong style="color:#059669">Payment Due: $148,027</strong><span style="color:#185FA5;font-size:10px;font-weight:700;margin-left:6px">&#8592; Auto-calculated</span></div>
+    <div style="text-align:right;margin-top:6px"><strong style="color:#059669">Payment Due: $148,027</strong></div>
+    <div class="wg-arrow">Totals are auto-calculated using G702/G703 math — no manual formulas needed</div>
   </div>`},
 
   {title:'Change orders & lien waivers',body:'Add change orders right in the pay app — totals update automatically. Generate lien waivers with one click, signed electronically.',
@@ -5376,10 +5378,10 @@ const WG_CARDS=[
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <span class="wg-mockup-btn green">Conditional Waiver</span>
         <span class="wg-mockup-btn amber">Unconditional Waiver</span>
-        <span style="color:#185FA5;font-size:10px;font-weight:700">&#8592; One-click generation</span>
       </div>
       <div style="margin-top:8px;font-size:11px;color:#64748b">Sign electronically — PDF includes your name, timestamp, and IP address</div>
     </div>
+    <div class="wg-arrow">One-click waiver generation — auto-fills amount, date, and company info</div>
   </div>`},
 
   {title:'Download & send professional PDFs',body:'Your G702/G703 PDF includes your company logo and signature. Email it directly to the owner — lien waiver auto-attached.',
@@ -5394,11 +5396,11 @@ const WG_CARDS=[
       <div class="wg-mockup-row"><span class="wg-mockup-label">Change orders</span><span class="wg-mockup-value">$21,150.00</span></div>
       <div class="wg-mockup-row"><span class="wg-mockup-label" style="font-weight:700">Current due</span><span class="wg-mockup-value" style="color:#059669;font-size:14px">$148,027.50</span></div>
     </div>
-    <div style="display:flex;gap:8px;align-items:center">
+    <div style="display:flex;gap:8px">
       <span class="wg-mockup-btn">Download PDF</span>
       <span class="wg-mockup-btn green">Send &amp; Mark Submitted</span>
-      <span style="color:#185FA5;font-size:10px;font-weight:700">&#8592; Email with lien waiver attached</span>
     </div>
+    <div class="wg-arrow">Email goes directly to the owner — lien waiver is auto-attached if you generated one</div>
   </div>`},
 
   {title:'Accept payments through invoices',body:'Your clients pay online directly from the invoice. Funds go straight to your bank. No more chasing checks.',
@@ -5418,7 +5420,6 @@ const WG_CARDS=[
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
       <div style="width:32px;height:32px;background:linear-gradient(135deg,#0C3B6B,#185FA5);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:700">A</div>
       <div><div style="font-size:12px;font-weight:700;color:#0a1f3c">Aria</div><div style="font-size:10px;color:#64748b">AI Assistant</div></div>
-      <span style="color:#185FA5;font-size:10px;font-weight:700;margin-left:auto">&#8595; Meet Aria, your AI assistant</span>
     </div>
     <div style="background:#f0f4ff;border-radius:8px;padding:10px;margin-bottom:6px;font-size:12px;color:#334155">"How do I add a change order?"</div>
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:12px;color:#475569;line-height:1.5">In your pay app editor, scroll down to the <strong>Change Orders</strong> section. Click the + button, enter a description and amount. It auto-adds to your G702 totals. Hit the checkmark to save!</div>
@@ -5426,8 +5427,8 @@ const WG_CARDS=[
       <span style="background:#f1f5f9;padding:3px 10px;border-radius:12px;font-size:10px;color:#64748b;cursor:default">Pay app help</span>
       <span style="background:#f1f5f9;padding:3px 10px;border-radius:12px;font-size:10px;color:#64748b;cursor:default">Lien waiver</span>
       <span style="background:#f1f5f9;padding:3px 10px;border-radius:12px;font-size:10px;color:#64748b;cursor:default">File formats</span>
-      <span style="color:#185FA5;font-size:10px;font-weight:700;margin-left:auto">&#8592; Quick topics</span>
     </div>
+    <div class="wg-arrow">Click the chat icon anytime to ask Aria anything — billing questions, how-to help, lien waivers, and more</div>
   </div>`},
 ];
 
