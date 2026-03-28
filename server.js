@@ -1346,22 +1346,34 @@ function parseSOVFile(filePath) {
       }
     }
     if (lumpTotal > 0 && descCol >= 0) {
-      // Collect scope descriptions for context
-      const scopeDescs = [];
-      for (let ri = 0; ri < json.length; ri++) {
-        const desc = String(json[ri][descCol]||'').trim();
-        if (!desc || desc.length < 3) continue;
-        if (/^(total|subtotal|grand|note|sincerely|dear |we thank|it is an|signature)/i.test(desc)) continue;
-        if (/^(Altn|option|exclud)/i.test(desc)) continue;
-        if (desc.length > 100) continue; // skip paragraph text
-        scopeDescs.push(desc);
+      // Build line items that mirror the original bid: each scope line at $0,
+      // then a TOTAL line at the bottom with the lump sum amount.
+      const lumpRows = [];
+      // Find the column with CSI codes (col left of descriptions with 4-6 digit numbers)
+      let codeCol = -1;
+      for (let ci = 0; ci < descCol; ci++) {
+        let codeCount = 0, total = 0;
+        for (const row of json) { const v = String(row[ci]||'').trim(); if (!v) continue; total++; if (/^\d{4,6}$/.test(v)) codeCount++; }
+        if (total > 3 && codeCount / total >= 0.4) { codeCol = ci; break; }
       }
-      const scopeLabel = scopeDescs.length > 0
-        ? 'Lump Sum (' + scopeDescs.slice(0, 4).join(', ') + (scopeDescs.length > 4 ? ', ...' : '') + ')'
-        : 'Lump Sum';
-      const lumpRows = [{ item_id: '1', description: scopeLabel, scheduled_value: Math.round(lumpTotal * 100) / 100, is_parent: false }];
+      // Collect scope lines: rows that have a CSI code with a description (skip boilerplate)
+      for (let ri = 0; ri < json.length; ri++) {
+        const row = json[ri];
+        const code = codeCol >= 0 ? String(row[codeCol]||'').trim() : '';
+        const desc = String(row[descCol]||'').trim();
+        const isCode = /^\d{4,6}$/.test(code);
+        // Must have a valid CSI code — this filters out boilerplate, phone numbers, signatures
+        if (!isCode) continue;
+        // Skip rows where code is a summary label
+        if (/^(total|subtotal|grand)/i.test(code)) continue;
+        if (/^(total|subtotal|grand|note|sincerely|dear |we thank|it is an|signature)/i.test(desc)) continue;
+        if (/^(Altn|option)/i.test(desc)) continue;
+        lumpRows.push({ item_id: code, description: desc || '(scope item)', scheduled_value: 0, is_parent: false });
+      }
+      // Add the TOTAL line at the bottom with the lump sum amount
+      lumpRows.push({ item_id: '', description: 'TOTAL (Lump Sum)', scheduled_value: Math.round(lumpTotal * 100) / 100, is_parent: false });
       xlsSummary['total'] = Math.round(lumpTotal * 100) / 100;
-      return { headers: ['Item #','Description','Scheduled Value'], sheetName, allRows: lumpRows, parentRows: [], iItem, iDesc: descCol, iAmt: -1, summary: xlsSummary, lump_sum: true };
+      return { headers: ['Item #','Description','Scheduled Value'], sheetName, allRows: lumpRows, parentRows: [], iItem: codeCol, iDesc: descCol, iAmt: -1, summary: xlsSummary, lump_sum: true };
     }
   }
 

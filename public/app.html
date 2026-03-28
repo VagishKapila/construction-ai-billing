@@ -3492,7 +3492,9 @@ async function sendEmail(){
 
 async function createProject(){
   if(!sovRows.length){document.getElementById('np-err-final').textContent='Please upload an SOV file first';document.getElementById('np-err-final').classList.remove('hidden');return;}
-  const validRows=sovRows.filter(r=>r.description&&r.scheduled_value>0);
+  // Lump sum support: if at least one line has an amount, keep $0 scope lines too
+  const hasAnyAmount=sovRows.some(r=>r.scheduled_value>0);
+  const validRows=hasAnyAmount?sovRows.filter(r=>r.description):sovRows.filter(r=>r.description&&r.scheduled_value>0);
   if(!validRows.length){document.getElementById('np-err-final').textContent='SOV lines need a description and amount greater than zero';document.getElementById('np-err-final').classList.remove('hidden');return;}
   const contactName=document.getElementById('np-contact-name').value;
   const contactPhone=document.getElementById('np-contact-phone').value;
@@ -3524,7 +3526,8 @@ async function createProject(){
 let _newProjId = null;
 async function createProjectAndNext(){
   if(!sovRows.length){document.getElementById('np-err-final').textContent='Please upload an SOV file first';document.getElementById('np-err-final').classList.remove('hidden');return;}
-  const validRows=sovRows.filter(r=>r.description&&r.scheduled_value>0);
+  const hasAnyAmount=sovRows.some(r=>r.scheduled_value>0);
+  const validRows=hasAnyAmount?sovRows.filter(r=>r.description):sovRows.filter(r=>r.description&&r.scheduled_value>0);
   if(!validRows.length){document.getElementById('np-err-final').textContent='SOV lines need a description and amount greater than zero';document.getElementById('np-err-final').classList.remove('hidden');return;}
   const contactName=document.getElementById('np-contact-name').value;
   const contactPhone=document.getElementById('np-contact-phone').value;
