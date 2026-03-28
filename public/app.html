@@ -252,6 +252,22 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
 .rev-status.submitted{background:#dcfce7;color:#166534}
 .rev-status.draft{background:#fef9c3;color:#854d0e}
 .rev-status.approved{background:#dbeafe;color:#1e40af}
+.rev-status.paid{background:#d1fae5;color:#065f46}
+.rev-filter-group{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.rev-filter-group label{font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.rev-filter-select{border:1px solid var(--border2);border-radius:var(--radius);padding:6px 10px;font-size:13px;background:var(--bg2);max-width:180px}
+.rev-date-input{border:1px solid var(--border2);border-radius:var(--radius);padding:6px 10px;font-size:12px;background:var(--bg2);width:130px}
+.rev-kpi-row-6{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:22px}
+.rev-drill{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px 20px;margin-bottom:22px;animation:wgFadeIn .25s ease}
+.rev-drill-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.rev-drill-header h3{font-size:16px;font-weight:700;color:#0a1f3c;margin:0}
+.rev-drill-close{background:none;border:none;font-size:18px;cursor:pointer;color:var(--text2);padding:4px 8px}.rev-drill-close:hover{color:#0a1f3c}
+.rev-drill-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.rev-drill-kpi{background:#fff;border:1px solid var(--border);border-radius:8px;padding:10px 14px}
+.rev-drill-kpi .lbl{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em}
+.rev-drill-kpi .val{font-size:18px;font-weight:700;color:#0a1f3c;margin-top:2px}
+@media(max-width:900px){.rev-kpi-row-6{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:600px){.rev-kpi-row-6{grid-template-columns:repeat(2,1fr)}.rev-drill-kpis{grid-template-columns:repeat(2,1fr)}}
 /* Reminder settings ────────────────────────────────────────────────── */
 .rem-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px 20px;margin-bottom:14px}
 .rem-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)}
@@ -1388,11 +1404,41 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
           <button class="rev-period-btn" id="rev-btn-yearly" onclick="setRevPeriod('yearly')">Yearly</button>
           <select id="rev-year-select" style="border:1px solid var(--border2);border-radius:var(--radius);padding:6px 10px;font-size:13px;background:var(--bg2)" onchange="loadRevenue()"></select>
         </div>
+        <!-- Advanced filters -->
+        <div class="rev-filter-row" style="margin-bottom:10px">
+          <div class="rev-filter-group">
+            <label>Status</label>
+            <select id="rev-status-filter" class="rev-filter-select" onchange="filterRevTable()">
+              <option value="">All</option>
+              <option value="draft">Draft</option>
+              <option value="submitted">Submitted</option>
+              <option value="approved">Approved</option>
+              <option value="paid">Paid</option>
+            </select>
+          </div>
+          <div class="rev-filter-group">
+            <label>Project</label>
+            <select id="rev-project-filter" class="rev-filter-select" onchange="filterRevTable()">
+              <option value="">All Projects</option>
+            </select>
+          </div>
+          <div class="rev-filter-group">
+            <label>From</label>
+            <input type="date" id="rev-date-from" class="rev-date-input" onchange="filterRevTable()"/>
+          </div>
+          <div class="rev-filter-group">
+            <label>To</label>
+            <input type="date" id="rev-date-to" class="rev-date-input" onchange="filterRevTable()"/>
+          </div>
+          <button class="btn btn-sm" onclick="clearRevFilters()" style="font-size:12px;padding:6px 12px">✕ Clear</button>
+        </div>
         <!-- KPI cards -->
-        <div class="rev-kpi-row" id="rev-kpis">
+        <div class="rev-kpi-row-6" id="rev-kpis">
           <div class="rev-kpi"><div class="rev-kpi-label">Total Billed</div><div class="rev-kpi-val" id="rev-total-billed">—</div><div class="rev-kpi-sub">All submitted pay apps</div></div>
+          <div class="rev-kpi"><div class="rev-kpi-label">Billed This Month</div><div class="rev-kpi-val" id="rev-billed-month">—</div><div class="rev-kpi-sub" id="rev-month-label">—</div></div>
+          <div class="rev-kpi"><div class="rev-kpi-label">Outstanding</div><div class="rev-kpi-val" id="rev-outstanding">—</div><div class="rev-kpi-sub">Submitted, not yet paid</div></div>
+          <div class="rev-kpi"><div class="rev-kpi-label">Total Paid</div><div class="rev-kpi-val" id="rev-total-paid">—</div><div class="rev-kpi-sub">Payment received</div></div>
           <div class="rev-kpi"><div class="rev-kpi-label">Retention Held</div><div class="rev-kpi-val" id="rev-total-retention">—</div><div class="rev-kpi-sub">Across all projects</div></div>
-          <div class="rev-kpi"><div class="rev-kpi-label">Net Received</div><div class="rev-kpi-val" id="rev-net-received">—</div><div class="rev-kpi-sub">Billed minus retention</div></div>
           <div class="rev-kpi"><div class="rev-kpi-label">Active Projects</div><div class="rev-kpi-val" id="rev-active-projects">—</div><div class="rev-kpi-sub">With billing activity</div></div>
         </div>
         <!-- Bar chart -->
@@ -1425,6 +1471,27 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
                 <tr><td colspan="9" style="text-align:center;color:var(--text2);padding:32px">Loading...</td></tr>
               </tbody>
             </table>
+          </div>
+        </div>
+        <!-- Per-project drill-down -->
+        <div id="rev-drill-panel" class="rev-drill" style="display:none">
+          <div class="rev-drill-header">
+            <h3 id="rev-drill-title">Project Details</h3>
+            <button class="rev-drill-close" onclick="closeRevDrill()" title="Close">&times;</button>
+          </div>
+          <div class="rev-drill-kpis" id="rev-drill-kpis"></div>
+          <div style="overflow-x:auto">
+            <table class="rev-table" style="width:100%">
+              <thead>
+                <tr>
+                  <th>Pay App</th><th>Period End</th><th>This Invoice</th><th>Cumulative</th><th>Retention</th><th>Status</th><th>Paid</th>
+                </tr>
+              </thead>
+              <tbody id="rev-drill-body"></tbody>
+            </table>
+          </div>
+          <div style="margin-top:14px">
+            <canvas id="rev-drill-chart" height="180"></canvas>
           </div>
         </div>
         <!-- Export & Reports card -->
@@ -4764,17 +4831,43 @@ async function loadRevenue() {
     const data = await api('GET', `/revenue/summary?period=${revPeriod}&year=${year}`);
     revAllRows = data.rows || [];
     const fmt = v => '$' + Math.round(v || 0).toLocaleString();
+    // Core KPIs
     document.getElementById('rev-total-billed').textContent = fmt(data.total_billed);
     document.getElementById('rev-total-retention').textContent = fmt(data.total_retention);
-    document.getElementById('rev-net-received').textContent = fmt((data.total_billed || 0) - (data.total_retention || 0));
     document.getElementById('rev-active-projects').textContent = data.active_projects || 0;
+    // New KPIs: this month, outstanding, paid
+    const now = new Date();
+    const thisMonth = now.getMonth();
+    const thisYear = now.getFullYear();
+    const monthRows = revAllRows.filter(r => {
+      if (!r.period_end) return false;
+      const d = new Date(r.period_end);
+      return d.getMonth() === thisMonth && d.getFullYear() === thisYear && (['submitted','approved','paid'].includes(r.status) || r.payment_received);
+    });
+    const billedMonth = monthRows.reduce((s,r) => s + parseFloat(r.amount_due||0), 0);
+    document.getElementById('rev-billed-month').textContent = fmt(billedMonth);
+    document.getElementById('rev-month-label').textContent = now.toLocaleDateString('en-US',{month:'long',year:'numeric'});
+    const outstanding = revAllRows.filter(r => ['submitted','approved'].includes(r.status) && !r.payment_received);
+    document.getElementById('rev-outstanding').textContent = fmt(outstanding.reduce((s,r)=>s+parseFloat(r.amount_due||0),0));
+    const paidRows = revAllRows.filter(r => r.payment_received);
+    document.getElementById('rev-total-paid').textContent = fmt(paidRows.reduce((s,r)=>s+parseFloat(r.amount_due||0),0));
+    // Populate project filter dropdown
+    populateProjectFilter(revAllRows);
     renderRevChart(data.chart || []);
-    renderRevTable(revAllRows);
+    filterRevTable();
   } catch(e) {
     console.error('[Revenue] load error:', e.message, e.status||'', e.data||'');
     const hint = e.status===401 ? 'Session expired — please sign out and sign back in.' : (e.data&&e.data.detail ? '('+e.data.detail+')' : '');
-    document.getElementById('rev-table-body').innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:32px">Could not load data. ${hint}</td></tr>`;
+    document.getElementById('rev-table-body').innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--text2);padding:32px">Could not load data. ${hint}</td></tr>`;
   }
+}
+
+function populateProjectFilter(rows) {
+  const sel = document.getElementById('rev-project-filter');
+  const current = sel.value;
+  const projects = [...new Set(rows.map(r => r.project_name).filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">All Projects</option>' + projects.map(p => `<option value="${p}">${p}</option>`).join('');
+  if (current && projects.includes(current)) sel.value = current;
 }
 
 function setRevPeriod(p) {
@@ -4801,7 +4894,7 @@ function renderRevTable(rows) {
     const received = r.payment_received;
     return `<tr style="cursor:pointer;${received?'background:#f0fff4':''}" title="Click row to open pay app">
     <td style="font-weight:600;white-space:nowrap" onclick="loadPayApp(${r.id})">${r.job_number||'—'}</td>
-    <td onclick="loadPayApp(${r.id})"><div style="font-weight:600;font-size:13px">${r.project_name}</div><div style="font-size:11px;color:var(--text2)">${r.address||''}</div></td>
+    <td><div style="font-weight:600;font-size:13px;cursor:pointer;color:#185FA5;text-decoration:underline dotted" onclick="event.stopPropagation();openRevDrill('${(r.project_name||'').replace(/'/g,"\\'")}')" title="View all pay apps for this project">${r.project_name}</div><div style="font-size:11px;color:var(--text2);cursor:pointer" onclick="loadPayApp(${r.id})">${r.address||''}</div></td>
     <td onclick="loadPayApp(${r.id})">Pay App #${r.pay_app_number||'?'}</td>
     <td style="white-space:nowrap" onclick="loadPayApp(${r.id})">${r.period_end?new Date(r.period_end).toLocaleDateString():'—'}</td>
     <td onclick="loadPayApp(${r.id})">${fmt(r.contract_amount)}</td>
@@ -4830,18 +4923,45 @@ async function togglePaymentReceived(payAppId, received) {
   } catch(e) { alert('Error: '+e.message); }
 }
 
+function getFilteredRevRows() {
+  const q = (document.getElementById('rev-search').value||'').toLowerCase();
+  const statusF = document.getElementById('rev-status-filter').value;
+  const projectF = document.getElementById('rev-project-filter').value;
+  const dateFrom = document.getElementById('rev-date-from').value;
+  const dateTo = document.getElementById('rev-date-to').value;
+  return revAllRows.filter(r => {
+    if (q && !((r.project_name||'').toLowerCase().includes(q)||(r.address||'').toLowerCase().includes(q)||(r.job_number||'').toLowerCase().includes(q))) return false;
+    const effectiveStatus = r.payment_received ? 'paid' : (r.status||'draft');
+    if (statusF && effectiveStatus !== statusF) return false;
+    if (projectF && r.project_name !== projectF) return false;
+    if (dateFrom && r.period_end) { if (new Date(r.period_end) < new Date(dateFrom)) return false; }
+    if (dateTo && r.period_end) { if (new Date(r.period_end) > new Date(dateTo + 'T23:59:59')) return false; }
+    if ((dateFrom||dateTo) && !r.period_end) return false;
+    return true;
+  });
+}
+
 function filterRevTable() {
-  const q = document.getElementById('rev-search').value.toLowerCase();
-  renderRevTable(revAllRows.filter(r =>
-    (r.project_name||'').toLowerCase().includes(q)||(r.address||'').toLowerCase().includes(q)||(r.job_number||'').toLowerCase().includes(q)
-  ));
+  const filtered = getFilteredRevRows();
+  renderRevTable(filtered);
+}
+
+function clearRevFilters() {
+  document.getElementById('rev-search').value = '';
+  document.getElementById('rev-status-filter').value = '';
+  document.getElementById('rev-project-filter').value = '';
+  document.getElementById('rev-date-from').value = '';
+  document.getElementById('rev-date-to').value = '';
+  filterRevTable();
 }
 
 function exportRevCSV() {
-  if (!revAllRows.length) { alert('No data to export.'); return; }
-  const headers = ['Job Number','Project','Address','Pay App #','Period End','Contract Amount','Amount Due','Retention Held','Status'];
-  const rows = revAllRows.map(r => [r.job_number||'',r.project_name||'',r.address||'',r.pay_app_number||'',
-    r.period_end?new Date(r.period_end).toLocaleDateString():'',r.contract_amount||0,r.amount_due||0,r.retention_held||0,r.status||'']);
+  const filtered = getFilteredRevRows();
+  if (!filtered.length) { alert('No data to export.'); return; }
+  const headers = ['Job Number','Project','Address','Pay App #','Period End','Contract Amount','Amount Due','Retention Held','Status','Paid'];
+  const rows = filtered.map(r => [r.job_number||'',r.project_name||'',r.address||'',r.pay_app_number||'',
+    r.period_end?new Date(r.period_end).toLocaleDateString():'',r.contract_amount||0,
+    parseFloat(r.amount_due||0).toFixed(2),parseFloat(r.retention_held||0).toFixed(2),r.status||'draft',r.payment_received?'Yes':'No']);
   const csv = [headers,...rows].map(r=>r.map(v=>`"${v}"`).join(',')).join('\n');
   const a = document.createElement('a');
   a.href = 'data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
@@ -4870,25 +4990,84 @@ function exportAnnualReport() {
   window.open(`/api/revenue/report/pdf?year=${year}&token=${encodeURIComponent(token)}`, '_blank');
 }
 
-function exportQuickBooks() {
-  const year = document.getElementById('rev-year-select').value || new Date().getFullYear();
-  const token = getToken();
-  if (!token) { alert('Please log in first.'); return; }
-  window.open(`/api/revenue/export/quickbooks?year=${year}&token=${encodeURIComponent(token)}`, '_blank');
+// ── PER-PROJECT DRILL-DOWN ──────────────────────────────────────
+function openRevDrill(projectName) {
+  const rows = revAllRows.filter(r => r.project_name === projectName).sort((a,b) => (a.pay_app_number||0)-(b.pay_app_number||0));
+  if (!rows.length) return;
+  const panel = document.getElementById('rev-drill-panel');
+  document.getElementById('rev-drill-title').textContent = projectName;
+  const fmt = v => '$' + parseFloat(v||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  // Drill-down KPIs
+  const contractAmt = parseFloat(rows[0].contract_amount||0);
+  const totalBilled = rows.filter(r=>['submitted','approved','paid'].includes(r.status)||r.payment_received).reduce((s,r)=>s+parseFloat(r.amount_due||0),0);
+  const totalRetention = rows.reduce((s,r)=>s+parseFloat(r.retention_held||0),0);
+  const pctComplete = contractAmt > 0 ? Math.round((totalBilled/contractAmt)*100) : 0;
+  document.getElementById('rev-drill-kpis').innerHTML = `
+    <div class="rev-drill-kpi"><div class="lbl">Contract</div><div class="val">${fmt(contractAmt)}</div></div>
+    <div class="rev-drill-kpi"><div class="lbl">Total Billed</div><div class="val">${fmt(totalBilled)}</div></div>
+    <div class="rev-drill-kpi"><div class="lbl">Retention</div><div class="val">${fmt(totalRetention)}</div></div>
+    <div class="rev-drill-kpi"><div class="lbl">% Complete</div><div class="val">${pctComplete}%</div></div>`;
+  // Drill-down table with running cumulative
+  let cumulative = 0;
+  document.getElementById('rev-drill-body').innerHTML = rows.map(r => {
+    const amt = parseFloat(r.amount_due||0);
+    cumulative += amt;
+    const received = r.payment_received;
+    return `<tr style="${received?'background:#f0fff4':''}">
+      <td style="font-weight:600">Pay App #${r.pay_app_number||'?'}</td>
+      <td style="white-space:nowrap">${r.period_end?new Date(r.period_end).toLocaleDateString():'—'}</td>
+      <td style="text-align:right">${fmt(amt)}</td>
+      <td style="text-align:right;font-weight:600">${fmt(cumulative)}</td>
+      <td style="text-align:right">${fmt(r.retention_held)}</td>
+      <td><span class="rev-status ${r.status||'draft'}">${r.status||'draft'}</span></td>
+      <td style="text-align:center">${received?'✓ Paid':'—'}</td>
+    </tr>`;
+  }).join('');
+  // Per-project monthly chart using Chart.js
+  renderDrillChart(rows);
+  panel.style.display = 'block';
+  panel.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
-function exportSage() {
-  const year = document.getElementById('rev-year-select').value || new Date().getFullYear();
-  const token = getToken();
-  if (!token) { alert('Please log in first.'); return; }
-  window.open(`/api/revenue/export/sage?year=${year}&token=${encodeURIComponent(token)}`, '_blank');
+function renderDrillChart(rows) {
+  const canvas = document.getElementById('rev-drill-chart');
+  if (window._revDrillChart) { window._revDrillChart.destroy(); window._revDrillChart = null; }
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const monthData = months.map((_,i) =>
+    rows.filter(r => r.period_end && new Date(r.period_end).getMonth()===i && (['submitted','approved','paid'].includes(r.status)||r.payment_received))
+        .reduce((s,r)=>s+parseFloat(r.amount_due||0),0)
+  );
+  if (typeof Chart !== 'undefined') {
+    window._revDrillChart = new Chart(canvas, {
+      type:'bar',
+      data:{labels:months,datasets:[{label:'Amount Due',data:monthData,backgroundColor:'rgba(24,95,165,0.7)',borderRadius:4}]},
+      options:{responsive:true,plugins:{legend:{display:false},title:{display:true,text:'Monthly Billing Trend',font:{size:13}}},scales:{y:{beginAtZero:true,ticks:{callback:v=>'$'+Math.round(v/1000)+'k'}}}}
+    });
+  } else {
+    // Fallback: simple HTML bars
+    const max = Math.max(...monthData,1);
+    canvas.style.display='none';
+    const fallback = canvas.parentElement;
+    let existing = fallback.querySelector('.drill-chart-fallback');
+    if (existing) existing.remove();
+    const div = document.createElement('div');
+    div.className='drill-chart-fallback';
+    div.style.cssText='display:flex;align-items:flex-end;gap:6px;height:120px;padding:0 4px';
+    div.innerHTML=months.map((m,i)=>{
+      const h=Math.round((monthData[i]/max)*100);
+      return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
+        <div style="font-size:9px;color:#185FA5;font-weight:600">${monthData[i]>0?'$'+Math.round(monthData[i]/1000)+'k':''}</div>
+        <div style="width:100%;height:${h}px;background:linear-gradient(to top,#185FA5,#4a9be0);border-radius:3px 3px 0 0;min-height:${monthData[i]>0?3:0}px"></div>
+        <div style="font-size:9px;color:#666">${m}</div>
+      </div>`;
+    }).join('');
+    fallback.appendChild(div);
+  }
 }
 
-function exportAnnualReport() {
-  const year = document.getElementById('rev-year-select').value || new Date().getFullYear();
-  const token = getToken();
-  if (!token) { alert('Please log in first.'); return; }
-  window.open(`/api/revenue/report/pdf?year=${year}&token=${encodeURIComponent(token)}`, '_blank');
+function closeRevDrill() {
+  document.getElementById('rev-drill-panel').style.display = 'none';
+  if (window._revDrillChart) { window._revDrillChart.destroy(); window._revDrillChart = null; }
 }
 
 async function saveReminderSettings() {
@@ -5166,22 +5345,25 @@ const WG_CARDS=[
       <div class="cell">3</div><div class="cell">Concrete Foundation</div><div class="money">$67,200</div><div class="money">0%</div>
       <div class="cell">4</div><div class="cell">Structural Steel</div><div class="money">$124,800</div><div class="money">0%</div>
     </div>
-    <div style="text-align:right;margin-top:6px"><strong style="color:#0a1f3c">Total: $319,500</strong></div>
+    <div style="position:relative;text-align:right;margin-top:6px">
+      <span style="color:#185FA5;font-size:11px;font-weight:700;position:absolute;left:0;top:2px">&#8593; Your line items appear here automatically</span>
+      <strong style="color:#0a1f3c">Total: $319,500</strong>
+    </div>
   </div>`},
 
   {title:'Create pay apps with PO & notes',body:'Fill in % complete per line. Add a PO number, application notes, and memos — they all print on the G702 cover sheet.',
    mockup:`<div class="wg-mockup">
     <div class="wg-mockup-title">Pay Application #1 — in progress</div>
-    <div class="wg-mockup-row"><span class="wg-mockup-label">PO Number</span><span class="wg-mockup-value">PO-2026-0847</span></div>
+    <div class="wg-mockup-row"><span class="wg-mockup-label">PO Number</span><span class="wg-mockup-value">PO-2026-0847</span><span style="color:#185FA5;font-size:10px;font-weight:700;margin-left:6px">&#8592; PO number</span></div>
     <div class="wg-mockup-row"><span class="wg-mockup-label">Period</span><span class="wg-mockup-value">Mar 1 — Mar 31, 2026</span></div>
-    <div class="wg-mockup-row"><span class="wg-mockup-label">Notes</span><span style="color:#475569;font-size:11px;font-style:italic">"Foundation 100% complete. Steel arriving next week."</span></div>
+    <div class="wg-mockup-row"><span class="wg-mockup-label">Notes</span><span style="color:#475569;font-size:11px;font-style:italic">"Foundation 100% complete."</span><span style="color:#185FA5;font-size:10px;font-weight:700;margin-left:6px">&#8592; Notes</span></div>
     <div class="wg-grid" style="margin-top:10px">
       <div class="hdr">#</div><div class="hdr">Description</div><div class="hdr" style="text-align:right">This period</div><div class="hdr" style="text-align:right">Due</div>
       <div class="cell">1</div><div class="cell">General Conditions</div><div class="money">25%</div><div class="money">$11,250</div>
       <div class="cell">2</div><div class="cell">Sitework &amp; Grading</div><div class="money">100%</div><div class="money">$82,500</div>
       <div class="cell">3</div><div class="cell">Concrete Foundation</div><div class="money">100%</div><div class="money">$67,200</div>
     </div>
-    <div style="text-align:right;margin-top:6px"><strong style="color:#059669">Payment Due: $148,027</strong></div>
+    <div style="text-align:right;margin-top:6px"><strong style="color:#059669">Payment Due: $148,027</strong><span style="color:#185FA5;font-size:10px;font-weight:700;margin-left:6px">&#8592; Auto-calculated</span></div>
   </div>`},
 
   {title:'Change orders & lien waivers',body:'Add change orders right in the pay app — totals update automatically. Generate lien waivers with one click, signed electronically.',
@@ -5191,9 +5373,10 @@ const WG_CARDS=[
     <div class="wg-mockup-row"><span class="wg-mockup-value">CO #2: Owner-requested tile upgrade</span><span style="margin-left:auto;font-weight:700;color:#059669">+$8,750</span></div>
     <div style="margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0">
       <div class="wg-mockup-title">Lien waivers</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <span class="wg-mockup-btn green">Conditional Waiver</span>
         <span class="wg-mockup-btn amber">Unconditional Waiver</span>
+        <span style="color:#185FA5;font-size:10px;font-weight:700">&#8592; One-click generation</span>
       </div>
       <div style="margin-top:8px;font-size:11px;color:#64748b">Sign electronically — PDF includes your name, timestamp, and IP address</div>
     </div>
@@ -5211,16 +5394,17 @@ const WG_CARDS=[
       <div class="wg-mockup-row"><span class="wg-mockup-label">Change orders</span><span class="wg-mockup-value">$21,150.00</span></div>
       <div class="wg-mockup-row"><span class="wg-mockup-label" style="font-weight:700">Current due</span><span class="wg-mockup-value" style="color:#059669;font-size:14px">$148,027.50</span></div>
     </div>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;align-items:center">
       <span class="wg-mockup-btn">Download PDF</span>
       <span class="wg-mockup-btn green">Send &amp; Mark Submitted</span>
+      <span style="color:#185FA5;font-size:10px;font-weight:700">&#8592; Email with lien waiver attached</span>
     </div>
   </div>`},
 
-  {title:'Accept payments through invoices',body:'Coming soon — your clients will pay online directly from the invoice. Funds go straight to your bank. No more chasing checks.',
+  {title:'Accept payments through invoices',body:'Your clients pay online directly from the invoice. Funds go straight to your bank. No more chasing checks.',
    mockup:`<div class="wg-mockup" style="text-align:center;padding:24px 14px">
     <div style="font-size:32px;margin-bottom:8px">💳</div>
-    <div style="font-size:14px;font-weight:700;color:#0a1f3c;margin-bottom:6px">Online payments <span class="wg-tag soon">Coming soon</span></div>
+    <div style="font-size:14px;font-weight:700;color:#0a1f3c;margin-bottom:6px">Online Payments via Invoice</div>
     <div style="font-size:12px;color:#64748b;max-width:300px;margin:0 auto;line-height:1.5">Your owner/client receives the invoice email, clicks "Pay Now", and pays by credit card or ACH. You get paid faster — no follow-up needed.</div>
     <div style="margin-top:16px;display:flex;justify-content:center;gap:6px;flex-wrap:wrap">
       <span style="background:#f1f5f9;padding:4px 10px;border-radius:4px;font-size:10px;color:#64748b">Visa</span>
@@ -5234,13 +5418,15 @@ const WG_CARDS=[
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
       <div style="width:32px;height:32px;background:linear-gradient(135deg,#0C3B6B,#185FA5);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:700">A</div>
       <div><div style="font-size:12px;font-weight:700;color:#0a1f3c">Aria</div><div style="font-size:10px;color:#64748b">AI Assistant</div></div>
+      <span style="color:#185FA5;font-size:10px;font-weight:700;margin-left:auto">&#8595; Meet Aria, your AI assistant</span>
     </div>
     <div style="background:#f0f4ff;border-radius:8px;padding:10px;margin-bottom:6px;font-size:12px;color:#334155">"How do I add a change order?"</div>
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:12px;color:#475569;line-height:1.5">In your pay app editor, scroll down to the <strong>Change Orders</strong> section. Click the + button, enter a description and amount. It auto-adds to your G702 totals. Hit the checkmark to save!</div>
-    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center">
       <span style="background:#f1f5f9;padding:3px 10px;border-radius:12px;font-size:10px;color:#64748b;cursor:default">Pay app help</span>
       <span style="background:#f1f5f9;padding:3px 10px;border-radius:12px;font-size:10px;color:#64748b;cursor:default">Lien waiver</span>
       <span style="background:#f1f5f9;padding:3px 10px;border-radius:12px;font-size:10px;color:#64748b;cursor:default">File formats</span>
+      <span style="color:#185FA5;font-size:10px;font-weight:700;margin-left:auto">&#8592; Quick topics</span>
     </div>
   </div>`},
 ];
