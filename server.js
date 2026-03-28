@@ -571,10 +571,10 @@ app.get('/api/auth/verify/:token', async (req, res) => {
        RETURNING id,name,email`,
       [req.params.token]
     );
-    if (!r.rows[0]) return res.redirect('/?verify_error=invalid_or_expired_token');
+    if (!r.rows[0]) return res.redirect('/app.html?verify_error=invalid_or_expired_token');
     await logEvent(r.rows[0].id, 'email_verified', {});
-    res.redirect('/?verified=1');
-  } catch(e) { res.redirect('/?verify_error=server_error'); }
+    res.redirect('/app.html?verified=1');
+  } catch(e) { res.redirect('/app.html?verify_error=server_error'); }
 });
 
 app.post('/api/auth/resend-verification', auth, async (req, res) => {
@@ -2857,7 +2857,7 @@ app.post('/api/support/request', async (req, res) => {
 app.get('/api/admin/support-requests', adminAuth, async (req, res) => {
   try {
     const r = await pool.query(
-      `SELECT id, event_data, created_at FROM analytics_events
+      `SELECT id, meta AS event_data, created_at FROM analytics_events
        WHERE event = 'support_request'
        ORDER BY created_at DESC LIMIT 100`
     );

@@ -2257,6 +2257,15 @@ function signInWithGoogle(){
     const msgs={access_denied:'Google sign-in was cancelled.',no_email:'Google did not return an email address.',server_error:'Authentication error. Please try again.'};
     showAuthErr(msgs[authErr]||'Authentication failed: '+authErr);
   }
+  const verifyErr=p.get('verify_error');
+  if(verifyErr){
+    window.history.replaceState({},'',window.location.pathname);
+    document.getElementById('landing-screen').classList.add('hidden');
+    document.getElementById('auth-screen').classList.remove('hidden');
+    authTab('login');
+    const msgs={invalid_or_expired_token:'Verification link has expired or is invalid. Please request a new one.',server_error:'Verification failed. Please try again.'};
+    showAuthErr(msgs[verifyErr]||'Email verification failed.');
+  }
   // Password reset — ?reset=TOKEN shows the reset screen
   const resetToken = p.get('reset');
   if(resetToken){
