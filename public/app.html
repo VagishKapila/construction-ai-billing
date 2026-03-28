@@ -2892,14 +2892,11 @@ async function loadPayApp(id,tab=0){
     }
     document.getElementById('email-subj').value='Pay Application #'+pa.app_number+' — '+pa.project_name;
     document.getElementById('email-body').value='Please find attached Pay Application #'+pa.app_number+' for the '+pa.project_name+' project ('+(pa.period_label||'')+').\n\nKindly review and certify at your earliest convenience.\n\nThank you.';
-    // Amount Certified: use saved value if present, otherwise pre-fill with current payment due
+    // Amount Certified: always sync with current payment due
     const certAmt = document.getElementById('arch-cert-amt');
     if(certAmt) {
-      if(pa.architect_certified) { certAmt.value=pa.architect_certified; }
-      else {
-        const t0=calcTotals(pa);
-        if(t0.due>0){ certAmt.value=t0.due.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-      }
+      const t0=calcTotals(pa);
+      certAmt.value=t0.due>0?t0.due.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'';
     }
     if(pa.architect_name) document.getElementById('arch-cert-name').value=pa.architect_name;
     if(pa.architect_date) document.getElementById('arch-cert-date').value=(pa.architect_date||'').split('T')[0];
@@ -3019,7 +3016,7 @@ function renderAIAPreview(pa){
   setText('prev-G',fmt(t.tPrevCert));
   setText('prev-H',fmt(t.due));
   setText('prev-I',fmt(t.contract-t.tComp+t.tRet));
-  setText('prev-arch-cert',pa.architect_certified?fmt(pa.architect_certified):'Pending');
+  setText('prev-arch-cert',t.due>0?fmt(t.due):(pa.architect_certified?fmt(pa.architect_certified):'Pending'));
   setText('prev-arch-date',pa.architect_date?(new Date(pa.architect_date).toLocaleDateString()):'');
   // Contractor sign date — default to today, preserve any edits the user has made
   const signDateEl=document.getElementById('pa-sign-date');
@@ -3207,6 +3204,9 @@ function updateG702Live(){
     <div class="ir"><span style="color:var(--text2)">G. Less previous certificates</span><span>${fmt(tPrev)}</span></div>
     <div class="ir tot"><span style="color:var(--text2)">H. Current payment due</span><span style="color:var(--blue);font-size:15px">${fmt(due)}</span></div>
     <div class="ir"><span style="color:var(--text2)">I. Balance to finish + retainage</span><span>${fmt(contract-tComp+tRet)}</span></div>`;
+  // Auto-sync Amount Certified with current payment due
+  const certEl=document.getElementById('arch-cert-amt');
+  if(certEl) certEl.value=due>0?due.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'';
 }
 function applyBulk(){
   const pct=parseFloat(document.getElementById('bulk-pct').value)||0;
@@ -3229,7 +3229,8 @@ async function saveLines(){
   document.querySelectorAll('#g703-body tr').forEach(row=>{
     const inputs=row.querySelectorAll('.num-in');
     if(!inputs[0]) return;
-    lines.push({id:parseInt(inputs[0].dataset.id),this_pct:parseFloat(inputs[0].value)||0,retainage_pct:parseFloat(inputs[1]&&inputs[1].value)||10,stored_materials:0});
+    const retVal=inputs[1]?parseFloat(inputs[1].value):null;
+    lines.push({id:parseInt(inputs[0].dataset.id),this_pct:parseFloat(inputs[0].value)||0,retainage_pct:retVal!==null&&!isNaN(retVal)?retVal:0,stored_materials:0});
   });
   try{
     await api('PUT','/payapps/'+currentPAId+'/lines',{lines});
