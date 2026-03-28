@@ -186,6 +186,9 @@ tfoot td{font-weight:600;background:var(--bg3);border-top:0.5px solid var(--bord
 .aia-appnum{text-align:right;font-size:9pt}
 .aia-appnum strong{font-size:14pt}
 .aia-cell-H{background:#fffbe6}
+#pa-special-notes:empty:before{content:attr(data-placeholder);color:#999;pointer-events:none}
+.aia-sig-box{display:flex;flex-direction:column}
+.aia-sig-box .aia-sig-spacer{flex:1;min-height:8px}
 .aia-dist-grid{display:flex;gap:20px}
 .aia-dist-item{display:flex;align-items:center;gap:6px}
 .aia-checkbox{width:11px;height:11px;border:1px solid #000;display:inline-block;flex-shrink:0}
@@ -1725,8 +1728,24 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
             </div>
           </div>
           <div class="card">
-            <div class="ct">Notes</div>
-            <textarea id="pa-special-notes" rows="4" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;resize:vertical" placeholder="e.g. ACH info, payment terms, special conditions..." onchange="savePAMeta()"></textarea>
+            <div class="ct" style="display:flex;align-items:center;gap:8px">Notes <button type="button" id="notes-fmt-toggle" onclick="toggleNotesToolbar()" style="background:none;border:1px solid var(--border);border-radius:4px;padding:2px 7px;font-size:13px;font-weight:bold;cursor:pointer;color:var(--fg2);line-height:1.2" title="Format text">A</button></div>
+            <div id="notes-toolbar" style="display:none;padding:4px 6px;margin-bottom:6px;border:1px solid var(--border);border-radius:6px;background:var(--bg3);gap:4px;align-items:center;flex-wrap:wrap">
+              <button type="button" onclick="notesCmd('bold')" style="font-weight:bold;min-width:28px;height:26px;border:1px solid var(--border);border-radius:4px;background:#fff;cursor:pointer;font-size:13px" title="Bold">B</button>
+              <button type="button" onclick="notesCmd('italic')" style="font-style:italic;min-width:28px;height:26px;border:1px solid var(--border);border-radius:4px;background:#fff;cursor:pointer;font-size:13px" title="Italic">I</button>
+              <button type="button" onclick="notesCmd('underline')" style="text-decoration:underline;min-width:28px;height:26px;border:1px solid var(--border);border-radius:4px;background:#fff;cursor:pointer;font-size:13px" title="Underline">U</button>
+              <span style="width:1px;height:20px;background:var(--border);margin:0 4px"></span>
+              <button type="button" onclick="notesColor('#000')" style="width:22px;height:22px;border-radius:50%;border:2px solid #ccc;background:#000;cursor:pointer" title="Black"></button>
+              <button type="button" onclick="notesColor('#d32f2f')" style="width:22px;height:22px;border-radius:50%;border:2px solid #ccc;background:#d32f2f;cursor:pointer" title="Red"></button>
+              <button type="button" onclick="notesColor('#1565c0')" style="width:22px;height:22px;border-radius:50%;border:2px solid #ccc;background:#1565c0;cursor:pointer" title="Blue"></button>
+              <span style="width:1px;height:20px;background:var(--border);margin:0 4px"></span>
+              <select onchange="notesFontSize(this.value)" style="height:26px;border:1px solid var(--border);border-radius:4px;font-size:12px;cursor:pointer">
+                <option value="2">Small</option>
+                <option value="3" selected>Normal</option>
+                <option value="4">Large</option>
+                <option value="5">X-Large</option>
+              </select>
+            </div>
+            <div id="pa-special-notes" contenteditable="true" style="width:100%;min-height:80px;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;resize:vertical;overflow:auto;outline:none;background:#fff" data-placeholder="e.g. ACH info, payment terms, special conditions..." oninput="onNotesInput()" onblur="savePAMeta()"></div>
           </div>
           <div id="g702-contract-warn"></div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
@@ -1855,8 +1874,9 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               <div class="aia-sig-box">
                 <div class="aia-sig-title">Contractor's Signed Certification</div>
                 <p style="font-size:7.5pt;color:#555;margin-bottom:8px">The undersigned Contractor certifies that to the best of the Contractor's knowledge, information and belief the Work covered by this Application for Payment has been completed in accordance with the Contract Documents.</p>
+                <div class="aia-sig-spacer"></div>
                 <div id="sig-contractor-img"></div>
-                <div class="aia-sig-line"></div>
+                <div class="aia-sig-line" style="margin-top:4px"></div>
                 <div class="aia-sig-label">Authorized Signature &nbsp;&nbsp;&nbsp; Date: <span id="pa-sign-date" contenteditable="true" title="Click to edit date" style="border-bottom:1px solid #999;min-width:80px;display:inline-block;outline:none;cursor:text;padding:0 2px"></span></div>
                 <div style="margin-top:6px">
                   <label style="font-size:10px;color:#888;cursor:pointer" onclick="document.getElementById('sig-contractor-input').click()">+ Upload signature</label>
@@ -1867,8 +1887,9 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
                 <div class="aia-sig-title">Architect's Certificate for Payment</div>
                 <p style="font-size:7.5pt;color:#555;margin-bottom:4px">In accordance with the Contract Documents, the Architect certifies to the Owner that the Work has progressed to the point indicated and the quality of the Work is in accordance with the Contract Documents.</p>
                 <div style="font-size:8pt;margin-bottom:4px">Amount Certified: <strong id="prev-arch-cert"></strong></div>
+                <div class="aia-sig-spacer"></div>
                 <div id="sig-architect-img"></div>
-                <div class="aia-sig-line"></div>
+                <div class="aia-sig-line" style="margin-top:4px"></div>
                 <div class="aia-sig-label">Architect Signature &nbsp;&nbsp;&nbsp; Date: <span id="prev-arch-date"></span></div>
                 <div style="margin-top:6px">
                   <label style="font-size:10px;color:#888;cursor:pointer" onclick="document.getElementById('sig-architect-input').click()">+ Upload signature</label>
@@ -2904,7 +2925,7 @@ async function loadPayApp(id,tab=0){
     if(pa.period_start) document.getElementById('pa-period-start').value=(pa.period_start||'').split('T')[0];
     if(pa.period_end) document.getElementById('pa-period-end').value=(pa.period_end||'').split('T')[0];
     document.getElementById('pa-po-number').value=pa.po_number||'';
-    document.getElementById('pa-special-notes').value=pa.special_notes||'';
+    document.getElementById('pa-special-notes').innerHTML=pa.special_notes||'';
     // Distribution checkboxes (null = use DB default: owner+arch true, contractor false)
     document.getElementById('dist-owner').checked    = pa.dist_owner    !== false;
     document.getElementById('dist-architect').checked = pa.dist_architect === true;
@@ -3036,7 +3057,7 @@ function renderAIAPreview(pa){
   if(poLine&&poVal){if(pa.po_number){poVal.textContent=pa.po_number;poLine.style.display='block';}else{poLine.style.display='none';}}
   // Special notes
   const notesEl=document.getElementById('prev-special-notes');
-  if(notesEl){if(pa.special_notes){notesEl.textContent=pa.special_notes;notesEl.parentElement.style.display='block';}else{notesEl.parentElement.style.display='none';}}
+  if(notesEl){if(pa.special_notes){notesEl.innerHTML=pa.special_notes;notesEl.parentElement.style.display='block';}else{notesEl.parentElement.style.display='none';}}
   if(logoDataURL){
     const lb=document.getElementById('preview-logo-box');
     if(lb) lb.innerHTML=`<img src="${logoDataURL}"/>`;
@@ -3412,9 +3433,19 @@ async function saveArchCert(){
   catch(e){console.error(e);}
 }
 async function savePAMeta(){
-  try{await api('PUT','/payapps/'+currentPAId,{period_label:document.getElementById('pa-period-label').value,period_start:document.getElementById('pa-period-start').value||null,period_end:document.getElementById('pa-period-end').value||null,po_number:document.getElementById('pa-po-number').value||null,special_notes:document.getElementById('pa-special-notes').value||null});}
+  const notesEl=document.getElementById('pa-special-notes');
+  const notesHtml=notesEl?notesEl.innerHTML.trim():'';
+  try{await api('PUT','/payapps/'+currentPAId,{period_label:document.getElementById('pa-period-label').value,period_start:document.getElementById('pa-period-start').value||null,period_end:document.getElementById('pa-period-end').value||null,po_number:document.getElementById('pa-po-number').value||null,special_notes:notesHtml||null});}
   catch(e){console.error(e);}
 }
+function toggleNotesToolbar(){
+  const tb=document.getElementById('notes-toolbar');
+  tb.style.display=tb.style.display==='flex'?'none':'flex';
+}
+function notesCmd(cmd){document.execCommand(cmd,false,null);document.getElementById('pa-special-notes').focus();}
+function notesColor(c){document.execCommand('foreColor',false,c);document.getElementById('pa-special-notes').focus();}
+function notesFontSize(s){document.execCommand('fontSize',false,s);document.getElementById('pa-special-notes').focus();}
+function onNotesInput(){/* auto-save handled by onblur */}
 async function saveDistChecks(){
   if(!currentPAId) return;
   const o=document.getElementById('dist-owner').checked;
