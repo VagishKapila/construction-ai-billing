@@ -1472,7 +1472,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               <div id="admin-feature-usage"></div>
             </div>
             <div class="card">
-              <div class="ct">Recent errors &amp; failures</div>
+              <div class="ct" style="display:flex;justify-content:space-between;align-items:center">Recent errors &amp; failures<button class="btn btn-sm" onclick="adminClearErrors()" style="font-size:11px;color:var(--text3);border-color:var(--border)" title="Clear all error logs">Clear All</button></div>
               <div id="admin-errors" style="font-size:12px;max-height:260px;overflow-y:auto"></div>
             </div>
           </div>
@@ -4016,9 +4016,9 @@ async function adminSendTestEmail(){
   }
 }
 
-async function loadAdminDash(){
-  document.getElementById('admin-loading').classList.remove('hidden');
-  document.getElementById('admin-content').classList.add('hidden');
+async function loadAdminDash(preserveScroll){
+  const scrollY=preserveScroll?window.scrollY:0;
+  if(!preserveScroll){document.getElementById('admin-loading').classList.remove('hidden');document.getElementById('admin-content').classList.add('hidden');}
   try {
     const [stats, users, payappActivity, pipelineByUser] = await Promise.all([
       api('GET','/admin/stats'),
@@ -4037,8 +4037,8 @@ async function loadAdminDash(){
     renderBilledMonthlyChart(stats.revenue?.billed_by_month || []);
     renderPayappActivityChart(payappActivity);
     renderPipelineByUserChart(pipelineByUser);
-    document.getElementById('admin-loading').classList.add('hidden');
-    document.getElementById('admin-content').classList.remove('hidden');
+    if(!preserveScroll){document.getElementById('admin-loading').classList.add('hidden');document.getElementById('admin-content').classList.remove('hidden');}
+    if(preserveScroll) window.scrollTo(0,scrollY);
     // Load feedback inbox and support requests in parallel (non-blocking)
     loadAdminFeedback().catch(()=>{});
     loadAdminSupportRequests().catch(()=>{});
@@ -4339,20 +4339,25 @@ async function adminBlockUser(id){
   if(reason===null)return; // cancelled
   try{
     await api('POST','/admin/users/'+id+'/block',{reason});
-    loadAdminDash();
+    loadAdminDash(true);
   }catch(e){alert('Error: '+e.message);}
 }
 async function adminUnblockUser(id){
-  try{await api('POST','/admin/users/'+id+'/unblock',{});loadAdminDash();}
+  try{await api('POST','/admin/users/'+id+'/unblock',{});loadAdminDash(true);}
   catch(e){alert('Error: '+e.message);}
 }
 async function adminVerifyUser(id){
-  try{await api('POST','/admin/users/'+id+'/verify-email',{});loadAdminDash();}
+  try{await api('POST','/admin/users/'+id+'/verify-email',{});loadAdminDash(true);}
   catch(e){alert('Error: '+e.message);}
 }
 async function adminDeleteUser(id,name){
   if(!confirm(`Permanently delete user "${name}" and ALL their data? This cannot be undone.`))return;
-  try{await api('DELETE','/admin/users/'+id,null);loadAdminDash();}
+  try{await api('DELETE','/admin/users/'+id,null);loadAdminDash(true);}
+  catch(e){alert('Error: '+e.message);}
+}
+async function adminClearErrors(){
+  if(!confirm('Clear all error and failure logs?'))return;
+  try{await api('DELETE','/admin/errors',null);loadAdminDash(true);}
   catch(e){alert('Error: '+e.message);}
 }
 async function adminResetUserPassword(id,email,name){
@@ -4394,26 +4399,26 @@ async function adminDoResetPwd(id){
 async function adminExtendTrial(id){
   const days=prompt('How many days to add to trial?','30');
   if(!days||isNaN(days))return;
-  try{await api('POST','/admin/users/'+id+'/extend-trial',{days:parseInt(days)});loadAdminDash();}
+  try{await api('POST','/admin/users/'+id+'/extend-trial',{days:parseInt(days)});loadAdminDash(true);}
   catch(e){alert('Error: '+e.message);}
 }
 async function adminSetFreeOverride(id,name){
   if(!confirm(`Set "${name}" as FREE FOREVER? Their fee will be waived indefinitely.`))return;
-  try{await api('POST','/admin/users/'+id+'/set-free-override',{});loadAdminDash();}
+  try{await api('POST','/admin/users/'+id+'/set-free-override',{});loadAdminDash(true);}
   catch(e){alert('Error: '+e.message);}
 }
 async function adminUpgradePro(id){
-  try{await api('POST','/admin/users/'+id+'/upgrade-pro',{});loadAdminDash();}
+  try{await api('POST','/admin/users/'+id+'/upgrade-pro',{});loadAdminDash(true);}
   catch(e){alert('Error: '+e.message);}
 }
 async function adminResetTrial(id){
   if(!confirm('Reset this user to a fresh 90-day trial?'))return;
-  try{await api('POST','/admin/users/'+id+'/reset-trial',{});loadAdminDash();}
+  try{await api('POST','/admin/users/'+id+'/reset-trial',{});loadAdminDash(true);}
   catch(e){alert('Error: '+e.message);}
 }
 async function adminResendVerification(id,email){
   if(!confirm(`Resend verification email to ${email}?`))return;
-  try{await api('POST','/admin/users/'+id+'/resend-verification',{});alert('Verification email sent to '+email);loadAdminDash();}
+  try{await api('POST','/admin/users/'+id+'/resend-verification',{});alert('Verification email sent to '+email);loadAdminDash(true);}
   catch(e){alert('Error: '+e.message);}
 }
 

@@ -2678,6 +2678,14 @@ app.get('/api/admin/errors', adminAuth, async (req, res) => {
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+app.delete('/api/admin/errors', adminAuth, async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM analytics_events WHERE event IN ('server_error','login_failed','slow_request')`);
+    await logEvent(req.user.id, 'admin_errors_cleared', {});
+    res.json({ ok: true });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 app.get('/api/admin/users', adminAuth, async (req, res) => {
   try {
     const r = await pool.query(`
