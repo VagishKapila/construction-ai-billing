@@ -1319,6 +1319,52 @@ function parseSOVFile(filePath) {
     return true;
   });
 
+  // ── Post-process 3: Lump sum fallback ──────────────────────────────────────
+  // If normal parsing found 0 line items, check for a "lump sum" proposal:
+  // descriptions exist but amounts are only in a TOTAL row. Creates a single
+  // line item with the total amount. Scope descriptions are collected for display
+  // in the SOV review step but only the lump sum line goes to billing.
+  if (allRows.length === 0) {
+    // Scan ALL rows for a TOTAL row with a dollar amount
+    let lumpTotal = 0;
+    const descCol = iDesc >= 0 ? iDesc : (() => {
+      // Find desc column by scoring
+      const maxD = Math.max(...descScore);
+      return maxD > 0 ? descScore.indexOf(maxD) : -1;
+    })();
+    for (let ri = 0; ri < json.length; ri++) {
+      const row = json[ri];
+      for (let ci = 0; ci < row.length; ci++) {
+        const cell = String(row[ci]||'').trim();
+        if (/^(total|grand\s*total)$/i.test(cell)) {
+          // Found a TOTAL label — look for the biggest number in this row
+          for (let ci2 = 0; ci2 < row.length; ci2++) {
+            const n = parseFloat(String(row[ci2]||'').replace(/[$,\s]/g, ''));
+            if (!isNaN(n) && n > lumpTotal) lumpTotal = n;
+          }
+        }
+      }
+    }
+    if (lumpTotal > 0 && descCol >= 0) {
+      // Collect scope descriptions for context
+      const scopeDescs = [];
+      for (let ri = 0; ri < json.length; ri++) {
+        const desc = String(json[ri][descCol]||'').trim();
+        if (!desc || desc.length < 3) continue;
+        if (/^(total|subtotal|grand|note|sincerely|dear |we thank|it is an|signature)/i.test(desc)) continue;
+        if (/^(Altn|option|exclud)/i.test(desc)) continue;
+        if (desc.length > 100) continue; // skip paragraph text
+        scopeDescs.push(desc);
+      }
+      const scopeLabel = scopeDescs.length > 0
+        ? 'Lump Sum (' + scopeDescs.slice(0, 4).join(', ') + (scopeDescs.length > 4 ? ', ...' : '') + ')'
+        : 'Lump Sum';
+      const lumpRows = [{ item_id: '1', description: scopeLabel, scheduled_value: Math.round(lumpTotal * 100) / 100, is_parent: false }];
+      xlsSummary['total'] = Math.round(lumpTotal * 100) / 100;
+      return { headers: ['Item #','Description','Scheduled Value'], sheetName, allRows: lumpRows, parentRows: [], iItem, iDesc: descCol, iAmt: -1, summary: xlsSummary, lump_sum: true };
+    }
+  }
+
   const parentRows = allRows.filter(r => r.is_parent);
 
   return { headers: ['Item #','Description','Scheduled Value'], sheetName, allRows, parentRows, iItem, iDesc, iAmt, summary: xlsSummary };
