@@ -1718,10 +1718,15 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               <div class="field"><label>Period label</label><input type="text" id="pa-period-label" placeholder="e.g. January 2022" onchange="savePAMeta()"/></div>
               <div class="field"><label>Period start</label><input type="date" id="pa-period-start" onchange="savePAMeta()"/></div>
               <div class="field"><label>Period end</label><input type="date" id="pa-period-end" onchange="savePAMeta()"/></div>
+              <div class="field"><label>PO / Reference #</label><input type="text" id="pa-po-number" placeholder="e.g. PO-2026-0042" onchange="savePAMeta()"/></div>
               <div class="field"><label>Amount certified ($)</label><input type="text" id="arch-cert-amt" placeholder="Enter certified amount" onchange="saveArchCert()"/></div>
               <div class="field"><label>Certificate date</label><input type="date" id="arch-cert-date" onchange="saveArchCert()"/></div>
               <div class="field"><label>Architect name</label><input type="text" id="arch-cert-name" placeholder="Architect of record" onchange="saveArchCert()"/></div>
             </div>
+          </div>
+          <div class="card">
+            <div class="ct">Special notes &amp; conditions</div>
+            <textarea id="pa-special-notes" rows="3" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;resize:vertical" placeholder="e.g. 50% due upfront, Net 30 on balance. Material stored on-site per agreement dated 1/15/2026." onchange="savePAMeta()"></textarea>
           </div>
           <div id="g702-contract-warn"></div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
@@ -1818,6 +1823,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
                 Application #<strong id="prev-appnum"></strong>
                 <div style="font-size:8pt;margin-top:4px">Period: <span id="prev-period"></span></div>
                 <div style="font-size:8pt">Contract date: <span id="prev-contract-date"></span></div>
+                <div id="prev-po-line" style="font-size:8pt;margin-top:2px;display:none">PO #: <strong id="prev-po"></strong></div>
               </div>
             </div>
 
@@ -1869,6 +1875,11 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
                   <input type="file" id="sig-architect-input" accept="image/*" style="display:none" onchange="uploadSig(this,'architect')"/>
                 </div>
               </div>
+            </div>
+
+            <!-- Special notes -->
+            <div id="prev-special-notes-box" style="display:none;margin-top:8px;padding:6px 10px;background:#fafafa;border:1px solid #ddd;border-radius:4px;font-size:8pt;color:#333">
+              <strong>Notes &amp; Conditions:</strong> <span id="prev-special-notes"></span>
             </div>
 
             <!-- G703 PREVIEW -->
@@ -2895,6 +2906,8 @@ async function loadPayApp(id,tab=0){
     if(pa.period_label) document.getElementById('pa-period-label').value=pa.period_label;
     if(pa.period_start) document.getElementById('pa-period-start').value=(pa.period_start||'').split('T')[0];
     if(pa.period_end) document.getElementById('pa-period-end').value=(pa.period_end||'').split('T')[0];
+    document.getElementById('pa-po-number').value=pa.po_number||'';
+    document.getElementById('pa-special-notes').value=pa.special_notes||'';
     // Distribution checkboxes (null = use DB default: owner+arch true, contractor false)
     document.getElementById('dist-owner').checked    = pa.dist_owner    !== false;
     document.getElementById('dist-architect').checked = pa.dist_architect === true;
@@ -3020,6 +3033,13 @@ function renderAIAPreview(pa){
   _setChk('dist-box-contractor', pa.dist_contractor === true);
   const ptEl=document.getElementById('prev-payment-terms');
   if(ptEl) ptEl.innerHTML='<strong>Payment Terms:</strong> '+(pa.payment_terms||companySettings.default_payment_terms||'Due on receipt');
+  // PO number
+  const poLine=document.getElementById('prev-po-line');
+  const poVal=document.getElementById('prev-po');
+  if(poLine&&poVal){if(pa.po_number){poVal.textContent=pa.po_number;poLine.style.display='block';}else{poLine.style.display='none';}}
+  // Special notes
+  const notesEl=document.getElementById('prev-special-notes');
+  if(notesEl){if(pa.special_notes){notesEl.textContent=pa.special_notes;notesEl.parentElement.style.display='block';}else{notesEl.parentElement.style.display='none';}}
   if(logoDataURL){
     const lb=document.getElementById('preview-logo-box');
     if(lb) lb.innerHTML=`<img src="${logoDataURL}"/>`;
@@ -3382,7 +3402,7 @@ async function saveArchCert(){
   catch(e){console.error(e);}
 }
 async function savePAMeta(){
-  try{await api('PUT','/payapps/'+currentPAId,{period_label:document.getElementById('pa-period-label').value,period_start:document.getElementById('pa-period-start').value||null,period_end:document.getElementById('pa-period-end').value||null});}
+  try{await api('PUT','/payapps/'+currentPAId,{period_label:document.getElementById('pa-period-label').value,period_start:document.getElementById('pa-period-start').value||null,period_end:document.getElementById('pa-period-end').value||null,po_number:document.getElementById('pa-po-number').value||null,special_notes:document.getElementById('pa-special-notes').value||null});}
   catch(e){console.error(e);}
 }
 async function saveDistChecks(){

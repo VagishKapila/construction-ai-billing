@@ -139,8 +139,17 @@ def parse_pdf(filepath):
                 if SKIP_RE.search(desc):
                     continue
 
+                # ── Smart dedup: aggregate repeated descriptions ──
+                # If the same description appears multiple times (e.g. "Event Beer" ×20),
+                # sum their amounts into one row instead of keeping only the first.
+                # This handles invoices, bar tabs, and any doc with repeated line items.
                 key = desc.lower()
                 if key in seen:
+                    # Find existing row and add to it
+                    for existing in rows:
+                        if existing['description'].lower() == key:
+                            existing['scheduled_value'] = round(existing['scheduled_value'] + total, 2)
+                            break
                     continue
                 seen.add(key)
 
@@ -165,8 +174,15 @@ def parse_docx(filepath):
         desc = clean_desc(desc)
         if len(desc) < 4 or SKIP_RE.search(desc):
             return
+        if amt <= 0:
+            return
         key = desc.lower()
-        if key in seen or amt <= 0:
+        if key in seen:
+            # Smart dedup: aggregate repeated descriptions
+            for existing in rows:
+                if existing['description'].lower() == key:
+                    existing['scheduled_value'] = round(existing['scheduled_value'] + amt, 2)
+                    break
             return
         seen.add(key)
         rows.append({
@@ -255,38 +271,30 @@ def main():
             print(json.dumps({'error': 'No line items with dollar amounts found in this file.'}))
             sys.exit(1)
 
-        # ── Human-first validation: trust the document total, verify line items match ──
-        # If the document reports a total, check if line items sum matches.
-        # If line items overshoot, some summary rows (overhead, markup) may be
-        # double-counted because their amounts are already in per-line totals.
-        # Tax is a REAL cost — never remove tax. Only remove overhead/markup rows
-        # if doing so brings the total closer to the document's reported total.
-        reported_total = summary.get('total') or summary.get('balance_due')
-        if reported_total and reported_total > 0:
-            computed = round(sum(r['scheduled_value'] for r in rows), 2)
-            if computed > reported_total * 1.005:  # more than 0.5% over = likely double-count
-                # Try removing rows with overhead/markup labels (NOT tax — tax is real)
-                overhead_keywords = ['overhead', 'markup', 'profit and overhead', 'p&o',
-                                     'general conditions']
-                filtered = []
-                removed_summary = {}
-                for r in rows:
-                    desc_lower = r['description'].lower()
-                    is_overhead = any(kw in desc_lower for kw in overhead_keywords)
-                    if is_overhead:
-                        key = re.sub(r'[^a-z0-9_]', '_', desc_lower)[:30]
-                        removed_summary[key] = round(r['scheduled_value'], 2)
-                    else:
-                        filtered.append(r)
-                # Only use filtered list if it brings us closer to the reported total
-                filtered_total = round(sum(r['scheduled_value'] for r in filtered), 2)
-                if abs(filtered_total - reported_total) < abs(computed - reported_total):
-                    rows = filtered
-                    for k, v in removed_summary.items():
-                        if k not in summary:
-                            summary[k] = v
+        # ── Total-First Verification ──────────────────────────────────────────────
+        # Works like a human: trust the document total, verify line items match.
+        # Uses sov_verifier module (math-first, AI fallback if needed).
+        try:
+            from sov_verifier import verify_sov
+            api_key = os.environ.get('ANTHROPIC_API_KEY')
+            vr = verify_sov(rows, summary, anthropic_api_key=api_key)
+            rows = vr['rows']
+            # Move removed rows into summary metadata
+            for r in vr.get('removed', []):
+                key = re.sub(r'[^a-z0-9_]', '_', r['description'].lower())[:30]
+                if key not in summary:
+                    summary[key] = round(r['scheduled_value'], 2)
+            # Log verification result for debugging
+            method = vr.get('method', '?')
+            match = '✓' if vr.get('match') else '✗'
+            sys.stderr.write(f'[SOV Verifier] {match} method={method} computed=${vr["computed_total"]:,.2f} reported=${vr.get("reported_total","N/A")}\n')
+        except ImportError:
+            sys.stderr.write('[SOV Verifier] Module not found, skipping verification\n')
+        except Exception as ve:
+            sys.stderr.write(f'[SOV Verifier] Error: {ve}\n')
 
         computed_total = round(sum(r['scheduled_value'] for r in rows), 2)
+        reported_total = summary.get('total') or summary.get('balance_due')
 
         sys.stdout.write(json.dumps({
             'rows':           rows,
