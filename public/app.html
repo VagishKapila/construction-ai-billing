@@ -595,10 +595,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
   .ptitle{font-size:16px}
 }
 /* ── Onboarding Tour ────────────────────────────────────── */
-.tour-overlay{position:fixed;inset:0;z-index:10000;pointer-events:none;transition:opacity .3s}
-.tour-overlay.active{pointer-events:all}
-.tour-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:10000}
-.tour-highlight{position:absolute;z-index:10001;border-radius:8px;box-shadow:0 0 0 4px #185FA5,0 0 0 9999px rgba(0,0,0,.35);pointer-events:none;transition:all .4s cubic-bezier(.4,0,.2,1)}
+.tour-highlight{position:absolute;z-index:10001;border-radius:8px;box-shadow:0 0 0 3px #185FA5,0 0 16px rgba(24,95,165,.4);pointer-events:none;transition:all .35s ease}
 .tour-tooltip{position:absolute;z-index:10002;background:#fff;border-radius:12px;padding:20px;max-width:340px;width:calc(100vw - 40px);box-shadow:0 8px 40px rgba(0,0,0,.22);animation:tourFadeIn .3s ease}
 @keyframes tourFadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 .tour-tooltip h3{font-size:15px;font-weight:700;color:#0a1f3c;margin:0 0 6px}
@@ -5138,48 +5135,35 @@ async function removeTeamMember(id) {
   } catch(e) { alert(e.message); }
 }
 
-// ── ONBOARDING GUIDED TOUR ──────────────────────────────────────────────────
+// ── ONBOARDING GUIDED TOUR (no backdrop — just spotlight ring + tooltip) ─────
+// 6 key features every user needs to know
 const TOUR_STEPS=[
-  {target:'#nav-new-proj',title:'Step 1: Create a project',desc:'Click "+ New project" to start. You will enter the project name, owner, and contract details, then upload your Schedule of Values (SOV). We accept Excel, CSV, PDF, and Word files.',pos:'right'},
-  {target:'#nav-dash',title:'Step 2: Your Dashboard',desc:'All your projects live here. Click any project to open it, view pay apps, and start billing.',pos:'right'},
-  {target:'#nav-revenue',title:'Step 3: Track revenue',desc:'See total billed, retention held, and net received across all projects. Filter by month, quarter, or year.',pos:'right'},
-  {target:'.topbar-right .btn[onclick="showSettings()"]',title:'Step 4: Set up your company',desc:'Upload your company logo and signature — they appear on every PDF. Set default payment terms and retainage. Your info auto-fills on new projects.',pos:'below'},
-  {target:'#nav-new-proj',title:'Inside a pay app',desc:'Once your project is set up: open it, click "+ New Pay App", enter % complete per line, then Download PDF. You can also add change orders, PO numbers, and special notes. Hit "Send" to email it directly to the owner.',pos:'right'},
-  {target:'#ai-fab',title:'Need help? Ask Aria!',desc:'Our AI assistant can answer questions about billing, lien waivers, change orders, or anything else. Click the avatar anytime.',pos:'above'},
+  {target:'#nav-new-proj',title:'Create your first project',desc:'Start here. Enter your project details, upload your Schedule of Values (SOV) as Excel, CSV, PDF, or Word — and you are ready to bill.',pos:'right'},
+  {target:'#nav-new-proj',title:'Add PO numbers & notes',desc:'Inside each pay app, you can add PO numbers, special notes, and memos that print on the G702 cover sheet. Keep everything documented for your records.',pos:'right'},
+  {target:'#nav-new-proj',title:'Change orders & lien waivers',desc:'Add change orders directly in the pay app — they roll into totals automatically. Generate California lien waivers (Conditional or Unconditional) with one click, signed electronically.',pos:'right'},
+  {target:'#nav-new-proj',title:'Download & send invoices',desc:'Download your G702/G703 as a professional PDF with your logo and signature. Hit "Send" to email it directly to the owner — lien waiver attached automatically.',pos:'right'},
+  {target:'#nav-new-proj',title:'Accept payments (coming soon!)',desc:'Soon you will be able to accept payments directly through your invoices. Your clients pay online, funds go straight to your bank. No more chasing checks.',pos:'right'},
+  {target:'#nav-new-proj',title:'AI-powered billing assistant',desc:'Our AI assistant Aria helps with billing questions, lien waivers, change orders — even how to use the app. Click the chat icon anytime to ask anything.',pos:'right'},
 ];
 let _tourStep=0;
 let _tourActive=false;
 let _tourHighlight=null;
 let _tourTooltip=null;
-let _tourBackdrop=null;
 
 async function checkOnboardingTour(){
   if(!currentUser)return;
-  // Check from server whether user has completed onboarding
   try{
     const r=await api('GET','/onboarding/status');
-    if(!r.has_completed_onboarding){
-      // Small delay so the dashboard fully renders first
-      setTimeout(()=>startOnboardingTour(),800);
-    }
-  }catch(e){/* silent — don't block login */}
+    if(!r.has_completed_onboarding) setTimeout(()=>startOnboardingTour(),800);
+  }catch(e){}
 }
 
 function startOnboardingTour(){
   _tourStep=0;
   _tourActive=true;
-  // Reset onboarding flag so it can be re-triggered
   api('POST','/onboarding/reset',{}).catch(()=>{});
-  // Navigate to dashboard first so all tour targets are visible
   showDash();
-  // Create overlay elements if they don't exist
-  if(!_tourBackdrop){
-    _tourBackdrop=document.createElement('div');
-    _tourBackdrop.className='tour-backdrop';
-    _tourBackdrop.style.display='none';
-    _tourBackdrop.onclick=()=>skipTour();
-    document.body.appendChild(_tourBackdrop);
-  }
+  // Create elements once
   if(!_tourHighlight){
     _tourHighlight=document.createElement('div');
     _tourHighlight.className='tour-highlight';
@@ -5192,6 +5176,15 @@ function startOnboardingTour(){
     _tourTooltip.style.display='none';
     document.body.appendChild(_tourTooltip);
   }
+  // Light scrim (not full black — just dims slightly)
+  if(!document.getElementById('tour-scrim')){
+    const scrim=document.createElement('div');
+    scrim.id='tour-scrim';
+    scrim.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.2);z-index:9999;display:none;cursor:pointer';
+    scrim.onclick=()=>skipTour();
+    document.body.appendChild(scrim);
+  }
+  document.getElementById('tour-scrim').style.display='block';
   showTourStep();
 }
 
@@ -5199,25 +5192,26 @@ function showTourStep(){
   if(_tourStep<0||_tourStep>=TOUR_STEPS.length){endTour();return;}
   const step=TOUR_STEPS[_tourStep];
   const el=document.querySelector(step.target);
-  if(!el||el.offsetParent===null||el.style.display==='none'||el.getBoundingClientRect().width===0){_tourStep++;showTourStep();return;} // skip missing or hidden elements
-  // Scroll element into view
+  // If element missing or hidden, try next step (max 3 skips to prevent infinite loop)
+  if(!el||!el.getBoundingClientRect().width){
+    if(_tourStep<TOUR_STEPS.length-1){_tourStep++;showTourStep();}else{endTour();}
+    return;
+  }
   el.scrollIntoView({behavior:'smooth',block:'center'});
   setTimeout(()=>{
     const rect=el.getBoundingClientRect();
-    const pad=6;
-    // Position highlight around target element
-    _tourBackdrop.style.display='block';
+    const pad=8;
+    // Spotlight ring around target
     _tourHighlight.style.display='block';
-    _tourTooltip.style.display='block';
     _tourHighlight.style.top=(rect.top-pad+window.scrollY)+'px';
     _tourHighlight.style.left=(rect.left-pad)+'px';
     _tourHighlight.style.width=(rect.width+pad*2)+'px';
     _tourHighlight.style.height=(rect.height+pad*2)+'px';
-    // Build tooltip content
+    // Tooltip content
     const dots=TOUR_STEPS.map((_,i)=>`<div class="tour-dot${i===_tourStep?' active':''}"></div>`).join('');
     const backBtn=_tourStep>0?`<button class="tour-btn tour-btn-back" onclick="tourBack()">Back</button>`:'';
     const isLast=_tourStep===TOUR_STEPS.length-1;
-    const nextLabel=isLast?'Finish':'Next';
+    _tourTooltip.style.display='block';
     _tourTooltip.innerHTML=`
       <button class="tour-close" onclick="skipTour()" title="Close tour">&times;</button>
       <div class="tour-step-num">${_tourStep+1} of ${TOUR_STEPS.length}</div>
@@ -5228,39 +5222,25 @@ function showTourStep(){
         <div style="display:flex;align-items:center;gap:8px">
           <div class="tour-dots">${dots}</div>
           ${backBtn}
-          <button class="tour-btn tour-btn-next" onclick="tourNext()">${nextLabel}</button>
+          <button class="tour-btn tour-btn-next" onclick="tourNext()">${isLast?'Get started!':'Next'}</button>
         </div>
       </div>`;
-    // Position tooltip relative to target
-    positionTooltip(rect,step.pos);
-  },350);
-}
-
-function positionTooltip(rect,pos){
-  const tt=_tourTooltip;
-  const gap=14;
-  tt.style.top='';tt.style.left='';tt.style.right='';tt.style.bottom='';
-  // Calculate position
-  const ttW=Math.min(340,window.innerWidth-40);
-  if(pos==='right'){
-    let top=rect.top+window.scrollY-10;
+    // Position tooltip to the right of target, with fallback
+    const gap=16;
+    const ttW=Math.min(360,window.innerWidth-40);
     let left=rect.right+gap;
-    if(left+ttW>window.innerWidth-20){left=Math.max(20,rect.left-ttW-gap);} // flip left
-    if(top+200>window.innerHeight+window.scrollY)top=rect.bottom+window.scrollY-200;
-    tt.style.top=top+'px';tt.style.left=left+'px';
-  }else if(pos==='below'){
-    let top=rect.bottom+window.scrollY+gap;
-    let left=Math.max(20,Math.min(rect.left,window.innerWidth-ttW-20));
-    tt.style.top=top+'px';tt.style.left=left+'px';
-  }else if(pos==='above'){
-    let left=Math.max(20,rect.left-ttW/2);
-    if(left+ttW>window.innerWidth-20)left=window.innerWidth-ttW-20;
-    tt.style.top=(rect.top+window.scrollY-gap-180)+'px';tt.style.left=left+'px';
-  }else{
-    // default: below
-    tt.style.top=(rect.bottom+window.scrollY+gap)+'px';
-    tt.style.left=Math.max(20,rect.left)+'px';
-  }
+    let top=rect.top+window.scrollY;
+    // If doesn't fit right, center below
+    if(left+ttW>window.innerWidth-20){
+      left=Math.max(16,(window.innerWidth-ttW)/2);
+      top=rect.bottom+window.scrollY+gap;
+    }
+    // Make sure not off bottom of screen
+    if(top>window.scrollY+window.innerHeight-250) top=window.scrollY+Math.max(20,window.innerHeight-300);
+    _tourTooltip.style.top=top+'px';
+    _tourTooltip.style.left=left+'px';
+    _tourTooltip.style.maxWidth=ttW+'px';
+  },300);
 }
 
 function tourNext(){
@@ -5271,20 +5251,16 @@ function tourNext(){
 function tourBack(){
   if(_tourStep>0){_tourStep--;showTourStep();}
 }
-function skipTour(){
-  endTour();
-}
+function skipTour(){endTour();}
 async function endTour(){
   _tourActive=false;
-  if(_tourBackdrop)_tourBackdrop.style.display='none';
   if(_tourHighlight)_tourHighlight.style.display='none';
   if(_tourTooltip)_tourTooltip.style.display='none';
-  // Mark as completed on server
+  const scrim=document.getElementById('tour-scrim');
+  if(scrim)scrim.style.display='none';
   try{await api('POST','/onboarding/complete',{});}catch(e){}
 }
-// Handle window resize during tour
 window.addEventListener('resize',()=>{if(_tourActive)showTourStep();});
-// Escape key closes tour
 document.addEventListener('keydown',(e)=>{if(e.key==='Escape'&&_tourActive)skipTour();});
 </script>
 <!-- ── AI AVATAR ASSISTANT ─────────────────────────────────────────── -->
