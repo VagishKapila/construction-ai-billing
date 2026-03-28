@@ -2296,39 +2296,25 @@ app.post('/api/payapps/:id/email', auth, async (req, res) => {
       }
     }
 
-    // Attach lien waiver PDF if one is linked — regenerate with current logo
+    // Attach lien waiver PDF if one is linked
     try {
       const lienRes = await pool.query(
-        `SELECT ld.*, p.name, p.owner, p.contractor, p.location, p.city, p.state, p.contact as location_contact,
-                cs.logo_filename, cs.company_name
-         FROM lien_documents ld
+        `SELECT ld.filename, ld.doc_type FROM lien_documents ld
          JOIN projects p ON p.id=ld.project_id
-         LEFT JOIN company_settings cs ON cs.user_id=p.user_id
          WHERE ld.pay_app_id=$1 AND p.user_id=$2
          ORDER BY ld.created_at DESC LIMIT 1`,
         [req.params.id, req.user.id]
       );
       if (lienRes.rows[0]) {
-        const lien = lienRes.rows[0];
-        const lienPath = path.join(__dirname, 'uploads', lien.filename);
-        // Regenerate with current logo
-        try {
-          let lienPayAppRef = null;
-          if (lien.pay_app_id) { lienPayAppRef = `Pay App #${pa.app_number}${pa.period_label ? ' — ' + pa.period_label : ''}`; }
-          const lienProject = { name: lien.name, owner: lien.owner, contractor: lien.contractor || lien.company_name,
-            company_name: lien.company_name, location: lien.location_contact, city: lien.city, state: lien.state, logo_filename: lien.logo_filename };
-          await generateLienDocPDF({ fpath: lienPath, doc_type: lien.doc_type, project: lienProject,
-            through_date: lien.through_date, amount: lien.amount, maker_of_check: lien.maker_of_check,
-            check_payable_to: lien.check_payable_to, signatory_name: lien.signatory_name,
-            signatory_title: lien.signatory_title, signedAt: new Date(lien.signed_at),
-            ip: lien.signatory_ip || 'on file', jurisdiction: lien.jurisdiction || 'california', pay_app_ref: lienPayAppRef });
-        } catch(regenErr) { console.error('[Email] Lien regen error:', regenErr.message); }
+        const lienPath = path.join(__dirname, 'uploads', lienRes.rows[0].filename);
         if (fs.existsSync(lienPath)) {
           const lienBuf = fs.readFileSync(lienPath);
-          emailAttachments.push({
-            filename: `Lien_Waiver_${(lien.doc_type||'waiver').replace(/\s+/g,'_')}_PayApp${pa.app_number}.pdf`,
-            content: lienBuf.toString('base64')
-          });
+          if (lienBuf.length > 0) {
+            emailAttachments.push({
+              filename: `Lien_Waiver_${(lienRes.rows[0].doc_type||'waiver').replace(/\s+/g,'_')}_PayApp${pa.app_number}.pdf`,
+              content: lienBuf.toString('base64')
+            });
+          }
         }
       }
     } catch(lienErr) { console.error('[Email] Lien attach error:', lienErr.message); }
@@ -3295,7 +3281,7 @@ app.get('/api/lien-docs/:id/pdf', async (req, res) => {
 
   const fp = path.resolve(__dirname, 'uploads', lien.filename);
 
-  // Try to regenerate PDF with current logo from settings
+  // Try to regenerate PDF with current logo (write to temp file first to avoid corrupting original)
   try {
     let pay_app_ref = null;
     if (lien.pay_app_id) {
@@ -3307,16 +3293,25 @@ app.get('/api/lien-docs/:id/pdf', async (req, res) => {
       company_name: lien.company_name, location: lien.location_contact,
       city: lien.city, state: lien.state, logo_filename: lien.logo_filename
     };
+    const tmpPath = fp + '.tmp';
     await generateLienDocPDF({
-      fpath: fp, doc_type: lien.doc_type, project,
+      fpath: tmpPath, doc_type: lien.doc_type, project,
       through_date: lien.through_date, amount: lien.amount,
       maker_of_check: lien.maker_of_check, check_payable_to: lien.check_payable_to,
       signatory_name: lien.signatory_name, signatory_title: lien.signatory_title,
       signedAt: new Date(lien.signed_at), ip: lien.signatory_ip || 'on file',
       jurisdiction: lien.jurisdiction || 'california', pay_app_ref
     });
+    // Only replace original if temp file was successfully generated
+    if (fs.existsSync(tmpPath) && fs.statSync(tmpPath).size > 100) {
+      fs.renameSync(tmpPath, fp);
+    } else {
+      try { fs.unlinkSync(tmpPath); } catch(_) {}
+    }
   } catch(regenErr) {
     console.error('[Lien PDF regen error]', regenErr.message);
+    // Clean up temp file if it exists
+    try { const tmp = fp + '.tmp'; if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch(_) {}
   }
 
   // Serve the file (regenerated or original)
