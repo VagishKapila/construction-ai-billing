@@ -2157,10 +2157,16 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
             <div class="field" style="margin-top:8px"><label>Message</label>
               <textarea id="email-body" rows="4" style="resize:vertical;padding:8px 10px;border:0.5px solid var(--border2);border-radius:var(--radius);font-size:12px;background:var(--bg2);color:var(--text)"></textarea>
             </div>
-            <div style="margin:8px 0;display:flex;align-items:center;gap:6px">
-              <input type="checkbox" id="attach-lien-waiver" checked style="width:15px;height:15px;cursor:pointer">
-              <label for="attach-lien-waiver" style="font-size:12px;color:var(--text2);cursor:pointer">Attach lien waiver to email</label>
-              <span id="lien-waiver-status" style="font-size:11px;color:var(--green);margin-left:4px"></span>
+            <div style="margin:8px 0;display:flex;flex-direction:column;gap:6px">
+              <div style="display:flex;align-items:center;gap:6px">
+                <input type="checkbox" id="attach-lien-waiver" checked style="width:15px;height:15px;cursor:pointer">
+                <label for="attach-lien-waiver" style="font-size:12px;color:var(--text2);cursor:pointer">Attach lien waiver to email</label>
+                <span id="lien-waiver-status" style="font-size:11px;color:var(--green);margin-left:4px"></span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px">
+                <input type="checkbox" id="include-payment-link" checked style="width:15px;height:15px;cursor:pointer;accent-color:#6366f1">
+                <label for="include-payment-link" style="font-size:12px;color:var(--text2);cursor:pointer">Include "Pay Now" button in email <span style="font-size:10px;color:var(--green)">(ACH or card — get paid faster)</span></label>
+              </div>
             </div>
             <div class="br">
               <button type="button" class="btn btn-success" onclick="sendEmail()" id="btn-send-email">📤 Send &amp; Mark Submitted</button>
@@ -3208,6 +3214,8 @@ async function loadPayApp(id,tab=0){
     if(currentProjects.length){
       try{const allPAs=await api('GET','/projects/'+pa.project_id+'/payapps');sidebarPACache[pa.project_id]=allPAs;buildSidebarProjects(currentProjects,pa.project_id);}catch(e){}
     }
+    // Auto-fill email fields from project data
+    if(pa.owner_email) document.getElementById('email-to').value=pa.owner_email;
     document.getElementById('email-subj').value='Pay Application #'+pa.app_number+' — '+pa.project_name;
     document.getElementById('email-body').value='Please find attached Pay Application #'+pa.app_number+' for the '+pa.project_name+' project ('+(pa.period_label||'')+').\n\nKindly review and certify at your earliest convenience.\n\nThank you.';
     // Amount Certified: always sync with current payment due
@@ -3891,7 +3899,8 @@ async function sendEmail(){
   if(btn){btn.textContent='⏳ Sending…';btn.disabled=true;}
   try{
     const attachLien=document.getElementById('attach-lien-waiver')?.checked!==false;
-    const result=await api('POST','/payapps/'+currentPAId+'/email',{to,cc,subject,message,attach_lien_waiver:attachLien});
+    const includePayLink=document.getElementById('include-payment-link')?.checked!==false;
+    const result=await api('POST','/payapps/'+currentPAId+'/email',{to,cc,subject,message,attach_lien_waiver:attachLien,include_payment_link:includePayLink});
     // Update local state (server marks as submitted)
     currentPAData=await api('GET','/payapps/'+currentPAId);
     renderPAHeader(currentPAData);

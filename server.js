@@ -242,11 +242,11 @@ app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
           to: [user.email],
           subject: 'Reset your password — Construction AI Billing',
           html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">
-            <h2 style="color:#185FA5">Reset your password</h2>
+            <h2 style="color:#6366f1">Reset your password</h2>
             <p>Hi ${user.name},</p>
             <p>We received a request to reset your password for your Construction AI Billing account.</p>
             <p style="margin:24px 0">
-              <a href="${resetUrl}" style="background:#185FA5;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block">
+              <a href="${resetUrl}" style="background:#6366f1;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block">
                 Reset Password
               </a>
             </p>
@@ -376,10 +376,10 @@ async function sendVerificationEmail(email, name, token) {
 
 function verifyEmailHtml(name, url) {
   return `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">
-    <h2 style="color:#185FA5">Welcome to Construction AI Billing</h2>
+    <h2 style="color:#6366f1">Welcome to Construction AI Billing</h2>
     <p>Hi ${name},</p>
     <p>Please verify your email address to keep your account in good standing.</p>
-    <a href="${url}" style="display:inline-block;background:#185FA5;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;margin:16px 0">Verify my email →</a>
+    <a href="${url}" style="display:inline-block;background:#6366f1;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;margin:16px 0">Verify my email →</a>
     <p style="color:#888;font-size:12px">This link expires in 48 hours. If you didn't sign up, you can ignore this email.</p>
   </div>`;
 }
@@ -497,14 +497,14 @@ app.get('/oauth/authorize', async (req, res) => {
   body{font-family:-apple-system,sans-serif;background:#f0f4f8;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
   .box{background:#fff;border-radius:12px;padding:36px 40px;max-width:400px;width:100%;box-shadow:0 4px 24px rgba(0,0,0,0.12);text-align:center}
   h1{font-size:20px;margin-bottom:8px;color:#1a1a1a}
-  .logo{font-size:14px;font-weight:600;color:#185FA5;margin-bottom:24px}
+  .logo{font-size:14px;font-weight:600;color:#6366f1;margin-bottom:24px}
   p{font-size:14px;color:#555;margin-bottom:6px;text-align:left}
   .scope-list{background:#f8fafc;border-radius:8px;padding:14px 18px;text-align:left;font-size:13px;color:#333;margin:16px 0}
   .scope-list li{margin-bottom:4px}
   .client-name{font-weight:600;color:#1a1a1a}
   input{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;margin:6px 0 14px;box-sizing:border-box}
   .btn{width:100%;padding:11px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;margin-top:6px}
-  .btn-primary{background:#185FA5;color:#fff}
+  .btn-primary{background:#6366f1;color:#fff}
   .btn-secondary{background:#f1f5f9;color:#555;margin-top:8px}
   .err{color:#dc2626;font-size:13px;margin-bottom:10px}
 </style>
@@ -1795,14 +1795,14 @@ body{font-family:'Times New Roman',Times,serif;font-size:9pt;color:#000;backgrou
 .aia-cell-label{flex:1}
 .aia-cell-val{font-weight:bold;white-space:nowrap;margin-left:8px}
 .aia-cell-H{background:#fffbe6}
-.aia-cell-H .aia-cell-val{font-size:13pt;color:#185FA5}
+.aia-cell-H .aia-cell-val{font-size:13pt;color:#6366f1}
 /* Distribution */
 .aia-distribution{margin-bottom:10px;font-size:8.5pt}
 .aia-dist-title{font-weight:bold;margin-bottom:5px}
 .aia-dist-grid{display:flex;gap:18px}
 .aia-dist-item{display:flex;align-items:center;gap:5px}
-.aia-checkbox{width:13px;height:13px;border:1.5px solid #185FA5;border-radius:2px;flex-shrink:0}
-.aia-checkbox.checked{background:#185FA5}
+.aia-checkbox{width:13px;height:13px;border:1.5px solid #6366f1;border-radius:2px;flex-shrink:0}
+.aia-checkbox.checked{background:#6366f1}
 /* Signature boxes */
 .aia-sig-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
 .aia-sig-box{border:1px solid #ccc;padding:10px;border-radius:4px;display:flex;flex-direction:column;min-height:120px}
@@ -1823,7 +1823,7 @@ td{border:1px solid #ddd;padding:2px 5px}
 .print-branding{text-align:center;margin-top:20px;padding-top:10px;border-top:1px solid #e0e0e0}
 .brand-name{font-size:11pt;letter-spacing:0.3px;margin-bottom:3px}
 .brand-tagline{font-size:8pt;color:#777;margin-bottom:3px;font-style:italic}
-.brand-link{font-size:8pt;color:#185FA5;text-decoration:none}
+.brand-link{font-size:8pt;color:#6366f1;text-decoration:none}
 </style></head>
 <body>
 <!-- G702 PAGE -->
@@ -1928,7 +1928,7 @@ ${pa.special_notes ? `<div style="margin-top:8px;padding:6px 10px;background:#fa
   ${pa.payment_link_token && due > 0 ? `
   <div style="text-align:center;margin:18px 0 10px;padding:14px 20px;background:#f0f4ff;border:1.5px solid #93c5fd;border-radius:8px">
     <div style="font-size:9pt;color:#555;margin-bottom:6px">Pay this invoice online — ACH or credit card</div>
-    <a href="https://constructinv.varshyl.com/pay/${pa.payment_link_token}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 28px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:10pt">Pay Now — ${fmtM(due)}</a>
+    <a href="https://constructinv.varshyl.com/pay/${pa.payment_link_token}" style="display:inline-block;background:#6366f1;color:#fff;padding:10px 28px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:10pt">Pay Now — ${fmtM(due)}</a>
     <div style="font-size:7.5pt;color:#888;margin-top:6px">constructinv.varshyl.com/pay/${pa.payment_link_token}</div>
   </div>` : ''}
   <div class="print-branding">
@@ -2245,8 +2245,9 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
 
 // ── Email pay application (PDF + lien waiver attached) ───────────────────
 app.post('/api/payapps/:id/email', auth, async (req, res) => {
-  const { to, cc, subject, message, attach_lien_waiver } = req.body;
+  const { to, cc, subject, message, attach_lien_waiver, include_payment_link } = req.body;
   const shouldAttachLien = attach_lien_waiver !== false; // default true
+  const shouldIncludePayLink = include_payment_link !== false; // default true (opt-out)
   if (!to) return res.status(400).json({ error: 'Recipient email (to) is required' });
 
   try {
@@ -2446,29 +2447,32 @@ app.post('/api/payapps/:id/email', auth, async (req, res) => {
     } catch(attErr) { console.error('[Email] PDF doc attach error:', attErr.message); }
 
     // Auto-generate payment link if GC has Stripe Connect and pay app doesn't have one yet
+    // Only include if user checked "Include Payment Link" (default: true / opt-out)
     const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
     let payNowUrl = null;
-    try {
-      const acctCheck = (await pool.query('SELECT stripe_account_id FROM connected_accounts WHERE user_id=$1 AND charges_enabled=TRUE', [req.user.id])).rows[0];
-      if (acctCheck && due > 0) {
-        let payToken = pa.payment_link_token;
-        if (!payToken) {
-          payToken = generatePaymentToken();
-          await pool.query('UPDATE pay_apps SET payment_link_token=$1 WHERE id=$2', [payToken, req.params.id]);
+    if (shouldIncludePayLink) {
+      try {
+        const acctCheck = (await pool.query('SELECT stripe_account_id FROM connected_accounts WHERE user_id=$1 AND charges_enabled=TRUE', [req.user.id])).rows[0];
+        if (acctCheck && due > 0) {
+          let payToken = pa.payment_link_token;
+          if (!payToken) {
+            payToken = generatePaymentToken();
+            await pool.query('UPDATE pay_apps SET payment_link_token=$1 WHERE id=$2', [payToken, req.params.id]);
+          }
+          payNowUrl = `${baseUrl}/pay/${payToken}`;
         }
-        payNowUrl = `${baseUrl}/pay/${payToken}`;
-      }
-    } catch(payLinkErr) { console.error('[Email] Payment link gen error:', payLinkErr.message); }
+      } catch(payLinkErr) { console.error('[Email] Payment link gen error:', payLinkErr.message); }
+    }
 
     // Build HTML email body
     const safeMsg = (message||'').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
     const payNowBtnHtml = payNowUrl ? `
         <div style="text-align:center;margin:20px 0 8px">
-          <a href="${payNowUrl}" style="display:inline-block;background:#2563eb;color:#ffffff;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:12pt">Pay Now — $${due.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</a>
+          <a href="${payNowUrl}" style="display:inline-block;background:#6366f1;color:#ffffff;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:12pt">Pay Now — $${due.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</a>
         </div>
         <p style="font-size:9pt;color:#888;text-align:center;margin:4px 0 0">ACH bank transfer or credit card accepted. Secure payment via Stripe.</p>` : '';
     const emailHtml = `<div style="font-family:sans-serif;max-width:600px;margin:0 auto">
-      <div style="background:#185FA5;padding:18px 24px;color:#fff">
+      <div style="background:#6366f1;padding:18px 24px;color:#fff">
         <h2 style="margin:0;font-size:16pt">Pay Application #${pa.app_number}</h2>
         <div style="font-size:10pt;margin-top:4px;opacity:0.9">${pa.pname||''} · ${pa.period_label||''}</div>
       </div>
@@ -2479,7 +2483,7 @@ app.post('/api/payapps/:id/email', auth, async (req, res) => {
           <tr style="background:#f7f7f7"><td style="padding:5px 8px;color:#555">Application #</td><td style="padding:5px 8px">${pa.app_number}</td></tr>
           <tr><td style="padding:5px 8px;color:#555">Period</td><td style="padding:5px 8px">${pa.period_label||''}</td></tr>
           <tr style="background:#f7f7f7"><td style="padding:5px 8px;color:#555;font-weight:bold">Current Payment Due</td>
-            <td style="padding:5px 8px;font-weight:bold;color:#185FA5;font-size:11pt">$${due.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>
+            <td style="padding:5px 8px;font-weight:bold;color:#6366f1;font-size:11pt">$${due.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>
         </table>
         ${payNowBtnHtml}
         ${emailAttachments.length > 0 ? `<p style="margin-top:16px;font-size:9pt;color:#888">Pay application PDF${emailAttachments.length>1?' and lien waiver are':' is'} attached.</p>` : ''}
@@ -3116,8 +3120,8 @@ app.post('/api/support/request', async (req, res) => {
             <h2>Support Request</h2>
             <p><b>From:</b> ${name||'Unknown'} &lt;${email}&gt;</p>
             <p><b>Issue:</b></p>
-            <blockquote style="border-left:3px solid #185FA5;padding-left:12px;color:#334155">${issue}</blockquote>
-            <p style="margin-top:24px"><a href="${process.env.APP_URL||'https://constructinv.varshyl.com'}/?admin=1" style="background:#185FA5;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none">Open Admin Dashboard</a></p>
+            <blockquote style="border-left:3px solid #6366f1;padding-left:12px;color:#334155">${issue}</blockquote>
+            <p style="margin-top:24px"><a href="${process.env.APP_URL||'https://constructinv.varshyl.com'}/?admin=1" style="background:#6366f1;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none">Open Admin Dashboard</a></p>
           </div>`
         })
       }).catch(e => console.error('[Support email]', e.message));
@@ -3296,10 +3300,10 @@ async function sendTeamInviteEmail(toEmail, toName, inviter, token) {
     return;
   }
   const html = `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">
-    <h2 style="color:#185FA5">You've been invited to Construction AI Billing</h2>
+    <h2 style="color:#6366f1">You've been invited to Construction AI Billing</h2>
     <p>Hi ${toName},</p>
     <p>${inviter.name} (${inviter.email}) has added you to their team on Construction AI Billing.</p>
-    <a href="${appUrl}/api/auth/accept-invite/${token}" style="display:inline-block;background:#185FA5;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;margin:16px 0">Accept Invitation →</a>
+    <a href="${appUrl}/api/auth/accept-invite/${token}" style="display:inline-block;background:#6366f1;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;margin:16px 0">Accept Invitation →</a>
     <p style="color:#888;font-size:12px">If you didn't expect this invitation, you can ignore this email.</p>
   </div>`;
   const isResend = !!process.env.RESEND_API_KEY;
@@ -3758,7 +3762,7 @@ function renderLienWaiverContent(doc, { doc_type, project, through_date, amount,
   const loc = project.location || [project.city, project.state].filter(Boolean).join(', ') || projectName;
 
   // ── HEADER BAND ─────────────────────────────────────────────────────────
-  const BLUE = '#0C3B6B';
+  const BLUE = '#4f46e5';
   const bandTop = doc.y;
   const bandH = 66;
   doc.rect(L, bandTop, W, bandH).fill(BLUE);
@@ -4275,8 +4279,8 @@ app.get('/api/revenue/report/pdf', auth, async (req, res) => {
       const h = Math.round((monthlyAmounts[i]/maxAmt)*80);
       const lbl = monthlyAmounts[i]>0 ? `$${Math.round(monthlyAmounts[i]/1000)}k` : '';
       return `<div style="display:flex;flex-direction:column;align-items:center;flex:1;gap:3px">
-        <div style="font-size:9px;color:#185FA5;font-weight:600">${lbl}</div>
-        <div style="width:100%;height:${h}px;background:linear-gradient(to top,#185FA5,#4a9be0);border-radius:3px 3px 0 0;min-height:${monthlyAmounts[i]>0?4:0}px"></div>
+        <div style="font-size:9px;color:#6366f1;font-weight:600">${lbl}</div>
+        <div style="width:100%;height:${h}px;background:linear-gradient(to top,#6366f1,#8b5cf6);border-radius:3px 3px 0 0;min-height:${monthlyAmounts[i]>0?4:0}px"></div>
         <div style="font-size:9px;color:#666">${m}</div>
       </div>`;
     }).join('');
@@ -4298,17 +4302,17 @@ app.get('/api/revenue/report/pdf', auth, async (req, res) => {
     <style>
       *{margin:0;padding:0;box-sizing:border-box}
       body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:11px;color:#1a1a2e;padding:32px 40px}
-      .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:18px;border-bottom:2px solid #185FA5}
-      .co-name{font-size:20px;font-weight:700;color:#185FA5}
+      .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:18px;border-bottom:2px solid #6366f1}
+      .co-name{font-size:20px;font-weight:700;color:#6366f1}
       .report-title{font-size:14px;color:#444;margin-top:3px}
       .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
       .kpi{background:#f0f6ff;border-radius:8px;padding:14px 16px;border:1px solid #c7dff7}
       .kpi-label{font-size:9px;color:#666;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px}
-      .kpi-val{font-size:18px;font-weight:700;color:#185FA5}
+      .kpi-val{font-size:18px;font-weight:700;color:#6366f1}
       .section-title{font-size:12px;font-weight:700;color:#1a1a2e;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #e2e8f0;text-transform:uppercase;letter-spacing:0.05em}
       .chart-wrap{display:flex;align-items:flex-end;gap:6px;height:100px;margin-bottom:24px;padding:0 4px}
       table{width:100%;border-collapse:collapse;font-size:10px}
-      th{background:#185FA5;color:#fff;padding:7px 10px;text-align:left;font-weight:600;font-size:9px;text-transform:uppercase;letter-spacing:0.04em}
+      th{background:#6366f1;color:#fff;padding:7px 10px;text-align:left;font-weight:600;font-size:9px;text-transform:uppercase;letter-spacing:0.04em}
       td{padding:7px 10px;border-bottom:1px solid #f1f5f9}
       tr:nth-child(even) td{background:#f8fafc}
       .footer{margin-top:28px;padding-top:12px;border-top:1px solid #e2e8f0;text-align:center;font-size:9px;color:#999}
@@ -4424,7 +4428,7 @@ app.get('/invoice/:token', async (req, res) => {
   <!-- Header -->
   <div style="background:#fff;border:1px solid #e2e8f0;border-top:none;padding:28px 32px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap">
     <div>
-      ${logoUrl ? `<img src="${logoUrl}" style="max-height:60px;max-width:180px;object-fit:contain;margin-bottom:12px;display:block"/>` : `<div style="font-size:20px;font-weight:800;color:#0C3B6B;margin-bottom:8px">${pa.company_name||pa.contractor||'Contractor'}</div>`}
+      ${logoUrl ? `<img src="${logoUrl}" style="max-height:60px;max-width:180px;object-fit:contain;margin-bottom:12px;display:block"/>` : `<div style="font-size:20px;font-weight:800;color:#4f46e5;margin-bottom:8px">${pa.company_name||pa.contractor||'Contractor'}</div>`}
       <div style="font-size:13px;color:#64748b">${pa.co_contact||pa.contact_name||''}</div>
       <div style="font-size:13px;color:#64748b">${pa.co_email||pa.contact_email||''}</div>
     </div>
@@ -4443,13 +4447,13 @@ app.get('/invoice/:token', async (req, res) => {
   <!-- Pay Now button -->
   <div class="no-print" style="background:#fff;border:1px solid #e2e8f0;border-top:none;padding:20px 32px;text-align:center;border-bottom:none">
     <div style="font-size:13px;color:#64748b;margin-bottom:12px">To pay, please remit <strong>${fmt(totalDue)}</strong> via check or wire transfer per your contract terms.</div>
-    <a href="mailto:${pa.co_email||pa.contact_email||''}?subject=Payment%20for%20${encodeURIComponent(pa.project_name)}%20Pay%20App%20%23${pa.app_number}&body=Please%20find%20payment%20confirmation%20for%20Pay%20Application%20%23${pa.app_number}." style="display:inline-block;background:#0C3B6B;color:#fff;padding:13px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;margin-right:12px">📧 Confirm Payment</a>
+    <a href="mailto:${pa.co_email||pa.contact_email||''}?subject=Payment%20for%20${encodeURIComponent(pa.project_name)}%20Pay%20App%20%23${pa.app_number}&body=Please%20find%20payment%20confirmation%20for%20Pay%20Application%20%23${pa.app_number}." style="display:inline-block;background:#4f46e5;color:#fff;padding:13px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;margin-right:12px">📧 Confirm Payment</a>
     <button onclick="window.print()" style="display:inline-block;background:#f1f5f9;color:#1e293b;border:1px solid #e2e8f0;padding:13px 24px;border-radius:8px;font-weight:600;font-size:14px;cursor:pointer">🖨 Print Invoice</button>
   </div>
   <!-- SOV table -->
   <div style="background:#fff;border:1px solid #e2e8f0;overflow:hidden;margin-top:0">
     <div style="padding:14px 32px;background:#f8fafc;border-bottom:1px solid #e2e8f0">
-      <div style="font-size:13px;font-weight:700;color:#0C3B6B">Schedule of Values — Pay Application #${pa.app_number}</div>
+      <div style="font-size:13px;font-weight:700;color:#4f46e5">Schedule of Values — Pay Application #${pa.app_number}</div>
     </div>
     <div style="overflow-x:auto">
     <table style="width:100%;border-collapse:collapse">
@@ -4466,7 +4470,7 @@ app.get('/invoice/:token', async (req, res) => {
       </thead>
       <tbody>${linesHTML}</tbody>
       <tfoot>
-        <tr style="background:#0C3B6B">
+        <tr style="background:#4f46e5">
           <td colspan="5" style="padding:12px 32px;color:#fff;font-weight:700;font-size:14px">TOTAL AMOUNT DUE THIS PERIOD</td>
           <td style="padding:12px 12px;color:#fff;font-weight:800;font-size:16px;text-align:right">${fmt(totalDue)}</td>
           <td style="padding:12px 12px;color:rgba(255,255,255,0.7);font-size:13px;text-align:right">${fmt(totalRet)}</td>
@@ -4541,10 +4545,10 @@ setInterval(async () => {
       </tr>`).join('');
 
     const html = `<div style="font-family:sans-serif;max-width:900px;margin:0 auto;padding:24px">
-      <h2 style="color:#185FA5">Weekly Feedback Digest — Construction AI Billing</h2>
+      <h2 style="color:#6366f1">Weekly Feedback Digest — Construction AI Billing</h2>
       <p style="color:#555">${r.rows.length} new feedback item${r.rows.length!==1?'s':''} from your users this week.</p>
       <table style="border-collapse:collapse;width:100%;font-size:13px;margin-top:16px">
-        <thead><tr style="background:#185FA5;color:#fff">
+        <thead><tr style="background:#6366f1;color:#fff">
           <th style="padding:8px;border:1px solid #ddd;text-align:left">Time</th>
           <th style="padding:8px;border:1px solid #ddd;text-align:left">User</th>
           <th style="padding:8px;border:1px solid #ddd;text-align:left">Category</th>
@@ -4554,7 +4558,7 @@ setInterval(async () => {
         <tbody>${items}</tbody>
       </table>
       <p style="color:#888;font-size:11px;margin-top:20px">
-        View all feedback live at <a href="https://constructinv.varshyl.com" style="color:#185FA5">constructinv.varshyl.com</a> → Admin → Feedback inbox.<br>
+        View all feedback live at <a href="https://constructinv.varshyl.com" style="color:#6366f1">constructinv.varshyl.com</a> → Admin → Feedback inbox.<br>
         You only receive this email when there are new items. No activity = no email.
       </p>
     </div>`;
@@ -4657,7 +4661,7 @@ function buildReminderEmail({
       ${upcomingInvoices.map(u => `
         <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9">
           <div style="font-size:13px;color:#1e293b">${u.project_name}</div>
-          <div style="font-size:13px;font-weight:600;color:#0C3B6B">${fmt(u.amount_due)} — ${fmtDate(u.due_date)}</div>
+          <div style="font-size:13px;font-weight:600;color:#4f46e5">${fmt(u.amount_due)} — ${fmtDate(u.due_date)}</div>
         </div>`).join('')}
     </div>` : '';
 
@@ -4672,7 +4676,7 @@ function buildReminderEmail({
   </div>
 
   <!-- Header -->
-  <div style="background:#0C3B6B;padding:20px 32px;display:flex;align-items:center;justify-content:space-between">
+  <div style="background:#4f46e5;padding:20px 32px;display:flex;align-items:center;justify-content:space-between">
     <div>
       <div style="color:#fff;font-size:16px;font-weight:700">${contractorName || 'Construction AI Billing'}</div>
       <div style="color:rgba(255,255,255,0.65);font-size:12px">Pay Application Notice</div>
@@ -4730,7 +4734,7 @@ function buildReminderEmail({
 
   <!-- Footer -->
   <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:16px 32px;text-align:center">
-    <div style="font-size:12px;color:#64748b">Questions? Reply to this email or contact <a href="mailto:${contractorEmail||''}" style="color:#185FA5">${contractorEmail||contractorName||'the billing team'}</a></div>
+    <div style="font-size:12px;color:#64748b">Questions? Reply to this email or contact <a href="mailto:${contractorEmail||''}" style="color:#6366f1">${contractorEmail||contractorName||'the billing team'}</a></div>
     <div style="font-size:10px;color:#94a3b8;margin-top:6px">
       Sent by Construction AI Billing on behalf of ${contractorName||'your contractor'} ·
       <a href="${process.env.APP_URL||'https://constructinv.varshyl.com'}/settings" style="color:#94a3b8">Manage reminders</a>
