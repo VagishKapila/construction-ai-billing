@@ -850,7 +850,9 @@ app.put('/api/payapps/:id', auth, async (req,res) => {
       }
     } catch(dueErr) { console.error('[Auto due date]', dueErr.message); }
 
-    // Auto-generate unconditional final waiver lien release (non-blocking)
+    // Auto-generate lien waiver on submit (non-blocking)
+    // - Progress payments → Conditional Waiver (with amount, conditional on receiving payment)
+    // - Final payment (≥98% complete) → Unconditional Final Waiver (waives all remaining rights)
     try {
       // Only create if one doesn't already exist for this pay app
       const lienCheck = await pool.query(
@@ -876,13 +878,25 @@ app.put('/api/payapps/:id', auth, async (req,res) => {
           const jurisdiction = proj.jurisdiction || 'california';
           const pay_app_ref = `Pay App #${pa.app_number}${pa.period_label ? ' — ' + pa.period_label : ''}`;
 
-          const fname = `lien_unconditional_final_${req.params.id}_${Date.now()}.pdf`;
+          // Determine if this is a final payment: ≥98% of contract billed
+          const compCheck = await pool.query(`
+            SELECT SUM(sl.scheduled_value) as total_contract,
+                   SUM(sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100) as total_billed
+            FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id
+            WHERE pal.pay_app_id=$1`, [req.params.id]);
+          const totalContract = parseFloat(compCheck.rows[0]?.total_contract || 0);
+          const totalBilled = parseFloat(compCheck.rows[0]?.total_billed || 0);
+          const isFinalPayment = totalContract > 0 && (totalBilled / totalContract) >= 0.98;
+
+          const doc_type = isFinalPayment ? 'unconditional_final_waiver' : 'conditional_waiver';
+          const lienAmountForDoc = isFinalPayment ? 0 : lienAmount; // Unconditional final = no specific amount
+          const fname = `lien_${doc_type}_${req.params.id}_${Date.now()}.pdf`;
           const fpath = path.join(__dirname, 'uploads', fname);
           const signedAt = new Date();
 
           await generateLienDocPDF({
-            fpath, doc_type: 'unconditional_final_waiver', project: proj,
-            through_date, amount: lienAmount,
+            fpath, doc_type, project: proj,
+            through_date, amount: lienAmountForDoc,
             maker_of_check: proj.owner || '',
             check_payable_to: proj.company_name || proj.contractor || '',
             signatory_name, signatory_title: null,
@@ -893,11 +907,11 @@ app.put('/api/payapps/:id', auth, async (req,res) => {
                through_date, amount, maker_of_check, check_payable_to,
                signatory_name, signatory_title, signed_at, signatory_ip)
              VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-            [proj.id, parseInt(req.params.id), 'unconditional_final_waiver', fname, jurisdiction,
-             through_date, lienAmount, proj.owner||null, proj.company_name||proj.contractor||null,
+            [proj.id, parseInt(req.params.id), doc_type, fname, jurisdiction,
+             through_date, lienAmountForDoc, proj.owner||null, proj.company_name||proj.contractor||null,
              signatory_name, null, signedAt, req.ip || 'auto']
           );
-          await logEvent(req.user.id, 'lien_auto_generated', { pay_app_id: parseInt(req.params.id) });
+          await logEvent(req.user.id, 'lien_auto_generated', { pay_app_id: parseInt(req.params.id), doc_type, is_final: isFinalPayment });
         }
       }
     } catch(lienErr) { console.error('[Auto lien release]', lienErr.message); }
@@ -2225,7 +2239,8 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
 
 // ── Email pay application (PDF + lien waiver attached) ───────────────────
 app.post('/api/payapps/:id/email', auth, async (req, res) => {
-  const { to, cc, subject, message } = req.body;
+  const { to, cc, subject, message, attach_lien_waiver } = req.body;
+  const shouldAttachLien = attach_lien_waiver !== false; // default true
   if (!to) return res.status(400).json({ error: 'Recipient email (to) is required' });
 
   try {
@@ -2361,8 +2376,8 @@ app.post('/api/payapps/:id/email', auth, async (req, res) => {
       }
     }
 
-    // Attach lien waiver PDF if one is linked — regenerate with current logo (safe temp file approach)
-    try {
+    // Attach lien waiver PDF if one is linked and user opted in (default: yes)
+    if (shouldAttachLien) try {
       const lienRes = await pool.query(
         `SELECT ld.*, p.name, p.owner, p.contractor, p.location, p.city, p.state, p.contact as location_contact,
                 cs.logo_filename, cs.company_name

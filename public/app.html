@@ -2151,9 +2151,14 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
             <div class="field" style="margin-top:8px"><label>Message</label>
               <textarea id="email-body" rows="4" style="resize:vertical;padding:8px 10px;border:0.5px solid var(--border2);border-radius:var(--radius);font-size:12px;background:var(--bg2);color:var(--text)"></textarea>
             </div>
+            <div style="margin:8px 0;display:flex;align-items:center;gap:6px">
+              <input type="checkbox" id="attach-lien-waiver" checked style="width:15px;height:15px;cursor:pointer">
+              <label for="attach-lien-waiver" style="font-size:12px;color:var(--text2);cursor:pointer">Attach lien waiver to email</label>
+              <span id="lien-waiver-status" style="font-size:11px;color:var(--green);margin-left:4px"></span>
+            </div>
             <div class="br">
               <button type="button" class="btn btn-success" onclick="sendEmail()" id="btn-send-email">📤 Send &amp; Mark Submitted</button>
-              <span style="font-size:11px;color:var(--text2)">PDF + lien waiver attached automatically</span>
+              <span style="font-size:11px;color:var(--text2)">Pay app PDF attached automatically</span>
             </div>
             </form>
           </div>
@@ -3103,6 +3108,7 @@ async function renderPayAppLienStatus(paId) {
       through_date: throughDate, maker: makerOfCheck,
       payable_to: payableTo, signatory: signatoryName, title: signatoryTitle
     });
+    const lienEmailStatus = document.getElementById('lien-waiver-status');
     if (!linked.length) {
       el.innerHTML = `<div style="display:inline-flex;align-items:center;gap:8px;padding:7px 12px;background:var(--amber-light);border-radius:var(--radius);font-size:11px;border:1px solid rgba(133,79,11,0.2)">
         <span>📋 No lien waiver linked.</span>
@@ -3110,6 +3116,8 @@ async function renderPayAppLienStatus(paId) {
         <button class="btn btn-sm" onclick="openLienDocModal(${currentProjectId},${lienOpts('unconditional_waiver')})">Unconditional waiver</button>
       </div>`;
       if (btnWithLien) btnWithLien.style.display = 'none';
+      if (lienEmailStatus) lienEmailStatus.textContent = '(none generated yet)';
+      if (lienEmailStatus) lienEmailStatus.style.color = 'var(--amber)';
       window._linkedLienDocId = null;
       return;
     }
@@ -3123,6 +3131,7 @@ async function renderPayAppLienStatus(paId) {
       <button class="btn btn-sm" onclick="openLienDocModal(${currentProjectId},${lienOpts('unconditional_waiver')})">+ Unconditional</button>
     </div>`;
     if (btnWithLien) btnWithLien.style.display = '';
+    if (lienEmailStatus) { lienEmailStatus.textContent = '✓ ' + (typeLabels[d.doc_type]||'waiver') + ' ready'; lienEmailStatus.style.color = 'var(--green)'; }
   } catch(e) { el.innerHTML = ''; }
 }
 
@@ -3875,7 +3884,8 @@ async function sendEmail(){
   const origTxt=btn?btn.textContent:'';
   if(btn){btn.textContent='⏳ Sending…';btn.disabled=true;}
   try{
-    const result=await api('POST','/payapps/'+currentPAId+'/email',{to,cc,subject,message});
+    const attachLien=document.getElementById('attach-lien-waiver')?.checked!==false;
+    const result=await api('POST','/payapps/'+currentPAId+'/email',{to,cc,subject,message,attach_lien_waiver:attachLien});
     // Update local state (server marks as submitted)
     currentPAData=await api('GET','/payapps/'+currentPAId);
     renderPAHeader(currentPAData);
