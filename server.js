@@ -1692,17 +1692,17 @@ function generatePayAppHTML(pa, lines, cos, totals, logoBase64, sigBase64, photo
     const ret  = comp * parseFloat(r.retainage_pct) / 100;
     const bal  = sv - comp;
     tSV += sv; tPrev2 += prev; tThis2 += thisPer; tComp2 += comp; tRet2 += ret;
-    if (sv === 0) return `<tr style="background:#f9f9f9;color:#888">
+    if (sv === 0) return `<tr style="background:#f9f9f9;color:#999">
       <td style="border:1px solid #ccc;padding:3px 5px">${r.item_id||''}</td>
       <td style="border:1px solid #ccc;padding:3px 5px;font-style:italic">${r.description||''}</td>
-      <td style="border:1px solid #ccc;padding:3px 5px;text-align:center;font-style:italic">Included</td>
-      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">—</td>
-      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">—</td>
-      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">—</td>
-      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">—</td>
-      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">—</td>
-      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">—</td>
-      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">—</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:center;font-style:italic;font-size:8pt">Included</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td>
     </tr>`;
     return `<tr>
       <td style="border:1px solid #ccc;padding:3px 5px">${r.item_id||''}</td>

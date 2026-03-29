@@ -102,8 +102,11 @@ async function initDB() {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
     ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS dist_owner      BOOLEAN DEFAULT TRUE;
-    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS dist_architect  BOOLEAN DEFAULT TRUE;
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS dist_architect  BOOLEAN DEFAULT FALSE;
     ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS dist_contractor BOOLEAN DEFAULT FALSE;
+    -- Fix: architect was wrongly defaulting to TRUE — change default and fix existing rows
+    ALTER TABLE pay_apps ALTER COLUMN dist_architect SET DEFAULT FALSE;
+    UPDATE pay_apps SET dist_architect = FALSE WHERE dist_architect = TRUE;
     ALTER TABLE projects  ADD COLUMN IF NOT EXISTS default_retainage NUMERIC(5,2) DEFAULT 10;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id          VARCHAR(200);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified     BOOLEAN DEFAULT FALSE;
