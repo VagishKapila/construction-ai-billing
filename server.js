@@ -72,7 +72,14 @@ if (!corsOrigin && process.env.NODE_ENV === 'production') {
 }
 app.use(cors({ origin: corsOrigin || '*' }));
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filePath) => {
+    // Prevent aggressive caching of HTML files so users always get latest version
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    }
+  }
+}));
 const upload = multer({
   dest: 'uploads/',
   limits: { fileSize: 25 * 1024 * 1024 } // 25 MB max per file
