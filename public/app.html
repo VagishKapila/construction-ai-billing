@@ -3355,17 +3355,17 @@ function renderAIAPreview(pa){
       const ret=comp*parseFloat(r.retainage_pct)/100;
       const bal=sv-comp;
       tSV+=sv;tPrev+=prev;tThis+=thisPer;tComp+=comp;tRet2+=ret;
-      if(sv===0) return`<tr style="border-bottom:0.5px solid #ddd;background:#f9f9f9;color:#888">
+      if(sv===0) return`<tr style="border-bottom:0.5px solid #ddd;background:#f9f9f9;color:#999">
         <td style="border:1px solid #ddd;padding:2px 4px">${r.item_id}</td>
         <td style="border:1px solid #ddd;padding:2px 4px;font-style:italic">${r.description}</td>
-        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center;font-style:italic;font-size:10px">Included</td>
-        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">—</td>
-        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">—</td>
-        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">—</td>
-        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">—</td>
-        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">—</td>
-        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">—</td>
-        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">—</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center;font-style:italic;font-size:9px">Included</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">-</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">-</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">-</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">-</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">-</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">-</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">-</td>
       </tr>`;
       return`<tr style="border-bottom:0.5px solid #ddd">
         <td style="border:1px solid #ddd;padding:2px 4px">${r.item_id}</td>
@@ -3408,14 +3408,14 @@ function renderG703(pa){
     const totPct=sv>0?comp/sv*100:0;
     tSV+=sv;tPrev+=prev;tThis+=thisPer;tRet+=ret;tComp+=comp;tBal+=bal;
     const changed=parseFloat(r.this_pct)>0;
-    // Lump sum scope lines ($0 scheduled value): show "Included" in Sched. value column
-    if(sv===0) return`<tr style="background:#f9f9f9;color:#888">
+    // Lump sum scope lines ($0 scheduled value): show "Included" in Sched. value, "-" elsewhere
+    if(sv===0) return`<tr style="background:#f9f9f9;color:#999">
       <td style="font-size:10px">${r.item_id}</td>
       <td style="font-size:12px;font-style:italic">${r.description}</td>
       <td class="r" style="font-style:italic;font-size:10px">Included</td>
-      <td class="r">—</td><td class="c">—</td><td class="c">—</td>
-      <td class="r">—</td><td class="c">—</td><td class="r">—</td>
-      <td class="r">—</td><td class="r">—</td>
+      <td class="r">-</td><td class="c">-</td><td class="c">-</td>
+      <td class="r">-</td><td class="c">-</td><td class="r">-</td>
+      <td class="r">-</td><td class="r">-</td>
     </tr>`;
     return`<tr>
       <td style="font-size:10px;color:var(--text2)">${r.item_id}</td>
