@@ -1939,18 +1939,20 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
           <!-- EMAIL -->
           <div class="card no-print" style="margin-top:16px">
             <div class="ct">Email to client</div>
+            <form onsubmit="event.preventDefault();sendEmail()" autocomplete="on">
             <div class="fg" style="margin-bottom:10px">
-              <div class="field"><label>To</label><input type="email" id="email-to" placeholder="client@email.com"/></div>
-              <div class="field"><label>CC</label><input type="email" id="email-cc" placeholder="architect@firm.com"/></div>
+              <div class="field"><label>To</label><input type="email" id="email-to" name="email-to" autocomplete="email" placeholder="client@email.com"/></div>
+              <div class="field"><label>CC</label><input type="email" id="email-cc" name="email-cc" autocomplete="email" placeholder="architect@firm.com"/></div>
             </div>
-            <div class="field"><label>Subject</label><input type="text" id="email-subj"/></div>
+            <div class="field"><label>Subject</label><input type="text" id="email-subj" name="email-subject" autocomplete="off"/></div>
             <div class="field" style="margin-top:8px"><label>Message</label>
               <textarea id="email-body" rows="4" style="resize:vertical;padding:8px 10px;border:0.5px solid var(--border2);border-radius:var(--radius);font-size:12px;background:var(--bg2);color:var(--text)"></textarea>
             </div>
             <div class="br">
-              <button class="btn btn-success" onclick="sendEmail()" id="btn-send-email">📤 Send &amp; Mark Submitted</button>
+              <button type="button" class="btn btn-success" onclick="sendEmail()" id="btn-send-email">📤 Send &amp; Mark Submitted</button>
               <span style="font-size:11px;color:var(--text2)">PDF + lien waiver attached automatically</span>
             </div>
+            </form>
           </div>
         </div>
       </div>
@@ -2491,13 +2493,22 @@ function switchSOVView(parentOnly){
   renderSOVPreview();
 }
 function renderSOVPreview(){
-  document.getElementById('sov-preview-body').innerHTML=sovRows.map((r,i)=>`
-    <tr>
+  const hasAnyAmount=sovRows.some(r=>r.scheduled_value>0);
+  document.getElementById('sov-preview-body').innerHTML=sovRows.map((r,i)=>{
+    const sv=parseFloat(r.scheduled_value)||0;
+    if(hasAnyAmount && sv===0 && r.description) return`<tr style="background:#f9f9f9;color:#999">
       <td><input class="sov-edit" style="width:75px" value="${r.item_id||''}" onchange="sovRows[${i}].item_id=this.value"/></td>
       <td><input class="sov-edit" value="${r.description||''}" onchange="sovRows[${i}].description=this.value"/></td>
-      <td><input class="sov-edit" style="width:110px;text-align:right" value="${r.scheduled_value||''}" onchange="sovRows[${i}].scheduled_value=parseFloat(this.value.replace(/[$,]/g,''))||0;updateSOVTotal()"/></td>
+      <td style="width:110px;text-align:center;font-style:italic;font-size:11px;padding:4px">Included</td>
       <td style="text-align:center"><button onclick="deleteSOVRow(${i})" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:16px;line-height:1">×</button></td>
-    </tr>`).join('');
+    </tr>`;
+    return`<tr>
+      <td><input class="sov-edit" style="width:75px" value="${r.item_id||''}" onchange="sovRows[${i}].item_id=this.value"/></td>
+      <td><input class="sov-edit" value="${r.description||''}" onchange="sovRows[${i}].description=this.value"/></td>
+      <td><input class="sov-edit" style="width:110px;text-align:right" value="${sv>0?sv:''}" onchange="sovRows[${i}].scheduled_value=parseFloat(this.value.replace(/[$,]/g,''))||0;updateSOVTotal()"/></td>
+      <td style="text-align:center"><button onclick="deleteSOVRow(${i})" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:16px;line-height:1">×</button></td>
+    </tr>`;
+  }).join('');
   document.getElementById('sov-row-count').textContent=sovRows.length+' lines';
   updateSOVTotal();
 }
