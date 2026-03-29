@@ -354,7 +354,24 @@ const token = pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2]
   const params = new URLSearchParams(window.location.search);
   if (params.get('payment') === 'success') {
     showState('success');
-    // Still load data to show logo
+    // Verify payment with server (updates DB if webhook hasn't fired yet)
+    const sessionId = params.get('session_id');
+    try {
+      if (sessionId) {
+        const vRes = await fetch('/api/pay/' + token + '/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId })
+        });
+        const vData = await vRes.json();
+        if (vData.status === 'pending' || vData.stripe_status === 'open') {
+          // ACH might still be processing — show a slightly different message
+          document.getElementById('success-detail').textContent =
+            'Your bank transfer has been initiated. It may take 1-2 business days to fully process. The contractor will be notified once confirmed.';
+        }
+      }
+    } catch(e) { console.log('Verify call error:', e); }
+    // Load data to show logo and company name
     try {
       const r = await fetch('/api/pay/' + token);
       const d = await r.json();
@@ -363,8 +380,10 @@ const token = pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2]
         img.src = '/uploads/' + d.logo_filename;
         img.style.display = 'block';
       }
-      document.getElementById('success-detail').textContent =
-        'Your payment to ' + (d.company_name || 'the contractor') + ' has been received. A confirmation will be sent to your email.';
+      if (!document.getElementById('success-detail').textContent.includes('bank transfer')) {
+        document.getElementById('success-detail').textContent =
+          'Your payment to ' + (d.company_name || 'the contractor') + ' has been received. A confirmation will be sent to your email.';
+      }
     } catch(e) {}
     return;
   }

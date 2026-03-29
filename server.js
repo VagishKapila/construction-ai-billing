@@ -5244,6 +5244,52 @@ app.post('/api/pay/:token/checkout', async (req, res) => {
   } catch(e) { console.error('[Checkout Error]', e.message); res.status(500).json({ error: e.message }); }
 });
 
+// ── Verify payment on success redirect (fallback if webhook is delayed/missing) ──
+app.post('/api/pay/:token/verify', async (req, res) => {
+  try {
+    const { session_id } = req.body;
+    if (!session_id) return res.status(400).json({ error: 'Missing session_id' });
+    // Verify this session belongs to this payment token
+    const payment = (await pool.query(
+      `SELECT p.*, pa.amount_due, pa.id as pay_app_id FROM payments p
+       JOIN pay_apps pa ON pa.id=p.pay_app_id
+       WHERE p.stripe_checkout_session_id=$1 AND pa.payment_link_token=$2`,
+      [session_id, req.params.token]
+    )).rows[0];
+    if (!payment) return res.status(404).json({ error: 'Payment not found' });
+    // If already succeeded, just return
+    if (payment.payment_status === 'succeeded') return res.json({ status: 'succeeded', already: true });
+    // Check with Stripe directly
+    const session = await stripe.checkout.sessions.retrieve(session_id);
+    if (session.payment_status === 'paid' || session.status === 'complete') {
+      // Update payment record
+      await pool.query(
+        `UPDATE payments SET payment_status='succeeded', stripe_payment_intent_id=$1, paid_at=NOW(),
+         payer_email=COALESCE(NULLIF(payer_email,''),$2)
+         WHERE stripe_checkout_session_id=$3`,
+        [session.payment_intent, session.customer_details?.email || '', session_id]
+      );
+      // Update pay app totals
+      const payAppId = payment.pay_app_id;
+      const currentPaid = (await pool.query("SELECT COALESCE(SUM(amount),0) as total FROM payments WHERE pay_app_id=$1 AND payment_status='succeeded'", [payAppId])).rows[0].total;
+      const totalDue = parseFloat(payment.amount_due) || 0;
+      const paidNum = parseFloat(currentPaid);
+      const newStatus = paidNum >= totalDue && totalDue > 0 ? 'paid' : paidNum > 0 ? 'partial' : 'unpaid';
+      await pool.query(
+        "UPDATE pay_apps SET amount_paid=$1, payment_status=$2, payment_received=$3, payment_received_at=CASE WHEN $2='paid' THEN NOW() ELSE payment_received_at END WHERE id=$4",
+        [paidNum, newStatus, newStatus === 'paid', payAppId]
+      );
+      console.log(`[Payment Verify] Confirmed payment for PA#${payAppId}: $${paidNum} (${newStatus})`);
+      return res.json({ status: 'succeeded', payment_status: newStatus, amount_paid: paidNum });
+    }
+    // ACH might be 'processing' — still pending
+    res.json({ status: session.payment_status || 'pending', stripe_status: session.status });
+  } catch(e) {
+    console.error('[Payment Verify Error]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Stripe Webhook (handles payment success/failure) ────────────────────────
 app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
