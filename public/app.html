@@ -3850,6 +3850,7 @@ async function createProject(){
       contract_date:document.getElementById('np-contract-date').value||null,
       est_date:document.getElementById('np-est-date').value||null,
       default_retainage:parseFloat(document.getElementById('np-retainage').value)||0,
+      payment_terms:document.getElementById('np-payment-terms').value||'Due on receipt',
     });
     await api('POST','/projects/'+proj.id+'/sov',{lines:validRows});
     ph('project_created',{sov_line_count:validRows.length,contract_value:parseFloat(document.getElementById('np-contract').value.replace(/,/g,''))});
@@ -3883,6 +3884,7 @@ async function createProjectAndNext(){
       contract_date:document.getElementById('np-contract-date').value||null,
       est_date:document.getElementById('np-est-date').value||null,
       default_retainage:parseFloat(document.getElementById('np-retainage').value)||0,
+      payment_terms:document.getElementById('np-payment-terms').value||'Due on receipt',
     });
     await api('POST','/projects/'+proj.id+'/sov',{lines:validRows});
     ph('project_created',{sov_line_count:validRows.length,contract_value:parseFloat(document.getElementById('np-contract').value.replace(/,/g,''))});

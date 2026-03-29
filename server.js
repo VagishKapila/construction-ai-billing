@@ -640,12 +640,12 @@ app.get('/api/projects', auth, async (req,res) => {
 });
 
 app.post('/api/projects', auth, async (req,res) => {
-  const {name,number,owner,owner_email,owner_phone,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date,est_date,default_retainage} = req.body;
+  const {name,number,owner,owner_email,owner_phone,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date,est_date,default_retainage,payment_terms} = req.body;
   const retPct = (default_retainage !== undefined && default_retainage !== null) ? parseFloat(default_retainage) : 10;
   const r = await pool.query(
-    `INSERT INTO projects(user_id,name,number,owner,owner_email,owner_phone,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date,est_date,default_retainage)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
-    [req.user.id,name,number,owner,owner_email||null,owner_phone||null,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date||null,est_date||null,retPct]
+    `INSERT INTO projects(user_id,name,number,owner,owner_email,owner_phone,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date,est_date,default_retainage,payment_terms)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+    [req.user.id,name,number,owner,owner_email||null,owner_phone||null,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date||null,est_date||null,retPct,payment_terms||null]
   );
   await logEvent(req.user.id, 'project_created', { project_id: r.rows[0].id, contract_value: original_contract });
   res.json(r.rows[0]);
@@ -1183,8 +1183,18 @@ function parseSOVFile(filePath) {
       break;
     }
     // Track best partial match (only amount OR only description) as a fallback
+    // BUT skip rows that have numeric data in other columns — those are data/summary rows, not headers
+    // (e.g. "TOTAL" row with dollar amounts is a summary, not a column header)
     if ((fAmt >= 0 || fDesc >= 0) && bestPartialRow < 0) {
-      bestPartialRow = ri; bestPartialAmt = fAmt; bestPartialDesc = fDesc; bestPartialItem = fItem;
+      let hasNumericData = false;
+      for (let ci = 0; ci < row.length; ci++) {
+        if (ci === fAmt || ci === fDesc || ci === fItem) continue;
+        const v = row[ci];
+        if (typeof v === 'number' && v > 0) { hasNumericData = true; break; }
+      }
+      if (!hasNumericData) {
+        bestPartialRow = ri; bestPartialAmt = fAmt; bestPartialDesc = fDesc; bestPartialItem = fItem;
+      }
     }
   }
   // Fall back to partial match if no row had both
@@ -1230,12 +1240,16 @@ function parseSOVFile(filePath) {
   }
 
   // ── Step 2c: Amount scoring — exclude known cost code columns ────────────────
+  // Amounts are ALWAYS to the RIGHT of descriptions in SOV documents.
+  // Also exclude columns left of description (likely CSI codes even if not detected).
   if (iAmt < 0) {
-    // Re-score amounts excluding cost code cols; rightmost highest-count col wins
+    // Re-score amounts excluding code cols and cols left of description; rightmost highest-count col wins
     const amtScore2 = new Array(nCols).fill(0);
+    const descAnchorForAmt = iDesc >= 0 ? iDesc : 0;
     for (const row of json) {
       for (let ci = 0; ci < row.length; ci++) {
         if (ci === iDesc || costCodeCols.has(ci)) continue;
+        if (ci <= descAnchorForAmt) continue;  // amounts must be RIGHT of descriptions
         const cell = String(row[ci]||'').trim();
         if (!cell || cell.length < 2) continue;
         const n = parseFloat(cell.replace(/[$,\s]/g,''));
@@ -1245,6 +1259,7 @@ function parseSOVFile(filePath) {
     let best = 0;
     for (let ci = 0; ci < nCols; ci++) {
       if (ci === iDesc || costCodeCols.has(ci)) continue;
+      if (ci <= descAnchorForAmt) continue;
       if (amtScore2[ci] >= best) { best = amtScore2[ci]; iAmt = ci; }
     }
   }
@@ -1295,6 +1310,15 @@ function parseSOVFile(filePath) {
     if (!desc || desc.length < 2) continue;
     if (isHeaderLabel(desc)) continue;
     if (isSummary(desc, itemId, parseFloat(rawAmt))) continue;  // skip Grand Total rows; capture as summary metadata
+    // Also check other columns for TOTAL/SUBTOTAL labels (e.g. col 0 may have "TOTAL"
+    // while the desc column has a note like "(Excludes Permits...)")
+    let rowHasSummaryLabel = false;
+    for (let ci = 0; ci < row.length; ci++) {
+      if (ci === iDesc || ci === iAmt) continue;
+      const cell = String(row[ci]||'').trim();
+      if (/^(total|subtotal|grand\s*total)$/i.test(cell)) { rowHasSummaryLabel = true; break; }
+    }
+    if (rowHasSummaryLabel && isSummary('total', itemId, parseFloat(rawAmt))) continue;
     if (isNaN(amt) || amt <= 0) continue;   // skip "By Others", blank amounts
 
     // isParent: ends-in-000 CSI division codes, short alpha codes (GC/GL), or blank code
