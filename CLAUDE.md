@@ -32,6 +32,7 @@ Users create projects, upload a Schedule of Values (SOV), then generate G702/G70
 | Email | Resend API (`FROM_EMAIL` env var, plain email only — no display name) |
 | Hosting | Railway (auto-deploy from GitHub `main` branch → production, `staging` branch → staging) |
 | Domain | constructinv.varshyl.com → IONOS DNS CNAME + TXT verification |
+| Payments | Stripe Connect Express (ACH + card via Checkout), `stripe` npm v21+ |
 | File storage | Railway Volume `construction-ai-billing-volume` mounted at `/app/uploads` (persistent across deploys) |
 
 ---
@@ -46,9 +47,10 @@ construction-ai-billing/
 ├── public/
 │   ├── index.html     ← Landing/marketing page ONLY — no app logic here
 │   ├── app.html       ← ENTIRE billing app (auth, projects, pay apps, settings, admin)
+│   ├── pay.html       ← Public payment page (no auth — accessed by payer via /pay/:token)
 │   ├── varshyl-logo.png        ← ConstructInvoice AI logo (white bg, 35KB, 400×266px)
 │   └── constructinvoice-logo.png  ← Same logo, alternate filename (35KB)
-├── qa_test.js         ← Run with `node qa_test.js` — 57 tests, must all pass
+├── qa_test.js         ← Run with `node qa_test.js` — 109 tests, must all pass
 ├── CLAUDE.md          ← This file
 └── package.json
 ```
@@ -179,7 +181,7 @@ Retainage is per-line (can vary). Default from project settings.
 
 1. **Always discuss with Vagish before making any code change** — no surprises, no assumptions
 2. **Claude NEVER pushes to GitHub** — Vagish pushes via GitHub Desktop only
-3. **Run `node qa_test.js` (57/57) before flagging any change as ready to push**
+3. **Run `node qa_test.js` (109/109) before flagging any change as ready to push**
 4. **Product is live with real users** — treat every change as production risk
 
 ### Branch Map
@@ -212,7 +214,7 @@ Retainage is per-line (can vary). Default from project settings.
 - `staging` branch → staging environment → test here first
 - `main` branch → production (constructinv.varshyl.com)
 - Claude NEVER pushes to GitHub — Vagish controls all deploys via GitHub Desktop
-- After any code change, run `node qa_test.js` — must be 57/57 before pushing
+- After any code change, run `node qa_test.js` — must be 109/109 before pushing
 
 ### Current Branch Status (updated Mar 23 2026)
 - `main` = production — has all fixes through Google OAuth, password reset, admin dashboard, revenue charts, logo fixes, pricing page updates
@@ -407,6 +409,67 @@ Retainage is per-line (can vary). Default from project settings.
 
 ---
 
+## Stripe Connect — Payment Integration (added Mar 28 2026)
+
+### Account Structure
+- **Parent org:** Varshyl (Stripe Organization)
+- **ConstructInvoice AI account:** `acct_1TG76NAHP8NRRyLC` — separate from DocuFlow
+- **DocuFlowAI account:** `acct_1TG786AsCE0yP645` — DO NOT use these keys here
+- Each product has its own API keys, connected accounts, and payment history
+- Currently in **TEST MODE** — keys start with `pk_test_` / `sk_test_`
+
+### Railway Environment Variables (must be set on Railway, NOT in code)
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `STRIPE_SECRET_KEY` | Server-side Stripe SDK | `sk_test_51TG76NAHP8NRRyLC...` |
+| `STRIPE_PUBLISHABLE_KEY` | Client-side (if needed) | `pk_test_51TG76NAHP8NRRyLC...` |
+| `STRIPE_WEBHOOK_SECRET` | Verify webhook signatures | `whsec_...` |
+| `BASE_URL` | Payment link URLs | `https://construction-ai-billing-staging.up.railway.app` (staging) or `https://constructinv.varshyl.com` (prod) |
+
+### Fee Model (Hybrid — zero absorption)
+| Method | Who Pays | Amount | Platform Keeps |
+|--------|----------|--------|----------------|
+| ACH | GC (contractor) | $25 flat | $25 application_fee |
+| Credit Card | Payer (owner) | 3.3% + $0.40 on top | Processing fee as application_fee |
+| Payouts | GC (from balance) | 0.28% + $0.28 | Markup over Stripe's 0.25%+$0.25 |
+
+### How It Works
+1. GC connects Stripe via Express onboarding (Settings → Accept Payments)
+2. GC sends pay app email → email includes "Pay Now" button with unique `/pay/:token` link
+3. Owner clicks link → `pay.html` loads invoice data, shows ACH (recommended) + card options
+4. Owner pays → Stripe Checkout handles payment → webhook updates pay_app status
+5. GC sees payment in 💳 Payments dashboard + status badge on pay app
+
+### Database Tables
+- `connected_accounts` — GC's Stripe Connect accounts
+- `payments` — individual payment records (links to pay_apps)
+- `payment_followups` — scheduled follow-up tracking
+- `pay_apps` additions: `payment_status`, `amount_paid`, `payment_link_token`, `bad_debt`, `bad_debt_at`, `bad_debt_reason`
+- `users` additions: `stripe_connect_id`, `payments_enabled`
+
+### Server Routes (all in server.js)
+- `POST /api/stripe/connect` — Start Connect Express onboarding
+- `GET /api/stripe/account-status` — Check GC's connected account
+- `POST /api/stripe/dashboard-link` — Generate Stripe Express dashboard link
+- `POST /api/pay-apps/:id/payment-link` — Generate payment link for a pay app
+- `GET /api/pay/:token` — Public: get pay app data for payment page
+- `POST /api/pay/:token/checkout` — Create Stripe Checkout session (ACH or card)
+- `POST /api/stripe/webhook` — Handle Stripe webhook events
+- `GET /api/payments` — List GC's payments with summary stats
+- `POST /api/pay-apps/:id/bad-debt` — Mark as uncollectable
+- `POST /api/pay-apps/:id/undo-bad-debt` — Undo bad debt
+- `GET /pay/:token` — Serve pay.html (public payment page)
+
+### Going Live Checklist
+- [ ] Switch Stripe to live mode, get `sk_live_` and `pk_live_` keys
+- [ ] Update Railway production env vars with live keys
+- [ ] Create live webhook endpoint pointing to production URL
+- [ ] Verify GC onboarding flow works end-to-end
+- [ ] Test real ACH and card payment (use small amount)
+- [ ] Confirm payouts to GC's bank account
+
+---
+
 ## Project Boundaries — What NOT to Touch
 
 - **Do NOT** modify the G702/G703 math formulas without running the full pay app test
@@ -416,7 +479,8 @@ Retainage is per-line (can vary). Default from project settings.
 - **Do NOT** push to GitHub — Vagish does this via GitHub Desktop
 - **Do NOT** use display name format in Resend `from` field — plain email only
 - **Do NOT** redirect to `/` or `/?` from server — always use `/app.html` or `/app.html?`
-- **Do NOT** start Stripe Connect/escrow work without explicit approval from Vagish (basic Stripe Checkout for $40/month subscription IS approved)
+- **Do NOT** modify Stripe fee amounts (ACH $25, CC 3.3%+$0.40) without discussing with Vagish
+- **Do NOT** switch Stripe from test mode to live mode without explicit approval from Vagish
 - **Do NOT** make changes to email sending logic without discussing first (risk of spamming users)
 
 ---

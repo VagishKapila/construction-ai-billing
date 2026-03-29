@@ -1057,6 +1057,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
       <div class="ni active" id="nav-dash" onclick="showDash()" role="button" tabindex="0" aria-current="page" onkeydown="if(event.key==='Enter'||event.key===' ')showDash()">Dashboard</div>
       <div class="ni" id="nav-new-proj" onclick="showNewProject()" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')showNewProject()">+ New project</div>
       <div class="ni" id="nav-revenue" onclick="showRevenue()" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')showRevenue()">📊 Revenue</div>
+      <div class="ni" id="nav-payments" onclick="showPayments()" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')showPayments()">💳 Payments</div>
       <div class="ni hidden" id="nav-admin" onclick="showAdmin()" role="button" tabindex="0" style="color:var(--amber)" onkeydown="if(event.key==='Enter'||event.key===' ')showAdmin()">⚡ Admin</div>
       <div id="sidebar-projects" role="list"></div>
     </nav>
@@ -1162,6 +1163,16 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               <button class="btn btn-primary" id="team-invite-btn" onclick="inviteTeamMember()">+ Invite</button>
             </div>
           </div>
+        </div>
+        <div class="card" id="stripe-connect-card">
+          <div class="ct">💳 Accept Payments via Stripe</div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:14px">Let property owners pay invoices directly — ACH bank transfer or credit card. Funds go straight to your bank account via Stripe.</p>
+          <div id="stripe-connect-status" style="margin-bottom:14px">
+            <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--bg3);border-radius:var(--radius);font-size:13px;color:var(--text2)">
+              <span>Checking status...</span>
+            </div>
+          </div>
+          <div id="stripe-connect-actions"></div>
         </div>
         <div id="settings-upgrade-card"></div>
         <div class="card">
@@ -1581,6 +1592,40 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
           </div>
           <div id="rem-save-status" style="font-size:12px;color:var(--text2);margin-top:6px"></div>
         </div>
+      </div>
+
+      <!-- PAYMENTS DASHBOARD -->
+      <div class="pg" id="pg-payments">
+        <div class="ptitle">💳 Payments</div>
+        <div class="psub">Track payments from property owners</div>
+        <div id="payments-loading" style="padding:32px;color:var(--text2);text-align:center">Loading payments...</div>
+        <div id="payments-content" class="hidden">
+          <!-- KPI Cards -->
+          <div class="kpis" id="payments-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px"></div>
+          <!-- Stripe Connect Status Banner -->
+          <div id="payments-connect-banner" class="hidden" style="padding:16px 20px;background:#fff7ed;border:1px solid #fed7aa;border-radius:var(--radius);margin-bottom:16px">
+            <div style="font-size:14px;font-weight:600;color:#9a3412;margin-bottom:4px">Set Up Payment Acceptance</div>
+            <div style="font-size:13px;color:#9a3412;margin-bottom:12px">Connect your Stripe account to start receiving payments from property owners.</div>
+            <button class="btn btn-primary" onclick="startStripeConnect()">Connect Stripe Account</button>
+          </div>
+          <!-- Payment list -->
+          <div class="card" style="padding:0;overflow:hidden">
+            <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+              <div style="font-weight:600;font-size:14px">Recent Payments</div>
+              <select id="payments-filter" onchange="loadPaymentsDashboard()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+                <option value="all">All</option>
+                <option value="succeeded">Received</option>
+                <option value="pending">Pending</option>
+                <option value="failed">Failed</option>
+              </select>
+            </div>
+            <div id="payments-list" style="max-height:500px;overflow-y:auto"></div>
+            <div id="payments-empty" class="hidden" style="padding:40px;text-align:center;color:var(--text2);font-size:14px">
+              No payments yet. Payment links are automatically included when you email invoices.
+            </div>
+          </div>
+        </div>
+        <div class="br"><button class="btn" onclick="showDash()">← Back to dashboard</button></div>
       </div>
 
       <!-- ADMIN DASHBOARD -->
@@ -2521,17 +2566,18 @@ function showPage(id){
   document.getElementById('pg-'+id).classList.add('on');
   // ADA: update aria-current on sidebar nav items
   document.querySelectorAll('.ni[aria-current]').forEach(n=>n.removeAttribute('aria-current'));
-  const navMap={dash:'nav-dash',revenue:'nav-revenue',settings:null,project:null};
+  const navMap={dash:'nav-dash',revenue:'nav-revenue',payments:'nav-payments',settings:null,project:null};
   if(navMap[id]) { const el=document.getElementById(navMap[id]); if(el) el.setAttribute('aria-current','page'); }
   // Hash-based routing: push a history entry so back button navigates within the SPA
   if(!window._spaRestoring) {
-    const hashable=['dash','revenue','settings'];
+    const hashable=['dash','revenue','payments','settings'];
     if(hashable.includes(id)) history.pushState({spaPage:id},'','#'+id);
   }
 }
 // Navigate to named page without double-pushing history
 function _navigateToPage(page){
   if(page==='revenue') showRevenue();
+  else if(page==='payments') showPayments();
   else if(page==='settings') showSettings();
   else showDash();
 }
@@ -2867,13 +2913,17 @@ async function loadProject(id, opts={}){
       paList.innerHTML=payapps.map(pa=>{
         const submitted=pa.status==='submitted';
         const delBtn=`<button class="btn btn-sm" onclick="event.stopPropagation();deletePayApp(${pa.id},currentProjectId,'${(pa.period_label||'Pay App #'+pa.app_number).replace(/'/g,"\\'")}',${pa.app_number})" style="background:none;border:1px solid var(--red);color:var(--red);padding:3px 8px;font-size:11px" title="Delete">🗑</button>`;
+        const payBadge=pa.payment_status==='paid'?'<span class="badge badge-green" style="margin-left:4px;font-size:10px">💰 paid</span>'
+          :pa.payment_status==='partial'?'<span class="badge badge-amber" style="margin-left:4px;font-size:10px">💰 partial</span>'
+          :pa.payment_status==='pending'?'<span class="badge" style="margin-left:4px;font-size:10px;background:#dbeafe;color:#1d4ed8">⏳ pending</span>'
+          :pa.bad_debt?'<span class="badge" style="margin-left:4px;font-size:10px;background:#f3f4f6;color:#6b7280">bad debt</span>':'';
         const actions=submitted
           ?`<button class="btn btn-sm" onclick="event.stopPropagation();loadPayApp(${pa.id},5)" title="Preview &amp; Export">⬡ Preview</button>
-             <span class="badge badge-green" style="margin-left:4px">submitted</span>
+             <span class="badge badge-green" style="margin-left:4px">submitted</span>${payBadge}
              ${delBtn}`
           :`<button class="btn btn-amber btn-sm" onclick="event.stopPropagation();quickMarkSubmitted(${pa.id},${pa.app_number})" title="Mark as submitted">✓ Submit</button>
              <button class="btn btn-sm" onclick="event.stopPropagation();loadPayApp(${pa.id},5)" title="Preview &amp; Export">⬡ Preview</button>
-             <span class="badge badge-amber" style="margin-left:4px">draft</span>
+             <span class="badge badge-amber" style="margin-left:4px">draft</span>${payBadge}
              ${delBtn}`;
         return`<div class="pa-item" onclick="loadPayApp(${pa.id})">
           <div>
@@ -3153,10 +3203,16 @@ async function loadPayApp(id,tab=0){
 }
 function renderPAHeader(pa){
   const submitted=pa.status==='submitted';
+  const payStatus=pa.payment_status||'unpaid';
+  const payBadgeMap={paid:'<span class="badge badge-green" style="font-size:10px;vertical-align:middle;margin-left:4px">💰 paid</span>',partial:'<span class="badge badge-amber" style="font-size:10px;vertical-align:middle;margin-left:4px">💰 partial</span>',pending:'<span class="badge" style="font-size:10px;vertical-align:middle;margin-left:4px;background:#dbeafe;color:#1d4ed8">⏳ pending</span>'};
+  const payBadge=payBadgeMap[payStatus]||(pa.bad_debt?'<span class="badge" style="font-size:10px;vertical-align:middle;margin-left:4px;background:#f3f4f6;color:#6b7280">bad debt</span>':'');
+  const badDebtBtn=submitted&&!pa.bad_debt&&payStatus!=='paid'
+    ?`<button class="btn btn-sm" onclick="toggleBadDebt(${pa.id},true)" style="font-size:11px;border-color:var(--text3);color:var(--text2)" title="Mark as uncollectable — stops follow-ups">✕ Write off</button>`
+    :(pa.bad_debt?`<button class="btn btn-sm" onclick="toggleBadDebt(${pa.id},false)" style="font-size:11px;border-color:var(--amber);color:var(--amber)" title="Re-open for collection">↩ Undo write-off</button>`:'');
   document.getElementById('pa-header').innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-size:18px;font-weight:600">Pay App #${pa.app_number} <span class="badge ${submitted?'badge-green':'badge-amber'}" style="font-size:11px;vertical-align:middle;cursor:pointer" onclick="paTab(5)" title="Click to view preview">${pa.status||'draft'}</span></div>
+        <div style="font-size:18px;font-weight:600">Pay App #${pa.app_number} <span class="badge ${submitted?'badge-green':'badge-amber'}" style="font-size:11px;vertical-align:middle;cursor:pointer" onclick="paTab(5)" title="Click to view preview">${pa.status||'draft'}</span>${payBadge}</div>
         <div style="font-size:12px;color:var(--text2)">${pa.period_label||'No period set'} · ${pa.project_name} · ${pa.app_number>1?'Carries forward from Pay App #'+(pa.app_number-1):'First application'}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -3165,6 +3221,7 @@ function renderPAHeader(pa){
           ?`<button class="btn btn-sm" disabled style="opacity:0.5;cursor:default">✓ Submitted</button>
              <button class="btn btn-sm" onclick="unsubmitPayApp()" style="font-size:11px;border-color:var(--text3);color:var(--text2)" title="Move back to Draft to make changes">↩ Unsubmit</button>`
           :'<button class="btn btn-amber btn-sm" onclick="markSubmitted()">✓ Mark submitted</button>'}
+        ${badDebtBtn}
         <button class="btn btn-primary btn-sm" onclick="paTab(5)">Preview &amp; Send</button>
         <button class="btn btn-sm" onclick="deletePayApp(${pa.id},${pa.project_id},'${(pa.period_label||'Pay App #'+pa.app_number).replace(/'/g,"\\'")}',${pa.app_number})" style="margin-left:auto;background:none;border:1px solid var(--red);color:var(--red);font-size:11px" title="Delete this pay application">🗑 Delete</button>
       </div>
@@ -3981,6 +4038,8 @@ async function loadSettings() {
     loadTeam().catch(()=>{});
     // Module 6: render upgrade card
     renderSettingsUpgradeCard();
+    // Load Stripe Connect status
+    loadStripeConnectStatus().catch(()=>{});
   } catch(e) { console.log('No settings yet'); }
 }
 
@@ -4123,7 +4182,24 @@ async function saveEditProject() {
   } catch(e) { document.getElementById('ep-err').textContent=e.message; document.getElementById('ep-err').classList.remove('hidden'); }
 }
 
-if(token&&currentUser){setAuth({token,user:currentUser});}
+if(token&&currentUser){
+  setAuth({token,user:currentUser});
+  // Refresh user data from server to pick up changes (e.g. email_verified after clicking link)
+  (async()=>{
+    try{
+      const fresh=await api('GET','/auth/me');
+      if(fresh.user){
+        currentUser=Object.assign(currentUser,fresh.user);
+        const store=localStorage.getItem('caib_token')?localStorage:sessionStorage;
+        store.setItem('caib_user',JSON.stringify(currentUser));
+        // Update verification banner with fresh data
+        if(currentUser.email_verified){
+          document.getElementById('verify-banner').classList.add('hidden');
+        }
+      }
+    }catch(e){}
+  })();
+}
 
 // ── ADMIN DASHBOARD ──────────────────────────────────────────────────────────
 const ADMIN_EMAILS_CLIENT = (window._adminEmails || '').split(',').map(e=>e.trim().toLowerCase());
@@ -5442,6 +5518,157 @@ function checkAndShowNudge(payAppCount) {
     </div>`;
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// PAYMENTS DASHBOARD & STRIPE CONNECT
+// ═══════════════════════════════════════════════════════════════════
+async function showPayments() {
+  closeSidebar();
+  showPage('payments');
+  document.querySelectorAll('.ni').forEach(n => n.classList.remove('active'));
+  document.getElementById('nav-payments').classList.add('active');
+  loadPaymentsDashboard();
+}
+
+async function loadPaymentsDashboard() {
+  const loadEl = document.getElementById('payments-loading');
+  const contentEl = document.getElementById('payments-content');
+  try {
+    loadEl.classList.remove('hidden');
+    contentEl.classList.add('hidden');
+    // Check Stripe Connect status first
+    let stripeActive = false;
+    try {
+      const acct = await api('GET', '/stripe/account-status');
+      stripeActive = acct && acct.charges_enabled;
+    } catch(e) {}
+    const banner = document.getElementById('payments-connect-banner');
+    if (!stripeActive) {
+      banner.classList.remove('hidden');
+    } else {
+      banner.classList.add('hidden');
+    }
+    // Load payments
+    const filter = document.getElementById('payments-filter')?.value || 'all';
+    const data = await api('GET', '/payments' + (filter !== 'all' ? '?status=' + filter : ''));
+    loadEl.classList.add('hidden');
+    contentEl.classList.remove('hidden');
+    // KPIs
+    const kpis = document.getElementById('payments-kpis');
+    const total = data.summary || {};
+    kpis.innerHTML = `
+      <div class="card" style="padding:16px;text-align:center">
+        <div style="font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Received</div>
+        <div style="font-size:22px;font-weight:700;color:#059669">${fmtMoney(total.total_received || 0)}</div>
+      </div>
+      <div class="card" style="padding:16px;text-align:center">
+        <div style="font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Pending</div>
+        <div style="font-size:22px;font-weight:700;color:#2563eb">${fmtMoney(total.total_pending || 0)}</div>
+      </div>
+      <div class="card" style="padding:16px;text-align:center">
+        <div style="font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Payments</div>
+        <div style="font-size:22px;font-weight:700;color:var(--text1)">${total.count || 0}</div>
+      </div>
+      ${stripeActive ? '<div class="card" style="padding:16px;text-align:center;cursor:pointer" onclick="openStripeDashboard()"><div style="font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Stripe</div><div style="font-size:15px;font-weight:600;color:#635bff;margin-top:6px">Open Dashboard</div></div>' : ''}`;
+    // Payment list
+    const list = document.getElementById('payments-list');
+    const empty = document.getElementById('payments-empty');
+    const payments = data.payments || [];
+    if (!payments.length) {
+      list.innerHTML = '';
+      empty.classList.remove('hidden');
+    } else {
+      empty.classList.add('hidden');
+      list.innerHTML = payments.map(p => {
+        const statusMap = {
+          succeeded: { bg: '#d1fae5', color: '#059669', label: 'Received' },
+          pending: { bg: '#dbeafe', color: '#1d4ed8', label: 'Pending' },
+          failed: { bg: '#fee2e2', color: '#dc2626', label: 'Failed' }
+        };
+        const s = statusMap[p.payment_status] || { bg: '#f3f4f6', color: '#6b7280', label: p.payment_status };
+        return `<div style="display:flex;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);gap:12px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.payer_name || p.payer_email || 'Unknown payer'}</div>
+            <div style="font-size:11px;color:var(--text2)">PA #${p.app_number || '?'} · ${p.project_name || ''} · ${p.payment_method === 'ach' ? 'ACH' : 'Card'}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-size:14px;font-weight:700">${fmtMoney(p.amount)}</div>
+            <span style="font-size:10px;padding:2px 8px;border-radius:4px;background:${s.bg};color:${s.color};font-weight:600">${s.label}</span>
+          </div>
+          <div style="font-size:11px;color:var(--text3);flex-shrink:0;width:65px;text-align:right">${p.paid_at ? new Date(p.paid_at).toLocaleDateString() : p.created_at ? new Date(p.created_at).toLocaleDateString() : ''}</div>
+        </div>`;
+      }).join('');
+    }
+  } catch(e) {
+    loadEl.classList.add('hidden');
+    contentEl.classList.remove('hidden');
+    document.getElementById('payments-list').innerHTML = `<div style="padding:20px;color:var(--red);font-size:13px">Failed to load payments: ${e.message}</div>`;
+  }
+}
+
+function fmtMoney(n) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0);
+}
+
+// Stripe Connect functions
+async function startStripeConnect() {
+  try {
+    const result = await api('POST', '/stripe/connect');
+    if (result.url) window.location.href = result.url;
+    else alert('Failed to start Stripe onboarding.');
+  } catch(e) { alert('Error: ' + (e.message || 'Could not connect Stripe.')); }
+}
+
+async function openStripeDashboard() {
+  try {
+    const result = await api('POST', '/stripe/dashboard-link');
+    if (result.url) window.open(result.url, '_blank');
+    else alert('Could not open Stripe dashboard.');
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function loadStripeConnectStatus() {
+  const statusEl = document.getElementById('stripe-connect-status');
+  const actionsEl = document.getElementById('stripe-connect-actions');
+  if (!statusEl) return;
+  try {
+    const acct = await api('GET', '/stripe/account-status');
+    if (acct && acct.charges_enabled) {
+      statusEl.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:var(--radius);font-size:13px;color:#059669">
+        <span style="font-size:16px">✓</span> <span>Stripe connected — you can accept payments. <strong>${acct.business_name || ''}</strong></span>
+      </div>`;
+      actionsEl.innerHTML = `<button class="btn btn-sm" onclick="openStripeDashboard()" style="margin-right:8px">Open Stripe Dashboard</button>`;
+    } else if (acct && acct.stripe_account_id) {
+      statusEl.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#fef3c7;border:1px solid #fcd34d;border-radius:var(--radius);font-size:13px;color:#92400e">
+        <span>⏳ Stripe onboarding in progress — complete your setup to start accepting payments.</span>
+      </div>`;
+      actionsEl.innerHTML = `<button class="btn btn-primary" onclick="startStripeConnect()">Continue Setup</button>`;
+    } else {
+      statusEl.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--bg3);border-radius:var(--radius);font-size:13px;color:var(--text2)">
+        <span>Not connected — set up Stripe to accept ACH and card payments from property owners.</span>
+      </div>`;
+      actionsEl.innerHTML = `<button class="btn btn-primary" onclick="startStripeConnect()">Connect Stripe Account</button>`;
+    }
+  } catch(e) {
+    statusEl.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--bg3);border-radius:var(--radius);font-size:13px;color:var(--text2)">
+      <span>Payment acceptance not available yet. Contact support if you need help.</span>
+    </div>`;
+    actionsEl.innerHTML = '';
+  }
+}
+
+// Bad debt / write-off
+async function toggleBadDebt(paId, markBad) {
+  const action = markBad ? 'write off' : 'undo the write-off for';
+  if (!confirm(`Are you sure you want to ${action} this pay app?\n\n${markBad ? 'This will stop follow-up reminders and mark it as uncollectable.' : 'This will re-open the pay app for payment collection.'}`)) return;
+  try {
+    const reason = markBad ? (prompt('Optional: reason for write-off (e.g. "client bankrupt", "disputed")') || '') : '';
+    await api('POST', '/pay-apps/' + paId + (markBad ? '/bad-debt' : '/undo-bad-debt'), markBad ? { reason } : {});
+    currentPAData = await api('GET', '/payapps/' + paId);
+    renderPAHeader(currentPAData);
+    showToast(markBad ? '✕ Pay app written off as bad debt.' : '↩ Pay app re-opened for collection.');
+  } catch(e) { alert('Error: ' + (e.message || 'Failed to update.')); }
+}
+
 function renderSettingsUpgradeCard() {
   const container = document.getElementById('settings-upgrade-card');
   if (!container || !currentUser) return;
@@ -5596,7 +5823,6 @@ async function checkOnboardingTour(){
 
 function startOnboardingTour(){
   _wgStep=0;
-  api('POST','/onboarding/reset',{}).catch(()=>{});
   // Build modal
   let overlay=document.getElementById('wg-overlay');
   if(overlay)overlay.remove();

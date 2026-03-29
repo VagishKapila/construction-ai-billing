@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pay Invoice — ConstructInvoice AI</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --primary:#2563eb;--primary-dark:#1d4ed8;--primary-light:#dbeafe;
+  --green:#059669;--green-light:#d1fae5;--green-bg:#ecfdf5;
+  --amber:#d97706;--amber-light:#fef3c7;
+  --red:#dc2626;--red-light:#fee2e2;
+  --gray-50:#f9fafb;--gray-100:#f3f4f6;--gray-200:#e5e7eb;--gray-300:#d1d5db;
+  --gray-400:#9ca3af;--gray-500:#6b7280;--gray-600:#4b5563;--gray-700:#374151;--gray-800:#1f2937;--gray-900:#111827;
+  --radius:12px;--shadow:0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.06);
+  --shadow-lg:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -2px rgba(0,0,0,.05);
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f0f4ff;color:var(--gray-800);min-height:100vh;line-height:1.5}
+.pay-container{max-width:520px;margin:0 auto;padding:20px 16px 40px}
+.pay-header{text-align:center;padding:24px 0 16px}
+.pay-logo{max-height:48px;max-width:180px;object-fit:contain;margin-bottom:8px}
+.pay-brand{font-size:13px;color:var(--gray-400);margin-top:4px}
+.pay-card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow-lg);overflow:hidden;margin-bottom:16px}
+.pay-card-header{padding:20px 24px;border-bottom:1px solid var(--gray-100)}
+.pay-card-body{padding:24px}
+.invoice-title{font-size:20px;font-weight:700;color:var(--gray-900)}
+.invoice-meta{font-size:14px;color:var(--gray-500);margin-top:4px}
+.invoice-meta span{display:inline-block;margin-right:16px}
+.amount-section{text-align:center;padding:28px 24px;background:linear-gradient(135deg,#f0f4ff 0%,#e8ecff 100%)}
+.amount-label{font-size:13px;color:var(--gray-500);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+.amount-value{font-size:42px;font-weight:800;color:var(--gray-900);margin:4px 0;font-variant-numeric:tabular-nums}
+.amount-value.paid{color:var(--green)}
+.amount-sub{font-size:13px;color:var(--gray-500)}
+.amount-input-wrap{margin-top:16px;display:none}
+.amount-input-wrap.show{display:block}
+.amount-input-wrap label{font-size:13px;color:var(--gray-600);display:block;margin-bottom:4px}
+.amount-input{width:200px;padding:10px 14px;font-size:18px;font-weight:600;text-align:center;border:2px solid var(--gray-200);border-radius:8px;outline:none;transition:border .2s}
+.amount-input:focus{border-color:var(--primary)}
+.partial-note{font-size:12px;color:var(--amber);margin-top:6px;display:none}
+.partial-note.show{display:block}
+
+/* Aria AI message */
+.aria-msg{display:flex;gap:10px;padding:16px 20px;background:var(--primary-light);border-radius:var(--radius);margin:16px 24px;align-items:flex-start}
+.aria-avatar{width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+.aria-text{font-size:13.5px;color:var(--gray-700);line-height:1.5}
+.aria-text strong{color:var(--primary-dark)}
+
+/* Payment methods */
+.method-section{padding:0 24px 24px}
+.method-label{font-size:13px;color:var(--gray-500);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:12px}
+.method-btn{display:flex;align-items:center;width:100%;padding:16px;border:2px solid var(--gray-200);border-radius:10px;background:#fff;cursor:pointer;transition:all .2s;margin-bottom:10px;text-align:left;font-family:inherit}
+.method-btn:hover{border-color:var(--primary);background:var(--primary-light)}
+.method-btn.selected{border-color:var(--primary);background:var(--primary-light)}
+.method-btn.recommended{position:relative;border-color:var(--green)}
+.method-btn.recommended::after{content:'Recommended';position:absolute;top:-9px;right:12px;background:var(--green);color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;letter-spacing:.3px;text-transform:uppercase}
+.method-icon{width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-right:14px;flex-shrink:0}
+.method-icon.ach{background:#e0f2fe;color:#0284c7}
+.method-icon.cc{background:#fae8ff;color:#a855f7}
+.method-icon svg{width:22px;height:22px}
+.method-info{flex:1}
+.method-name{font-size:15px;font-weight:600;color:var(--gray-900)}
+.method-desc{font-size:12.5px;color:var(--gray-500);margin-top:2px}
+.method-fee{font-size:12px;font-weight:600;margin-top:4px}
+.method-fee.free{color:var(--green)}
+.method-fee.has-fee{color:var(--gray-500)}
+
+/* Payer info */
+.payer-section{padding:0 24px 20px;display:none}
+.payer-section.show{display:block}
+.payer-row{display:flex;gap:10px;margin-bottom:10px}
+.payer-row input{flex:1;padding:10px 12px;border:1.5px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit;outline:none;transition:border .2s}
+.payer-row input:focus{border-color:var(--primary)}
+.payer-row input::placeholder{color:var(--gray-400)}
+
+/* Pay button */
+.pay-btn-wrap{padding:0 24px 24px}
+.pay-btn{width:100%;padding:16px;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px}
+.pay-btn.primary{background:var(--primary);color:#fff}
+.pay-btn.primary:hover{background:var(--primary-dark);transform:translateY(-1px);box-shadow:var(--shadow-lg)}
+.pay-btn.primary:active{transform:translateY(0)}
+.pay-btn:disabled{opacity:.5;cursor:not-allowed;transform:none!important}
+.pay-btn .spinner{width:18px;height:18px;border:2.5px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;display:none}
+.pay-btn.loading .spinner{display:block}
+.pay-btn.loading .btn-text{display:none}
+
+/* Fee summary */
+.fee-summary{padding:16px 24px;background:var(--gray-50);border-top:1px solid var(--gray-100);display:none}
+.fee-summary.show{display:block}
+.fee-row{display:flex;justify-content:space-between;font-size:13.5px;padding:4px 0;color:var(--gray-600)}
+.fee-row.total{font-weight:700;color:var(--gray-900);font-size:15px;border-top:1px solid var(--gray-200);margin-top:6px;padding-top:8px}
+
+/* Status states */
+.status-banner{padding:20px 24px;text-align:center;border-radius:var(--radius);margin:16px 0}
+.status-banner.success{background:var(--green-bg);border:1px solid #a7f3d0}
+.status-banner.success h2{color:var(--green);font-size:22px;margin-bottom:4px}
+.status-banner.success p{color:var(--gray-600);font-size:14px}
+.status-banner.already-paid{background:var(--green-light);border:1px solid #6ee7b7}
+.status-banner.error{background:var(--red-light);border:1px solid #fca5a5}
+.status-banner.error h2{color:var(--red);font-size:18px;margin-bottom:4px}
+.status-banner.bad-debt{background:var(--gray-100);border:1px solid var(--gray-300)}
+.status-banner.bad-debt h2{color:var(--gray-600);font-size:18px}
+
+.check-icon{width:56px;height:56px;border-radius:50%;background:var(--green);color:#fff;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px}
+.check-icon svg{width:28px;height:28px}
+
+/* Secure badge */
+.secure-badge{display:flex;align-items:center;justify-content:center;gap:6px;padding:12px;font-size:12px;color:var(--gray-400)}
+.secure-badge svg{width:14px;height:14px}
+
+/* Footer */
+.pay-footer{text-align:center;padding:16px 0;font-size:12px;color:var(--gray-400)}
+.pay-footer a{color:var(--gray-500);text-decoration:none}
+
+/* Loading state */
+.loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;text-align:center}
+.loading-screen .spinner-lg{width:36px;height:36px;border:3px solid var(--gray-200);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:16px}
+.loading-screen p{color:var(--gray-500);font-size:14px}
+
+.change-amount-link{font-size:13px;color:var(--primary);cursor:pointer;text-decoration:underline;margin-top:6px;display:inline-block}
+
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:480px){
+  .pay-container{padding:12px 10px 32px}
+  .amount-value{font-size:34px}
+  .pay-card-body,.method-section,.pay-btn-wrap{padding-left:16px;padding-right:16px}
+  .aria-msg{margin:12px 16px}
+  .payer-row{flex-direction:column}
+}
+</style>
+</head>
+<body>
+<div class="pay-container">
+  <!-- Loading State -->
+  <div id="loading-state" class="loading-screen">
+    <div class="spinner-lg"></div>
+    <p>Loading invoice...</p>
+  </div>
+
+  <!-- Error State -->
+  <div id="error-state" style="display:none">
+    <div class="pay-card">
+      <div class="status-banner error">
+        <h2>Invoice Not Found</h2>
+        <p id="error-msg">This payment link is invalid or has expired.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Success State -->
+  <div id="success-state" style="display:none">
+    <div class="pay-header">
+      <img id="success-logo" class="pay-logo" src="" alt="" style="display:none">
+    </div>
+    <div class="pay-card">
+      <div class="status-banner success">
+        <div class="check-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+        <h2>Payment Successful</h2>
+        <p id="success-detail">Your payment has been received. The contractor will be notified.</p>
+      </div>
+    </div>
+    <div class="secure-badge">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      Secured by Stripe
+    </div>
+  </div>
+
+  <!-- Main Payment State -->
+  <div id="pay-state" style="display:none">
+    <div class="pay-header">
+      <img id="pay-logo" class="pay-logo" src="" alt="" style="display:none">
+      <div class="pay-brand">Powered by ConstructInvoice AI</div>
+    </div>
+
+    <div class="pay-card">
+      <!-- Invoice Header -->
+      <div class="pay-card-header">
+        <div class="invoice-title" id="invoice-title">Pay App #1</div>
+        <div class="invoice-meta">
+          <span id="meta-project"></span>
+          <span id="meta-period"></span>
+        </div>
+        <div class="invoice-meta" style="margin-top:2px">
+          <span id="meta-contractor" style="font-weight:600;color:var(--gray-700)"></span>
+        </div>
+        <div class="invoice-meta" id="meta-po" style="display:none">
+          <span></span>
+        </div>
+      </div>
+
+      <!-- Amount Due -->
+      <div class="amount-section">
+        <div class="amount-label">Amount Due</div>
+        <div class="amount-value" id="amount-display">$0.00</div>
+        <div class="amount-sub" id="amount-sub"></div>
+        <a class="change-amount-link" id="change-amount-link" onclick="toggleAmountInput()">Pay a different amount</a>
+        <div class="amount-input-wrap" id="amount-input-wrap">
+          <label>Enter payment amount</label>
+          <input type="number" class="amount-input" id="custom-amount" step="0.01" min="1" placeholder="0.00" oninput="onAmountChange()">
+          <div class="partial-note" id="partial-note">Partial payment — remaining balance will be tracked</div>
+        </div>
+      </div>
+
+      <!-- Aria AI message -->
+      <div class="aria-msg" id="aria-msg">
+        <div class="aria-avatar">Ai</div>
+        <div class="aria-text" id="aria-text">
+          <strong>Quick &amp; secure.</strong> Bank transfer (ACH) takes about 30 seconds and keeps costs low. Credit card is instant but has a small processing fee.
+        </div>
+      </div>
+
+      <!-- Payment Methods -->
+      <div class="method-section">
+        <div class="method-label">Payment Method</div>
+
+        <button class="method-btn recommended" id="btn-ach" onclick="selectMethod('ach')">
+          <div class="method-icon ach">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20"/><path d="M6 16h4"/></svg>
+          </div>
+          <div class="method-info">
+            <div class="method-name">Bank Transfer (ACH)</div>
+            <div class="method-desc">Connect your bank — takes ~30 seconds</div>
+            <div class="method-fee free" id="ach-fee-label">No fee to you</div>
+          </div>
+        </button>
+
+        <button class="method-btn" id="btn-cc" onclick="selectMethod('card')">
+          <div class="method-icon cc">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          </div>
+          <div class="method-info">
+            <div class="method-name">Credit / Debit Card</div>
+            <div class="method-desc">Visa, Mastercard, Amex — instant</div>
+            <div class="method-fee has-fee" id="cc-fee-label">+ $0.00 processing fee</div>
+          </div>
+        </button>
+      </div>
+
+      <!-- Payer Info -->
+      <div class="payer-section" id="payer-section">
+        <div class="payer-row">
+          <input type="text" id="payer-name" placeholder="Your name (optional)">
+        </div>
+        <div class="payer-row">
+          <input type="email" id="payer-email" placeholder="Email for receipt (optional)">
+        </div>
+      </div>
+
+      <!-- Fee Summary (shows for CC) -->
+      <div class="fee-summary" id="fee-summary">
+        <div class="fee-row"><span>Invoice amount</span><span id="fee-base">$0.00</span></div>
+        <div class="fee-row"><span>Processing fee</span><span id="fee-amount">$0.00</span></div>
+        <div class="fee-row total"><span>Total charge</span><span id="fee-total">$0.00</span></div>
+      </div>
+
+      <!-- Pay Button -->
+      <div class="pay-btn-wrap">
+        <button class="pay-btn primary" id="pay-btn" onclick="initiatePayment()" disabled>
+          <span class="btn-text" id="pay-btn-text">Select a payment method</span>
+          <div class="spinner"></div>
+        </button>
+      </div>
+    </div>
+
+    <div class="secure-badge">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      256-bit encryption &bull; Secured by Stripe
+    </div>
+
+    <div class="pay-footer">
+      <a href="https://constructinv.varshyl.com" target="_blank">ConstructInvoice AI</a> by Varshyl Inc.
+    </div>
+  </div>
+
+  <!-- Already Paid State -->
+  <div id="paid-state" style="display:none">
+    <div class="pay-header">
+      <img id="paid-logo" class="pay-logo" src="" alt="" style="display:none">
+    </div>
+    <div class="pay-card">
+      <div class="status-banner already-paid">
+        <div class="check-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+        <h2 style="color:var(--green);font-size:22px;margin-bottom:4px">Fully Paid</h2>
+        <p id="paid-detail" style="color:var(--gray-600);font-size:14px">This invoice has been paid in full. Thank you!</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bad Debt State -->
+  <div id="baddebt-state" style="display:none">
+    <div class="pay-card">
+      <div class="status-banner bad-debt">
+        <h2>Invoice Closed</h2>
+        <p style="color:var(--gray-500);font-size:14px;margin-top:4px">This invoice is no longer accepting payments. Please contact the contractor directly.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let invoiceData = null;
+let selectedMethod = null;
+let payAmount = 0;
+
+// Extract token from URL: /pay/TOKEN
+const pathParts = window.location.pathname.split('/');
+const token = pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2];
+
+(async function init() {
+  // Check for success/cancel redirect from Stripe
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('payment') === 'success') {
+    showState('success');
+    // Still load data to show logo
+    try {
+      const r = await fetch('/api/pay/' + token);
+      const d = await r.json();
+      if (d.logo_filename) {
+        const img = document.getElementById('success-logo');
+        img.src = '/uploads/' + d.logo_filename;
+        img.style.display = 'block';
+      }
+      document.getElementById('success-detail').textContent =
+        'Your payment to ' + (d.company_name || 'the contractor') + ' has been received. A confirmation will be sent to your email.';
+    } catch(e) {}
+    return;
+  }
+
+  // Load invoice data
+  try {
+    const res = await fetch('/api/pay/' + token);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showError(err.error || 'Invoice not found');
+      return;
+    }
+    invoiceData = await res.json();
+    renderInvoice();
+  } catch(e) {
+    showError('Unable to load invoice. Please try again.');
+  }
+})();
+
+function showState(state) {
+  ['loading-state','error-state','success-state','pay-state','paid-state','baddebt-state'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
+  document.getElementById(state + '-state').style.display = '';
+}
+
+function showError(msg) {
+  document.getElementById('error-msg').textContent = msg;
+  showState('error');
+}
+
+function renderInvoice() {
+  const d = invoiceData;
+
+  // Handle special states
+  if (d.bad_debt) { showState('baddebt'); return; }
+  if (d.payment_status === 'paid' || d.amount_due <= 0) {
+    if (d.logo_filename) {
+      const img = document.getElementById('paid-logo');
+      img.src = '/uploads/' + d.logo_filename;
+      img.style.display = 'block';
+    }
+    showState('paid');
+    return;
+  }
+
+  showState('pay');
+
+  // Logo
+  if (d.logo_filename) {
+    const img = document.getElementById('pay-logo');
+    img.src = '/uploads/' + d.logo_filename;
+    img.style.display = 'block';
+    img.onerror = function() { this.style.display = 'none'; };
+  }
+
+  // Invoice header
+  document.getElementById('invoice-title').textContent = 'Pay App #' + d.app_number;
+  document.getElementById('meta-project').textContent = d.project_name + (d.project_number ? ' (' + d.project_number + ')' : '');
+  if (d.period_label) document.getElementById('meta-period').textContent = d.period_label;
+  if (d.company_name) document.getElementById('meta-contractor').textContent = 'From: ' + d.company_name;
+  if (d.po_number) {
+    const poEl = document.getElementById('meta-po');
+    poEl.style.display = '';
+    poEl.querySelector('span').textContent = 'PO# ' + d.po_number;
+  }
+
+  // Amount
+  payAmount = d.amount_due;
+  document.getElementById('amount-display').textContent = formatCurrency(d.amount_due);
+  if (d.amount_paid > 0) {
+    document.getElementById('amount-sub').textContent = formatCurrency(d.amount_paid) + ' already paid of ' + formatCurrency(d.total_due) + ' total';
+  }
+
+  // Fee labels
+  document.getElementById('cc-fee-label').textContent = '+ ' + formatCurrency(d.cc_fee) + ' processing fee';
+
+  // Aria contextual message
+  updateAriaMessage();
+}
+
+function formatCurrency(n) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n || 0);
+}
+
+function selectMethod(method) {
+  selectedMethod = method;
+  document.getElementById('btn-ach').classList.toggle('selected', method === 'ach');
+  document.getElementById('btn-cc').classList.toggle('selected', method === 'card');
+
+  // Show payer info
+  document.getElementById('payer-section').classList.add('show');
+
+  // Show/hide fee summary
+  const feeSummary = document.getElementById('fee-summary');
+  if (method === 'card') {
+    feeSummary.classList.add('show');
+    updateFeeSummary();
+  } else {
+    feeSummary.classList.remove('show');
+  }
+
+  // Update button text
+  const btn = document.getElementById('pay-btn');
+  btn.disabled = false;
+  updatePayButton();
+
+  // Update Aria
+  updateAriaMessage();
+}
+
+function updatePayButton() {
+  const amt = getPayAmount();
+  const text = document.getElementById('pay-btn-text');
+  if (selectedMethod === 'ach') {
+    text.textContent = 'Pay ' + formatCurrency(amt) + ' via Bank Transfer';
+  } else if (selectedMethod === 'card') {
+    const fee = calculateCCFee(amt);
+    text.textContent = 'Pay ' + formatCurrency(amt + fee) + ' with Card';
+  }
+}
+
+function getPayAmount() {
+  const custom = document.getElementById('custom-amount');
+  if (custom.value && parseFloat(custom.value) > 0) {
+    return parseFloat(custom.value);
+  }
+  return payAmount;
+}
+
+function calculateCCFee(amount) {
+  return Math.round((amount * 0.033 + 0.40) * 100) / 100;
+}
+
+function updateFeeSummary() {
+  const amt = getPayAmount();
+  const fee = calculateCCFee(amt);
+  document.getElementById('fee-base').textContent = formatCurrency(amt);
+  document.getElementById('fee-amount').textContent = formatCurrency(fee);
+  document.getElementById('fee-total').textContent = formatCurrency(amt + fee);
+}
+
+function toggleAmountInput() {
+  const wrap = document.getElementById('amount-input-wrap');
+  const link = document.getElementById('change-amount-link');
+  if (wrap.classList.contains('show')) {
+    wrap.classList.remove('show');
+    link.textContent = 'Pay a different amount';
+    document.getElementById('custom-amount').value = '';
+    onAmountChange();
+  } else {
+    wrap.classList.add('show');
+    link.textContent = 'Pay full amount';
+    document.getElementById('custom-amount').value = payAmount.toFixed(2);
+    document.getElementById('custom-amount').focus();
+    document.getElementById('custom-amount').select();
+  }
+}
+
+function onAmountChange() {
+  const val = parseFloat(document.getElementById('custom-amount').value) || 0;
+  const partial = document.getElementById('partial-note');
+  if (val > 0 && val < payAmount) {
+    partial.classList.add('show');
+  } else {
+    partial.classList.remove('show');
+  }
+  if (selectedMethod === 'card') updateFeeSummary();
+  if (selectedMethod) updatePayButton();
+
+  // Update CC fee label dynamically
+  if (val > 0) {
+    document.getElementById('cc-fee-label').textContent = '+ ' + formatCurrency(calculateCCFee(val)) + ' processing fee';
+  } else if (invoiceData) {
+    document.getElementById('cc-fee-label').textContent = '+ ' + formatCurrency(invoiceData.cc_fee) + ' processing fee';
+  }
+}
+
+function updateAriaMessage() {
+  const el = document.getElementById('aria-text');
+  const amt = getPayAmount();
+  if (!selectedMethod) {
+    if (amt > 10000) {
+      el.innerHTML = '<strong>Save on this payment.</strong> For a ' + formatCurrency(amt) + ' invoice, bank transfer (ACH) saves you ' + formatCurrency(calculateCCFee(amt)) + ' compared to credit card. It takes about 30 seconds to connect your bank.';
+    } else {
+      el.innerHTML = '<strong>Quick &amp; secure.</strong> Bank transfer (ACH) takes about 30 seconds and keeps costs low. Credit card is instant but has a small processing fee.';
+    }
+  } else if (selectedMethod === 'ach') {
+    el.innerHTML = '<strong>Great choice.</strong> You\'ll securely connect your bank account through Stripe. The ' + formatCurrency(amt) + ' payment typically settles in 3-5 business days. No fees on your end.';
+  } else {
+    const fee = calculateCCFee(amt);
+    el.innerHTML = '<strong>Fast &amp; easy.</strong> Your card will be charged ' + formatCurrency(amt + fee) + ' (' + formatCurrency(amt) + ' + ' + formatCurrency(fee) + ' processing fee). Payment is instant.';
+  }
+}
+
+async function initiatePayment() {
+  if (!selectedMethod) return;
+  const btn = document.getElementById('pay-btn');
+  btn.classList.add('loading');
+  btn.disabled = true;
+
+  const amt = getPayAmount();
+  if (amt < 1) {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+    alert('Minimum payment is $1.00');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/pay/' + token + '/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        method: selectedMethod,
+        amount: amt,
+        payer_name: document.getElementById('payer-name').value.trim(),
+        payer_email: document.getElementById('payer-email').value.trim(),
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to create checkout session');
+    }
+    // Redirect to Stripe Checkout
+    if (data.checkout_url) {
+      window.location.href = data.checkout_url;
+    } else {
+      throw new Error('No checkout URL returned');
+    }
+  } catch(e) {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+    alert(e.message || 'Something went wrong. Please try again.');
+  }
+}
+</script>
+</body>
+</html>

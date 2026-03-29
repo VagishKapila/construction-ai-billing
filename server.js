@@ -3,6 +3,16 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+
+// ── Stripe SDK (lazy init — only active when STRIPE_SECRET_KEY is set) ──────
+let stripe = null;
+if (process.env.STRIPE_SECRET_KEY) {
+  const Stripe = require('stripe');
+  stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  console.log('[Stripe] SDK initialized' + (process.env.STRIPE_SECRET_KEY.startsWith('sk_test') ? ' (TEST mode)' : ' (LIVE mode)'));
+} else {
+  console.log('[Stripe] No STRIPE_SECRET_KEY — payment features disabled');
+}
 const PDFDocument = require('pdfkit');
 const multer = require('multer');
 let puppeteer = null;
@@ -71,7 +81,11 @@ if (!corsOrigin && process.env.NODE_ENV === 'production') {
   console.warn('[SECURITY] WARNING: ALLOWED_ORIGIN is not set in production. Defaulting to wildcard CORS — set this env var immediately.');
 }
 app.use(cors({ origin: corsOrigin || '*' }));
-app.use(express.json());
+app.use((req, res, next) => {
+  // Skip JSON parsing for Stripe webhook — it needs raw body for signature verification
+  if (req.originalUrl === '/api/stripe/webhook') return next();
+  express.json()(req, res, next);
+});
 app.use(express.static(path.join(__dirname, 'public')));
 const upload = multer({
   dest: 'uploads/',
@@ -559,6 +573,18 @@ app.post('/oauth/token', express.json(), express.urlencoded({ extended: false })
   // Issue a long-lived token (90 days) for programmatic access
   const tok = jwt.sign({ id: user.id, email: user.email, oauth: true }, JWT_SECRET, { expiresIn: '90d' });
   res.json({ access_token: tok, token_type: 'bearer', expires_in: 90 * 24 * 3600 });
+});
+
+// ── Get current user (refresh cached data) ──────────────────────────────────
+app.get('/api/auth/me', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT id, name, email, email_verified, trial_start_date, trial_end_date, subscription_status, plan_type, has_completed_onboarding FROM users WHERE id=$1',
+      [req.user.id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'User not found' });
+    res.json({ user: r.rows[0] });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Email verification ──────────────────────────────────────────────────────
@@ -2359,8 +2385,28 @@ app.post('/api/payapps/:id/email', auth, async (req, res) => {
       }
     } catch(attErr) { console.error('[Email] PDF doc attach error:', attErr.message); }
 
+    // Auto-generate payment link if GC has Stripe Connect and pay app doesn't have one yet
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    let payNowUrl = null;
+    try {
+      const acctCheck = (await pool.query('SELECT stripe_account_id FROM connected_accounts WHERE user_id=$1 AND charges_enabled=TRUE', [req.user.id])).rows[0];
+      if (acctCheck && due > 0) {
+        let payToken = pa.payment_link_token;
+        if (!payToken) {
+          payToken = generatePaymentToken();
+          await pool.query('UPDATE pay_apps SET payment_link_token=$1 WHERE id=$2', [payToken, req.params.id]);
+        }
+        payNowUrl = `${baseUrl}/pay/${payToken}`;
+      }
+    } catch(payLinkErr) { console.error('[Email] Payment link gen error:', payLinkErr.message); }
+
     // Build HTML email body
     const safeMsg = (message||'').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+    const payNowBtnHtml = payNowUrl ? `
+        <div style="text-align:center;margin:20px 0 8px">
+          <a href="${payNowUrl}" style="display:inline-block;background:#2563eb;color:#ffffff;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:12pt">Pay Now — $${due.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</a>
+        </div>
+        <p style="font-size:9pt;color:#888;text-align:center;margin:4px 0 0">ACH bank transfer or credit card accepted. Secure payment via Stripe.</p>` : '';
     const emailHtml = `<div style="font-family:sans-serif;max-width:600px;margin:0 auto">
       <div style="background:#185FA5;padding:18px 24px;color:#fff">
         <h2 style="margin:0;font-size:16pt">Pay Application #${pa.app_number}</h2>
@@ -2375,6 +2421,7 @@ app.post('/api/payapps/:id/email', auth, async (req, res) => {
           <tr style="background:#f7f7f7"><td style="padding:5px 8px;color:#555;font-weight:bold">Current Payment Due</td>
             <td style="padding:5px 8px;font-weight:bold;color:#185FA5;font-size:11pt">$${due.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>
         </table>
+        ${payNowBtnHtml}
         ${emailAttachments.length > 0 ? `<p style="margin-top:16px;font-size:9pt;color:#888">Pay application PDF${emailAttachments.length>1?' and lien waiver are':' is'} attached.</p>` : ''}
       </div>
       <div style="padding:10px 24px;font-size:8pt;color:#aaa;text-align:center">
@@ -4759,6 +4806,398 @@ async function runPaymentReminders() {
 setInterval(runPaymentReminders, 60 * 60 * 1000);
 // Also run once at startup (after a short delay so DB is ready)
 setTimeout(runPaymentReminders, 15000);
+
+// ── STRIPE CONNECT & PAYMENTS ─────────────────────────────────────────────────
+// Hybrid fee model: ACH $25 from GC | CC 3.3%+$0.40 from payer | Zero absorption
+// All routes require stripe to be initialized (STRIPE_SECRET_KEY env var)
+
+const STRIPE_FEE = {
+  cc_rate: 0.033, cc_flat: 40, // 3.3% + $0.40 (in cents: 40)
+  ach_flat: 2500, // $25.00 flat ACH fee (cents)
+  stripe_ach_rate: 0.008, stripe_ach_cap: 500, // Stripe's 0.8% capped at $5
+};
+
+function requireStripe(req, res, next) {
+  if (!stripe) return res.status(503).json({ error: 'Payment features not configured. Set STRIPE_SECRET_KEY.' });
+  next();
+}
+
+function generatePaymentToken() {
+  return require('crypto').randomBytes(24).toString('hex');
+}
+
+// ── Stripe Connect: Create onboarding link for GC ──────────────────────────
+app.post('/api/stripe/connect', auth, requireStripe, async (req, res) => {
+  try {
+    // Check if user already has a connected account
+    const existing = await pool.query('SELECT * FROM connected_accounts WHERE user_id=$1', [req.user.id]);
+    let accountId;
+    if (existing.rows[0]) {
+      accountId = existing.rows[0].stripe_account_id;
+    } else {
+      // Create Express connected account
+      const user = (await pool.query('SELECT name, email FROM users WHERE id=$1', [req.user.id])).rows[0];
+      const account = await stripe.accounts.create({
+        type: 'express',
+        country: 'US',
+        email: user.email,
+        business_type: 'company',
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+          us_bank_account_ach_payments: { requested: true },
+        },
+        metadata: { user_id: String(req.user.id), platform: 'constructinvoice' },
+      });
+      accountId = account.id;
+      await pool.query(
+        'INSERT INTO connected_accounts(user_id, stripe_account_id) VALUES($1,$2) ON CONFLICT(user_id) DO UPDATE SET stripe_account_id=$2',
+        [req.user.id, accountId]
+      );
+      await pool.query('UPDATE users SET stripe_connect_id=$1 WHERE id=$2', [accountId, req.user.id]);
+      await logEvent(req.user.id, 'stripe_connect_created', { account_id: accountId });
+    }
+    // Create onboarding link
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const link = await stripe.accountLinks.create({
+      account: accountId,
+      refresh_url: `${baseUrl}/app.html#payments_setup=refresh`,
+      return_url: `${baseUrl}/app.html#payments_setup=complete`,
+      type: 'account_onboarding',
+    });
+    res.json({ url: link.url, account_id: accountId });
+  } catch(e) { console.error('[Stripe Connect Error]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// ── Stripe Connect: Check account status ────────────────────────────────────
+app.get('/api/stripe/account-status', auth, requireStripe, async (req, res) => {
+  try {
+    const row = await pool.query('SELECT * FROM connected_accounts WHERE user_id=$1', [req.user.id]);
+    if (!row.rows[0]) return res.json({ connected: false });
+    const acct = await stripe.accounts.retrieve(row.rows[0].stripe_account_id);
+    const charges = acct.charges_enabled;
+    const payouts = acct.payouts_enabled;
+    await pool.query(
+      'UPDATE connected_accounts SET charges_enabled=$1, payouts_enabled=$2, account_status=$3, business_name=$4, onboarded_at=CASE WHEN $1 AND onboarded_at IS NULL THEN NOW() ELSE onboarded_at END WHERE user_id=$5',
+      [charges, payouts, charges ? 'active' : 'pending', acct.business_profile?.name || '', req.user.id]
+    );
+    if (charges) await pool.query('UPDATE users SET payments_enabled=TRUE WHERE id=$1', [req.user.id]);
+    res.json({
+      connected: true,
+      charges_enabled: charges,
+      payouts_enabled: payouts,
+      account_id: row.rows[0].stripe_account_id,
+      business_name: acct.business_profile?.name,
+      status: charges ? 'active' : 'pending',
+    });
+  } catch(e) { console.error('[Stripe Status Error]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// ── Stripe Connect: Create dashboard login link (GC can view their Stripe dashboard) ──
+app.post('/api/stripe/dashboard-link', auth, requireStripe, async (req, res) => {
+  try {
+    const row = await pool.query('SELECT stripe_account_id FROM connected_accounts WHERE user_id=$1', [req.user.id]);
+    if (!row.rows[0]) return res.status(404).json({ error: 'No connected account' });
+    const link = await stripe.accounts.createLoginLink(row.rows[0].stripe_account_id);
+    res.json({ url: link.url });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Generate payment link for a pay app ─────────────────────────────────────
+app.post('/api/pay-apps/:id/payment-link', auth, requireStripe, async (req, res) => {
+  try {
+    const pa = (await pool.query('SELECT pa.*, p.name as project_name, p.user_id FROM pay_apps pa JOIN projects p ON pa.project_id=p.id WHERE pa.id=$1', [req.params.id])).rows[0];
+    if (!pa || pa.user_id !== req.user.id) return res.status(404).json({ error: 'Pay app not found' });
+    // Check GC has Stripe Connect
+    const acct = (await pool.query('SELECT * FROM connected_accounts WHERE user_id=$1 AND charges_enabled=TRUE', [req.user.id])).rows[0];
+    if (!acct) return res.status(400).json({ error: 'Please connect your Stripe account in Settings first.' });
+    // Generate or reuse payment link token
+    let token = pa.payment_link_token;
+    if (!token) {
+      token = generatePaymentToken();
+      await pool.query('UPDATE pay_apps SET payment_link_token=$1 WHERE id=$2', [token, pa.id]);
+    }
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const payUrl = `${baseUrl}/pay/${token}`;
+    await logEvent(req.user.id, 'payment_link_generated', { pay_app_id: pa.id, token });
+    res.json({ url: payUrl, token });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Public payment page data (no auth — accessed by payer via link) ──────────
+app.get('/api/pay/:token', async (req, res) => {
+  try {
+    const pa = (await pool.query(
+      `SELECT pa.*, p.name as project_name, p.number as project_number, p.owner as project_owner,
+              p.contractor, p.user_id, p.owner_email,
+              cs.company_name, cs.logo_filename, cs.contact_name, cs.contact_phone, cs.contact_email
+       FROM pay_apps pa
+       JOIN projects p ON pa.project_id=p.id
+       LEFT JOIN company_settings cs ON cs.user_id=p.user_id
+       WHERE pa.payment_link_token=$1 AND pa.deleted_at IS NULL`,
+      [req.params.token]
+    )).rows[0];
+    if (!pa) return res.status(404).json({ error: 'Payment link not found or expired' });
+    // Get connected account for this GC
+    const acct = (await pool.query('SELECT stripe_account_id FROM connected_accounts WHERE user_id=$1 AND charges_enabled=TRUE', [pa.user_id])).rows[0];
+    if (!acct) return res.status(400).json({ error: 'Contractor has not set up payment acceptance yet.' });
+    // Calculate amounts from pay app lines
+    const lines = (await pool.query(
+      `SELECT pal.*, sl.item_id, sl.description, sl.scheduled_value
+       FROM pay_app_lines pal JOIN sov_lines sl ON pal.sov_line_id=sl.id
+       WHERE pal.pay_app_id=$1`, [pa.id]
+    )).rows;
+    let totalDue = 0;
+    lines.forEach(l => {
+      const sv = parseFloat(l.scheduled_value) || 0;
+      const prevPct = parseFloat(l.prev_pct) || 0;
+      const thisPct = parseFloat(l.this_pct) || 0;
+      const retPct = parseFloat(l.retainage_pct) || 10;
+      const d = sv * (prevPct + thisPct) / 100;
+      const e = d * retPct / 100;
+      const f = d - e;
+      const g = sv * prevPct / 100 * (1 - retPct / 100);
+      totalDue += (f - g);
+    });
+    const amountPaid = parseFloat(pa.amount_paid) || 0;
+    const amountRemaining = Math.max(0, totalDue - amountPaid);
+    // Calculate fees for display
+    const ccFee = Math.round(amountRemaining * STRIPE_FEE.cc_rate * 100 + STRIPE_FEE.cc_flat) / 100;
+    const achFee = STRIPE_FEE.ach_flat / 100; // $25 flat, deducted from GC
+    res.json({
+      project_name: pa.project_name,
+      project_number: pa.project_number,
+      app_number: pa.app_number,
+      period_label: pa.period_label,
+      company_name: pa.company_name || pa.contractor,
+      logo_filename: pa.logo_filename,
+      contact_name: pa.contact_name,
+      contact_email: pa.contact_email,
+      amount_due: parseFloat(amountRemaining.toFixed(2)),
+      amount_paid: amountPaid,
+      total_due: parseFloat(totalDue.toFixed(2)),
+      payment_status: pa.payment_status || 'unpaid',
+      bad_debt: pa.bad_debt,
+      cc_fee: ccFee,
+      ach_fee: achFee,
+      stripe_account_id: acct.stripe_account_id,
+      po_number: pa.po_number,
+    });
+  } catch(e) { console.error('[Pay Page Error]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// ── Create Stripe Checkout Session (called from payment page) ────────────────
+app.post('/api/pay/:token/checkout', async (req, res) => {
+  try {
+    const { method, amount, payer_name, payer_email } = req.body;
+    if (!method || !amount) return res.status(400).json({ error: 'Missing method or amount' });
+    const pa = (await pool.query(
+      `SELECT pa.*, p.name as project_name, p.user_id, p.contractor
+       FROM pay_apps pa JOIN projects p ON pa.project_id=p.id
+       WHERE pa.payment_link_token=$1 AND pa.deleted_at IS NULL`, [req.params.token]
+    )).rows[0];
+    if (!pa) return res.status(404).json({ error: 'Invalid payment link' });
+    if (pa.bad_debt) return res.status(400).json({ error: 'This invoice has been marked as uncollectable.' });
+    const acct = (await pool.query('SELECT stripe_account_id FROM connected_accounts WHERE user_id=$1 AND charges_enabled=TRUE', [pa.user_id])).rows[0];
+    if (!acct) return res.status(400).json({ error: 'Payment not available' });
+    const amountCents = Math.round(parseFloat(amount) * 100);
+    if (amountCents < 100) return res.status(400).json({ error: 'Minimum payment is $1.00' });
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const paymentToken = generatePaymentToken();
+    let sessionConfig;
+    if (method === 'ach') {
+      // ACH: $25 fee deducted from GC side. Owner pays exact amount.
+      // application_fee = our $25 fee. Stripe takes their $5 from the connected account.
+      sessionConfig = {
+        payment_method_types: ['us_bank_account'],
+        mode: 'payment',
+        customer_creation: 'always',
+        payment_intent_data: {
+          application_fee_amount: STRIPE_FEE.ach_flat, // $25 in cents = 2500
+          transfer_data: { destination: acct.stripe_account_id },
+        },
+        line_items: [{
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: `Pay App #${pa.app_number} — ${pa.project_name}`,
+              description: `Payment to ${pa.contractor || 'Contractor'}`,
+            },
+            unit_amount: amountCents,
+          },
+          quantity: 1,
+        }],
+        success_url: `${baseUrl}/pay/${req.params.token}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/pay/${req.params.token}?payment=cancelled`,
+        metadata: { pay_app_id: String(pa.id), payment_token: paymentToken, method: 'ach' },
+      };
+    } else {
+      // CC/Debit: 3.3% + $0.40 processing fee charged ON TOP to the payer
+      const processingFeeCents = Math.round(amountCents * STRIPE_FEE.cc_rate) + STRIPE_FEE.cc_flat;
+      const totalChargeCents = amountCents + processingFeeCents;
+      // application_fee = processing fee (we keep the margin, Stripe takes their share from it)
+      sessionConfig = {
+        payment_method_types: ['card'],
+        mode: 'payment',
+        payment_intent_data: {
+          application_fee_amount: processingFeeCents,
+          transfer_data: { destination: acct.stripe_account_id },
+        },
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: { name: `Pay App #${pa.app_number} — ${pa.project_name}` },
+              unit_amount: amountCents,
+            },
+            quantity: 1,
+          },
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: { name: 'Processing Fee' },
+              unit_amount: processingFeeCents,
+            },
+            quantity: 1,
+          },
+        ],
+        success_url: `${baseUrl}/pay/${req.params.token}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/pay/${req.params.token}?payment=cancelled`,
+        metadata: { pay_app_id: String(pa.id), payment_token: paymentToken, method: 'card' },
+      };
+    }
+    // Add payer info if provided
+    if (payer_email) sessionConfig.customer_email = payer_email;
+    const session = await stripe.checkout.sessions.create(sessionConfig);
+    // Record pending payment
+    await pool.query(
+      `INSERT INTO payments(pay_app_id, project_id, user_id, stripe_checkout_session_id, payment_token, amount, processing_fee, payment_method, payment_status, payer_name, payer_email)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9,$10)`,
+      [pa.id, pa.project_id, pa.user_id, session.id, paymentToken, amount,
+       method === 'ach' ? 25 : (processingFeeCents || 0) / 100,
+       method, payer_name || '', payer_email || '']
+    );
+    res.json({ checkout_url: session.url, session_id: session.id });
+  } catch(e) { console.error('[Checkout Error]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// ── Stripe Webhook (handles payment success/failure) ────────────────────────
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  let event;
+  try {
+    if (webhookSecret) {
+      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    } else {
+      event = JSON.parse(req.body.toString());
+      console.warn('[Stripe Webhook] No webhook secret — accepting unverified event (dev only)');
+    }
+  } catch(e) { console.error('[Webhook Verify Error]', e.message); return res.status(400).send('Webhook Error'); }
+
+  try {
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      const payAppId = parseInt(session.metadata?.pay_app_id);
+      const paymentToken = session.metadata?.payment_token;
+      const method = session.metadata?.method;
+      if (!payAppId) return res.json({ received: true });
+      const amountPaid = (session.amount_total || 0) / 100;
+      // For CC: subtract processing fee to get actual pay app amount
+      let actualAmount = amountPaid;
+      if (method === 'card') {
+        // Total includes processing fee; back out our fee to get pay app amount
+        const payAppAmount = (await pool.query('SELECT amount FROM payments WHERE stripe_checkout_session_id=$1', [session.id])).rows[0]?.amount;
+        if (payAppAmount) actualAmount = parseFloat(payAppAmount);
+      }
+      // Update payment record
+      await pool.query(
+        `UPDATE payments SET payment_status='succeeded', stripe_payment_intent_id=$1, paid_at=NOW(), payer_email=COALESCE(NULLIF(payer_email,''),$2)
+         WHERE stripe_checkout_session_id=$3`,
+        [session.payment_intent, session.customer_details?.email || '', session.id]
+      );
+      // Update pay app totals
+      const currentPaid = (await pool.query('SELECT COALESCE(SUM(amount),0) as total FROM payments WHERE pay_app_id=$1 AND payment_status=\'succeeded\'', [payAppId])).rows[0].total;
+      const pa = (await pool.query('SELECT amount_due FROM pay_apps WHERE id=$1', [payAppId])).rows[0];
+      const totalDue = parseFloat(pa?.amount_due) || 0;
+      const paidNum = parseFloat(currentPaid);
+      const newStatus = paidNum >= totalDue && totalDue > 0 ? 'paid' : paidNum > 0 ? 'partial' : 'unpaid';
+      await pool.query(
+        'UPDATE pay_apps SET amount_paid=$1, payment_status=$2, payment_received=$3, payment_received_at=CASE WHEN $2=\'paid\' THEN NOW() ELSE payment_received_at END WHERE id=$4',
+        [paidNum, newStatus, newStatus === 'paid', payAppId]
+      );
+      // Log event
+      const userId = (await pool.query('SELECT user_id FROM payments WHERE stripe_checkout_session_id=$1', [session.id])).rows[0]?.user_id;
+      if (userId) await logEvent(userId, 'payment_received', { pay_app_id: payAppId, amount: actualAmount, method, total_paid: paidNum });
+      console.log(`[Payment] ${method} payment $${actualAmount} received for PA#${payAppId} (total paid: $${paidNum}, status: ${newStatus})`);
+    }
+    if (event.type === 'checkout.session.expired' || event.type === 'payment_intent.payment_failed') {
+      const session = event.data.object;
+      const sessionId = session.id || session.metadata?.checkout_session_id;
+      await pool.query("UPDATE payments SET payment_status='failed', failed_at=NOW(), failure_reason=$1 WHERE stripe_checkout_session_id=$2",
+        [event.type === 'payment_intent.payment_failed' ? (session.last_payment_error?.message || 'Payment failed') : 'Session expired', sessionId]);
+    }
+  } catch(e) { console.error('[Webhook Processing Error]', e.message); }
+  res.json({ received: true });
+});
+
+// ── GC: List payments for their pay apps ────────────────────────────────────
+app.get('/api/payments', auth, async (req, res) => {
+  try {
+    const payments = (await pool.query(
+      `SELECT pm.*, pa.app_number, p.name as project_name
+       FROM payments pm
+       JOIN pay_apps pa ON pm.pay_app_id=pa.id
+       JOIN projects p ON pm.project_id=p.id
+       WHERE pm.user_id=$1
+       ORDER BY pm.created_at DESC
+       LIMIT 100`, [req.user.id]
+    )).rows;
+    // Summary stats
+    const stats = (await pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE payment_status='succeeded') as received_count,
+         COALESCE(SUM(amount) FILTER (WHERE payment_status='succeeded'),0) as total_received,
+         COUNT(*) FILTER (WHERE payment_status='pending') as pending_count,
+         COALESCE(SUM(amount) FILTER (WHERE payment_status='pending'),0) as total_pending
+       FROM payments WHERE user_id=$1`, [req.user.id]
+    )).rows[0];
+    res.json({ payments, summary: stats, count: payments.length });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GC: Mark pay app as bad debt ────────────────────────────────────────────
+app.post('/api/pay-apps/:id/bad-debt', auth, async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const pa = (await pool.query(
+      'SELECT pa.*, p.user_id FROM pay_apps pa JOIN projects p ON pa.project_id=p.id WHERE pa.id=$1', [req.params.id]
+    )).rows[0];
+    if (!pa || pa.user_id !== req.user.id) return res.status(404).json({ error: 'Pay app not found' });
+    await pool.query('UPDATE pay_apps SET bad_debt=TRUE, bad_debt_at=NOW(), bad_debt_reason=$1, payment_status=\'bad_debt\' WHERE id=$2', [reason || 'Marked as uncollectable', req.params.id]);
+    await logEvent(req.user.id, 'bad_debt_marked', { pay_app_id: pa.id, reason });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GC: Undo bad debt ──────────────────────────────────────────────────────
+app.post('/api/pay-apps/:id/undo-bad-debt', auth, async (req, res) => {
+  try {
+    const pa = (await pool.query(
+      'SELECT pa.*, p.user_id FROM pay_apps pa JOIN projects p ON pa.project_id=p.id WHERE pa.id=$1', [req.params.id]
+    )).rows[0];
+    if (!pa || pa.user_id !== req.user.id) return res.status(404).json({ error: 'Pay app not found' });
+    const amountPaid = parseFloat(pa.amount_paid) || 0;
+    const newStatus = amountPaid > 0 ? 'partial' : 'unpaid';
+    await pool.query('UPDATE pay_apps SET bad_debt=FALSE, bad_debt_at=NULL, bad_debt_reason=NULL, payment_status=$1 WHERE id=$2', [newStatus, req.params.id]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Serve public payment page ───────────────────────────────────────────────
+app.get('/pay/:token', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'pay.html'));
+});
 
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 

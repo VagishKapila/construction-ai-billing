@@ -250,6 +250,77 @@ async function initDB() {
       sent_at TIMESTAMPTZ DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_reminder_log ON reminder_log(user_id, reminder_type, sent_at);
+
+    -- Stripe Connect: GC connected accounts
+    CREATE TABLE IF NOT EXISTS connected_accounts (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+      stripe_account_id VARCHAR(200) NOT NULL,
+      account_status VARCHAR(50) DEFAULT 'pending',
+      charges_enabled BOOLEAN DEFAULT FALSE,
+      payouts_enabled BOOLEAN DEFAULT FALSE,
+      business_name VARCHAR(300),
+      payout_schedule VARCHAR(50) DEFAULT 'every_2_days',
+      onboarded_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_connected_stripe_id ON connected_accounts(stripe_account_id);
+
+    -- Payments: tracks every payment from owner to GC
+    CREATE TABLE IF NOT EXISTS payments (
+      id SERIAL PRIMARY KEY,
+      pay_app_id INTEGER REFERENCES pay_apps(id) ON DELETE CASCADE,
+      project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      stripe_payment_intent_id VARCHAR(200),
+      stripe_checkout_session_id VARCHAR(200),
+      payment_token VARCHAR(100) UNIQUE NOT NULL,
+      amount NUMERIC(14,2) NOT NULL,
+      processing_fee NUMERIC(14,2) DEFAULT 0,
+      platform_fee NUMERIC(14,2) DEFAULT 0,
+      payment_method VARCHAR(50),
+      payment_status VARCHAR(50) DEFAULT 'pending',
+      payer_name VARCHAR(300),
+      payer_email VARCHAR(300),
+      payer_phone VARCHAR(100),
+      paid_at TIMESTAMPTZ,
+      failed_at TIMESTAMPTZ,
+      failure_reason TEXT,
+      refunded_at TIMESTAMPTZ,
+      metadata JSONB DEFAULT '{}',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_payments_pay_app ON payments(pay_app_id);
+    CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id);
+    CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(payment_status);
+    CREATE INDEX IF NOT EXISTS idx_payments_token ON payments(payment_token);
+
+    -- Pay app payment tracking columns
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS payment_status VARCHAR(50) DEFAULT 'unpaid';
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS amount_paid NUMERIC(14,2) DEFAULT 0;
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS payment_link_token VARCHAR(100);
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS bad_debt BOOLEAN DEFAULT FALSE;
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS bad_debt_at TIMESTAMPTZ;
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS bad_debt_reason TEXT;
+
+    -- Payment follow-up tracking
+    CREATE TABLE IF NOT EXISTS payment_followups (
+      id SERIAL PRIMARY KEY,
+      payment_id INTEGER REFERENCES payments(id) ON DELETE CASCADE,
+      pay_app_id INTEGER REFERENCES pay_apps(id) ON DELETE CASCADE,
+      followup_type VARCHAR(50) NOT NULL,
+      scheduled_date DATE,
+      sent_at TIMESTAMPTZ,
+      response VARCHAR(50),
+      response_at TIMESTAMPTZ,
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_followups_payapp ON payment_followups(pay_app_id);
+
+    -- User Stripe Connect columns
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_connect_id VARCHAR(200);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS payments_enabled BOOLEAN DEFAULT FALSE;
   `);
   console.log('Database ready');
 }
