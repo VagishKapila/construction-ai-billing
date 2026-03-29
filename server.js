@@ -1687,7 +1687,15 @@ function generatePayAppHTML(pa, lines, cos, totals, logoBase64, sigBase64, photo
     tSV += sv; tPrev2 += prev; tThis2 += thisPer; tComp2 += comp; tRet2 += ret;
     if (sv === 0) return `<tr style="background:#f9f9f9;color:#888">
       <td style="border:1px solid #ccc;padding:3px 5px">${r.item_id||''}</td>
-      <td style="border:1px solid #ccc;padding:3px 5px;font-style:italic" colspan="9">${r.description||''}</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;font-style:italic">${r.description||''}</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:center;font-style:italic">Included</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">—</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">—</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">—</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">—</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">—</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">—</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">—</td>
     </tr>`;
     return `<tr>
       <td style="border:1px solid #ccc;padding:3px 5px">${r.item_id||''}</td>
@@ -1807,9 +1815,9 @@ td{border:1px solid #ddd;padding:2px 5px}
 <div class="aia-distribution">
   <div class="aia-dist-title">Distribution to:</div>
   <div class="aia-dist-grid">
-    <div class="aia-dist-item"><div class="aia-checkbox checked"></div><span>Owner</span></div>
-    <div class="aia-dist-item"><div class="aia-checkbox checked"></div><span>Architect</span></div>
-    <div class="aia-dist-item"><div class="aia-checkbox"></div><span>Contractor file</span></div>
+    <div class="aia-dist-item"><div class="aia-checkbox${pa.dist_owner !== false ? ' checked' : ''}"></div><span>Owner</span></div>
+    <div class="aia-dist-item"><div class="aia-checkbox${pa.dist_architect === true ? ' checked' : ''}"></div><span>Architect</span></div>
+    <div class="aia-dist-item"><div class="aia-checkbox${pa.dist_contractor === true ? ' checked' : ''}"></div><span>Contractor file</span></div>
   </div>
 </div>
 
