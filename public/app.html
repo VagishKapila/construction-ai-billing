@@ -1865,7 +1865,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               <div class="aia-dist-title">Distribution to:</div>
               <div class="aia-dist-grid">
                 <div class="aia-dist-item"><div class="aia-checkbox" id="dist-box-owner" style="background:#185FA5;cursor:pointer" onclick="toggleDist('dist_owner',this)" title="Click to toggle"></div><span>Owner</span></div>
-                <div class="aia-dist-item"><div class="aia-checkbox" id="dist-box-architect" style="background:#185FA5;cursor:pointer" onclick="toggleDist('dist_architect',this)" title="Click to toggle"></div><span>Architect</span></div>
+                <div class="aia-dist-item"><div class="aia-checkbox" id="dist-box-architect" style="cursor:pointer" onclick="toggleDist('dist_architect',this)" title="Click to toggle"></div><span>Architect</span></div>
                 <div class="aia-dist-item"><div class="aia-checkbox" id="dist-box-contractor" style="cursor:pointer" onclick="toggleDist('dist_contractor',this)" title="Click to toggle"></div><span>Contractor file</span></div>
               </div>
             </div>
@@ -3081,7 +3081,15 @@ function renderAIAPreview(pa){
       tSV+=sv;tPrev+=prev;tThis+=thisPer;tComp+=comp;tRet2+=ret;
       if(sv===0) return`<tr style="border-bottom:0.5px solid #ddd;background:#f9f9f9;color:#888">
         <td style="border:1px solid #ddd;padding:2px 4px">${r.item_id}</td>
-        <td style="border:1px solid #ddd;padding:2px 4px;font-style:italic" colspan="9">${r.description}</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;font-style:italic">${r.description}</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center;font-style:italic;font-size:10px">Included</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">—</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">—</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">—</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">—</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">—</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">—</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">—</td>
       </tr>`;
       return`<tr style="border-bottom:0.5px solid #ddd">
         <td style="border:1px solid #ddd;padding:2px 4px">${r.item_id}</td>
@@ -3124,10 +3132,14 @@ function renderG703(pa){
     const totPct=sv>0?comp/sv*100:0;
     tSV+=sv;tPrev+=prev;tThis+=thisPer;tRet+=ret;tComp+=comp;tBal+=bal;
     const changed=parseFloat(r.this_pct)>0;
-    // Lump sum scope lines ($0 scheduled value): show as informational row, no dollar columns
+    // Lump sum scope lines ($0 scheduled value): show "Included" in Sched. value column
     if(sv===0) return`<tr style="background:#f9f9f9;color:#888">
       <td style="font-size:10px">${r.item_id}</td>
-      <td style="font-size:12px;font-style:italic" colspan="10">${r.description}</td>
+      <td style="font-size:12px;font-style:italic">${r.description}</td>
+      <td class="r" style="font-style:italic;font-size:10px">Included</td>
+      <td class="r">—</td><td class="c">—</td><td class="c">—</td>
+      <td class="r">—</td><td class="c">—</td><td class="r">—</td>
+      <td class="r">—</td><td class="r">—</td>
     </tr>`;
     return`<tr>
       <td style="font-size:10px;color:var(--text2)">${r.item_id}</td>
