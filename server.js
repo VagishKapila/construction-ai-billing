@@ -5167,6 +5167,9 @@ app.post('/api/pay/:token/checkout', async (req, res) => {
     if (amountCents < 100) return res.status(400).json({ error: 'Minimum payment is $1.00' });
     const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
     const paymentToken = generatePaymentToken();
+    // Calculate CC processing fee upfront (used for card checkout + INSERT)
+    const processingFeeCents = Math.round(amountCents * STRIPE_FEE.cc_rate) + STRIPE_FEE.cc_flat;
+
     let sessionConfig;
     if (method === 'ach') {
       // ACH: $25 fee deducted from GC side. Owner pays exact amount.
@@ -5196,7 +5199,6 @@ app.post('/api/pay/:token/checkout', async (req, res) => {
       };
     } else {
       // CC/Debit: 3.3% + $0.40 processing fee charged ON TOP to the payer
-      const processingFeeCents = Math.round(amountCents * STRIPE_FEE.cc_rate) + STRIPE_FEE.cc_flat;
       const totalChargeCents = amountCents + processingFeeCents;
       // application_fee = processing fee (we keep the margin, Stripe takes their share from it)
       sessionConfig = {
