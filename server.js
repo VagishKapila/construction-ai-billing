@@ -5003,9 +5003,23 @@ app.get('/api/pay/:token', async (req, res) => {
     // Calculate fees for display
     const ccFee = Math.round(amountRemaining * STRIPE_FEE.cc_rate * 100 + STRIPE_FEE.cc_flat) / 100;
     const achFee = STRIPE_FEE.ach_flat / 100; // $25 flat, deducted from GC
+    // Build line items for invoice details display
+    const lineItems = lines.map(l => {
+      const sv = parseFloat(l.scheduled_value) || 0;
+      const prevPct = parseFloat(l.prev_pct) || 0;
+      const thisPct = parseFloat(l.this_pct) || 0;
+      const thisAmt = sv * thisPct / 100;
+      return {
+        item_id: l.item_id,
+        description: l.description,
+        scheduled_value: sv,
+        this_period: parseFloat(thisAmt.toFixed(2)),
+      };
+    }).filter(l => l.this_period > 0 || l.scheduled_value > 0);
     res.json({
       project_name: pa.project_name,
       project_number: pa.project_number,
+      project_owner: pa.project_owner,
       app_number: pa.app_number,
       period_label: pa.period_label,
       company_name: pa.company_name || pa.contractor,
@@ -5021,8 +5035,97 @@ app.get('/api/pay/:token', async (req, res) => {
       ach_fee: achFee,
       stripe_account_id: acct.stripe_account_id,
       po_number: pa.po_number,
+      lines: lineItems,
+      pay_app_id: pa.id,
     });
   } catch(e) { console.error('[Pay Page Error]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// ── Public PDF Download (authenticated via payment token) ─────────────────────
+app.get('/api/pay/:token/pdf', async (req, res) => {
+  try {
+    const pa = (await pool.query(
+      `SELECT pa.*, p.name as pname, p.number as pnum, p.owner, p.contractor, p.architect,
+              p.original_contract, p.payment_terms, p.contract_date, p.user_id,
+              cs.logo_filename, cs.signature_filename, cs.default_payment_terms,
+              cs.contact_name, cs.company_name
+       FROM pay_apps pa JOIN projects p ON pa.project_id=p.id
+       LEFT JOIN company_settings cs ON cs.user_id=p.user_id
+       WHERE pa.payment_link_token=$1 AND pa.deleted_at IS NULL`,
+      [req.params.token]
+    )).rows[0];
+    if (!pa) return res.status(404).json({ error: 'Invoice not found' });
+    const lines = await pool.query(
+      'SELECT pal.*,sl.item_id,sl.description,sl.scheduled_value FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id WHERE pal.pay_app_id=$1 ORDER BY sl.sort_order',
+      [pa.id]
+    );
+    const cos = await pool.query('SELECT * FROM change_orders WHERE pay_app_id=$1', [pa.id]);
+    let tComp=0,tRet=0,tThis=0,tPrev=0,tPrevCert=0;
+    lines.rows.forEach(r => {
+      const sv=parseFloat(r.scheduled_value);
+      const retPct=parseFloat(r.retainage_pct)/100;
+      const prev=sv*parseFloat(r.prev_pct)/100;
+      const thisPer=sv*parseFloat(r.this_pct)/100;
+      const comp=prev+thisPer+parseFloat(r.stored_materials||0);
+      tPrev+=prev; tThis+=thisPer; tComp+=comp;
+      tRet+=comp*retPct;
+      tPrevCert+=prev*(1-retPct);
+    });
+    const tCO=cos.rows.reduce((s,c)=>s+parseFloat(c.amount||0),0);
+    const contract=parseFloat(pa.original_contract)+tCO;
+    const earned=tComp-tRet;
+    const due=Math.max(0,earned-tPrevCert);
+    const imgMime = buf => {
+      if (buf[0]===0x89 && buf[1]===0x50) return 'image/png';
+      if (buf[0]===0xFF && buf[1]===0xD8) return 'image/jpeg';
+      if (buf[0]===0x47 && buf[1]===0x49) return 'image/gif';
+      if (buf[0]===0x52 && buf[1]===0x49) return 'image/webp';
+      return 'image/png';
+    };
+    const readImgB64 = filename => {
+      if (!filename) return null;
+      try {
+        const fp = path.join(__dirname, 'uploads', filename);
+        if (!fs.existsSync(fp)) return null;
+        const buf = fs.readFileSync(fp);
+        return `data:${imgMime(buf)};base64,${buf.toString('base64')}`;
+      } catch(e) { return null; }
+    };
+    const logoBase64 = readImgB64(pa.logo_filename);
+    const sigBase64 = readImgB64(pa.signature_filename);
+    const totals = { tComp, tRet, tPrevCert, tCO, contract, earned, due };
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="PayApp_${pa.app_number}_${(pa.pname||'').replace(/\s+/g,'_')}.pdf"`);
+    if (puppeteer) {
+      let browser;
+      try {
+        const html = generatePayAppHTML(pa, lines.rows, cos.rows, totals, logoBase64, sigBase64, [], []);
+        browser = await puppeteer.launch({ args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu'] });
+        const page = await browser.newPage();
+        await page.setContent(html, { waitUntil: 'networkidle0' });
+        const pdfBuffer = await page.pdf({ format: 'Letter', printBackground: true, margin: { top: '0.5in', right: '0.45in', bottom: '0.5in', left: '0.45in' } });
+        res.send(pdfBuffer);
+        return;
+      } catch(puppErr) {
+        console.error('[Public PDF] Puppeteer error, falling back to PDFKit:', puppErr.message);
+      } finally { if (browser) await browser.close().catch(()=>{}); }
+    }
+    // PDFKit fallback
+    const PDFDocument = require('pdfkit');
+    const pdfDoc = new PDFDocument({ size: 'LETTER', margin: 40 });
+    pdfDoc.pipe(res);
+    pdfDoc.fontSize(16).font('Helvetica-Bold').text(`Pay Application #${pa.app_number}`, { align: 'center' });
+    pdfDoc.moveDown(0.3);
+    pdfDoc.fontSize(11).font('Helvetica').text(`${pa.pname||''} · ${pa.period_label||''}`, { align: 'center' });
+    pdfDoc.moveDown(0.5);
+    pdfDoc.fontSize(10).text(`Current Payment Due: $${due.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`, { align: 'center' });
+    pdfDoc.moveDown(1);
+    pdfDoc.fontSize(8).fillColor('#888').text('Generated by ConstructInvoice AI', { align: 'center' });
+    pdfDoc.end();
+  } catch(e) {
+    console.error('[Public PDF Error]', e.message);
+    res.status(500).json({ error: 'Failed to generate PDF' });
+  }
 });
 
 // ── Create Stripe Checkout Session (called from payment page) ────────────────

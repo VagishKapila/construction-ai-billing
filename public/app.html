@@ -1818,6 +1818,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
       <!-- PAY APP VIEW -->
       <div class="pg" id="pg-payapp">
         <div id="pa-header"></div>
+        <div id="pa-payment-banner"></div>
         <div class="tabs" id="pa-tabs">
           <div class="tab on" onclick="paTab(0)"><span class="tab-step">1</span> G703 — Billing</div>
           <div class="tab" onclick="paTab(1)"><span class="tab-step">2</span> Change Orders</div>
@@ -2927,7 +2928,8 @@ async function loadProject(id, opts={}){
         const payBadge=pa.payment_status==='paid'?'<span class="badge badge-green" style="margin-left:4px;font-size:10px">💰 paid</span>'
           :pa.payment_status==='partial'?'<span class="badge badge-amber" style="margin-left:4px;font-size:10px">💰 partial</span>'
           :pa.payment_status==='pending'?'<span class="badge" style="margin-left:4px;font-size:10px;background:#dbeafe;color:#1d4ed8">⏳ pending</span>'
-          :pa.bad_debt?'<span class="badge" style="margin-left:4px;font-size:10px;background:#f3f4f6;color:#6b7280">bad debt</span>':'';
+          :pa.bad_debt?'<span class="badge" style="margin-left:4px;font-size:10px;background:#f3f4f6;color:#6b7280">bad debt</span>'
+          :(pa.status==='submitted'?'<span class="badge" style="margin-left:4px;font-size:10px;background:#fef3c7;color:#92400e">unpaid</span>':'');
         const actions=submitted
           ?`<button class="btn btn-sm" onclick="event.stopPropagation();loadPayApp(${pa.id},5)" title="Preview &amp; Export">⬡ Preview</button>
              <span class="badge badge-green" style="margin-left:4px">submitted</span>${payBadge}
@@ -3216,7 +3218,7 @@ function renderPAHeader(pa){
   const submitted=pa.status==='submitted';
   const payStatus=pa.payment_status||'unpaid';
   const payBadgeMap={paid:'<span class="badge badge-green" style="font-size:10px;vertical-align:middle;margin-left:4px">💰 paid</span>',partial:'<span class="badge badge-amber" style="font-size:10px;vertical-align:middle;margin-left:4px">💰 partial</span>',pending:'<span class="badge" style="font-size:10px;vertical-align:middle;margin-left:4px;background:#dbeafe;color:#1d4ed8">⏳ pending</span>'};
-  const payBadge=payBadgeMap[payStatus]||(pa.bad_debt?'<span class="badge" style="font-size:10px;vertical-align:middle;margin-left:4px;background:#f3f4f6;color:#6b7280">bad debt</span>':'');
+  const payBadge=payBadgeMap[payStatus]||(pa.bad_debt?'<span class="badge" style="font-size:10px;vertical-align:middle;margin-left:4px;background:#f3f4f6;color:#6b7280">bad debt</span>':(submitted?'<span class="badge" style="font-size:10px;vertical-align:middle;margin-left:4px;background:#fef3c7;color:#92400e">unpaid</span>':''));
   const badDebtBtn=submitted&&!pa.bad_debt&&payStatus!=='paid'
     ?`<button class="btn btn-sm" onclick="toggleBadDebt(${pa.id},true)" style="font-size:11px;border-color:var(--text3);color:var(--text2)" title="Mark as uncollectable — stops follow-ups">✕ Write off</button>`
     :(pa.bad_debt?`<button class="btn btn-sm" onclick="toggleBadDebt(${pa.id},false)" style="font-size:11px;border-color:var(--amber);color:var(--amber)" title="Re-open for collection">↩ Undo write-off</button>`:'');
@@ -3237,6 +3239,47 @@ function renderPAHeader(pa){
         <button class="btn btn-sm" onclick="deletePayApp(${pa.id},${pa.project_id},'${(pa.period_label||'Pay App #'+pa.app_number).replace(/'/g,"\\'")}',${pa.app_number})" style="margin-left:auto;background:none;border:1px solid var(--red);color:var(--red);font-size:11px" title="Delete this pay application">🗑 Delete</button>
       </div>
     </div>`;
+  // Payment status banner
+  const bannerEl=document.getElementById('pa-payment-banner');
+  if(bannerEl&&submitted){
+    const paidAmt=parseFloat(pa.amount_paid)||0;
+    const tots=calcTotals(pa);
+    const dueAmt=tots.due;
+    const remaining=Math.max(0,dueAmt-paidAmt);
+    const linkToken=pa.payment_link_token;
+    const baseUrl=window.location.origin;
+    let bannerHtml='';
+    if(payStatus==='paid'){
+      bannerHtml=`<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;margin-bottom:12px">
+        <span style="font-size:20px">💰</span>
+        <div style="flex:1"><strong style="color:#059669">Paid in Full</strong><span style="color:#6b7280;font-size:12px;margin-left:8px">$${paidAmt.toLocaleString('en-US',{minimumFractionDigits:2})} received</span></div>
+      </div>`;
+    }else if(payStatus==='partial'){
+      bannerHtml=`<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;margin-bottom:12px">
+        <span style="font-size:20px">💰</span>
+        <div style="flex:1"><strong style="color:#d97706">Partial Payment</strong><span style="color:#6b7280;font-size:12px;margin-left:8px">$${paidAmt.toLocaleString('en-US',{minimumFractionDigits:2})} of $${dueAmt.toLocaleString('en-US',{minimumFractionDigits:2})} — $${remaining.toLocaleString('en-US',{minimumFractionDigits:2})} remaining</span></div>
+        ${linkToken?`<button class="btn btn-sm" onclick="navigator.clipboard.writeText('${baseUrl}/pay/${linkToken}');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy Payment Link',2000)" style="font-size:11px;white-space:nowrap">Copy Payment Link</button>`:''}
+      </div>`;
+    }else if(payStatus==='pending'){
+      bannerHtml=`<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:#dbeafe;border:1px solid #93c5fd;border-radius:8px;margin-bottom:12px">
+        <span style="font-size:20px">⏳</span>
+        <div style="flex:1"><strong style="color:#1d4ed8">Payment Pending</strong><span style="color:#6b7280;font-size:12px;margin-left:8px">Payment has been initiated — awaiting confirmation</span></div>
+      </div>`;
+    }else if(pa.bad_debt){
+      bannerHtml=`<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:8px;margin-bottom:12px">
+        <span style="font-size:20px">✕</span>
+        <div style="flex:1"><strong style="color:#6b7280">Written Off</strong><span style="color:#6b7280;font-size:12px;margin-left:8px">Marked as uncollectable</span></div>
+      </div>`;
+    }else{
+      // Unpaid — show payment link or prompt to send
+      bannerHtml=`<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;margin-bottom:12px">
+        <span style="font-size:20px">📨</span>
+        <div style="flex:1"><strong style="color:#92400e">Awaiting Payment</strong><span style="color:#6b7280;font-size:12px;margin-left:8px">$${dueAmt.toLocaleString('en-US',{minimumFractionDigits:2})} due</span></div>
+        ${linkToken?`<button class="btn btn-sm" onclick="navigator.clipboard.writeText('${baseUrl}/pay/${linkToken}');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy Payment Link',2000)" style="font-size:11px;white-space:nowrap">Copy Payment Link</button>`:`<button class="btn btn-primary btn-sm" onclick="paTab(5)" style="font-size:11px;white-space:nowrap">Send Invoice</button>`}
+      </div>`;
+    }
+    bannerEl.innerHTML=bannerHtml;
+  }else if(bannerEl){bannerEl.innerHTML='';}
   // Update send button text based on whether this pay app has been submitted before
   const sendBtn=document.getElementById('btn-send-email');
   if(sendBtn&&!sendBtn.disabled){sendBtn.textContent=submitted?'📤 Resend':'📤 Send & Mark Submitted';}
