@@ -5644,7 +5644,7 @@ async function loadPaymentsDashboard() {
       </div>
       <div class="card" style="padding:16px;text-align:center">
         <div style="font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Payments</div>
-        <div style="font-size:22px;font-weight:700;color:var(--text1)">${total.count || 0}</div>
+        <div style="font-size:22px;font-weight:700;color:var(--text1)">${data.count || payments.length || 0}</div>
       </div>
       ${stripeActive ? '<div class="card" style="padding:16px;text-align:center;cursor:pointer" onclick="openStripeDashboard()"><div style="font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Stripe</div><div style="font-size:15px;font-weight:600;color:#635bff;margin-top:6px">Open Dashboard</div></div>' : ''}`;
     // Payment list
@@ -5663,7 +5663,7 @@ async function loadPaymentsDashboard() {
           failed: { bg: '#fee2e2', color: '#dc2626', label: 'Failed' }
         };
         const s = statusMap[p.payment_status] || { bg: '#f3f4f6', color: '#6b7280', label: p.payment_status };
-        return `<div style="display:flex;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);gap:12px">
+        return `<div style="display:flex;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);gap:12px;cursor:pointer;transition:background .15s" onmouseenter="this.style.background='var(--bg2)'" onmouseleave="this.style.background=''" onclick="loadPayApp(${p.pay_app_id})">
           <div style="flex:1;min-width:0">
             <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.payer_name || p.payer_email || 'Unknown payer'}</div>
             <div style="font-size:11px;color:var(--text2)">PA #${p.app_number || '?'} · ${p.project_name || ''} · ${p.payment_method === 'ach' ? 'ACH' : 'Card'}</div>

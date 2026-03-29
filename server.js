@@ -1925,6 +1925,12 @@ ${pa.special_notes ? `<div style="margin-top:8px;padding:6px 10px;background:#fa
       </tr>
     </tfoot>
   </table>
+  ${pa.payment_link_token && due > 0 ? `
+  <div style="text-align:center;margin:18px 0 10px;padding:14px 20px;background:#f0f4ff;border:1.5px solid #93c5fd;border-radius:8px">
+    <div style="font-size:9pt;color:#555;margin-bottom:6px">Pay this invoice online — ACH or credit card</div>
+    <a href="https://constructinv.varshyl.com/pay/${pa.payment_link_token}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 28px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:10pt">Pay Now — ${fmtM(due)}</a>
+    <div style="font-size:7.5pt;color:#888;margin-top:6px">constructinv.varshyl.com/pay/${pa.payment_link_token}</div>
+  </div>` : ''}
   <div class="print-branding">
     <div class="brand-name"><span style="color:#6B2FA0;font-weight:bold">Construct</span><span style="color:#E87722;font-weight:bold">Invoice</span> <span style="color:#009B8D;font-weight:bold">AI</span></div>
     <div class="brand-tagline">$0 to use — pay it forward instead: feed a child, help a neighbor 🙏</div>
