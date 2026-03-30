@@ -624,19 +624,28 @@ app.post('/api/auth/resend-verification', auth, async (req, res) => {
 // ── DASHBOARD STATS — single query for all billing totals
 app.get('/api/stats', auth, async (req,res) => {
   try {
-    const r = await pool.query(`
-      SELECT
-        COALESCE(SUM(sl.scheduled_value * pal.this_pct / 100.0), 0)                               AS total_billed,
-        COALESCE(SUM(sl.scheduled_value * pal.this_pct / 100.0 * pal.retainage_pct / 100.0), 0)  AS total_retainage
-      FROM projects p
-      JOIN pay_apps       pa  ON pa.project_id  = p.id
-      JOIN pay_app_lines  pal ON pal.pay_app_id  = pa.id
-      JOIN sov_lines      sl  ON sl.id           = pal.sov_line_id
-      WHERE p.user_id = $1
-        AND pa.status = 'submitted'
-        AND pa.deleted_at IS NULL
-    `, [req.user.id]);
-    res.json(r.rows[0] || { total_billed: 0, total_retainage: 0 });
+    const [billing, otherInv] = await Promise.all([
+      pool.query(`
+        SELECT
+          COALESCE(SUM(sl.scheduled_value * pal.this_pct / 100.0), 0)                               AS total_billed,
+          COALESCE(SUM(sl.scheduled_value * pal.this_pct / 100.0 * pal.retainage_pct / 100.0), 0)  AS total_retainage
+        FROM projects p
+        JOIN pay_apps       pa  ON pa.project_id  = p.id
+        JOIN pay_app_lines  pal ON pal.pay_app_id  = pa.id
+        JOIN sov_lines      sl  ON sl.id           = pal.sov_line_id
+        WHERE p.user_id = $1
+          AND pa.status = 'submitted'
+          AND pa.deleted_at IS NULL
+      `, [req.user.id]),
+      pool.query(`
+        SELECT COUNT(*) AS other_invoice_count,
+               COALESCE(SUM(amount), 0) AS other_invoice_total
+        FROM other_invoices WHERE user_id=$1 AND deleted_at IS NULL
+      `, [req.user.id])
+    ]);
+    const stats = billing.rows[0] || { total_billed: 0, total_retainage: 0 };
+    const oi = otherInv.rows[0] || { other_invoice_count: 0, other_invoice_total: 0 };
+    res.json({ ...stats, ...oi });
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -2542,11 +2551,11 @@ app.get('/api/settings', auth, async (req,res) => {
 
 app.post('/api/settings', auth, async (req,res) => {
   const {company_name,default_payment_terms,default_retainage,contact_name,contact_phone,contact_email,job_number_format,
-    reminder_7before,reminder_due,reminder_7after,reminder_retention,reminder_email,reminder_phone} = req.body;
+    reminder_7before,reminder_due,reminder_7after,reminder_retention,reminder_email,reminder_phone,credit_card_enabled} = req.body;
   const r = await pool.query(
     `INSERT INTO company_settings(user_id,company_name,default_payment_terms,default_retainage,contact_name,contact_phone,contact_email,job_number_format,
-       reminder_7before,reminder_due,reminder_7after,reminder_retention,reminder_email,reminder_phone)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       reminder_7before,reminder_due,reminder_7after,reminder_retention,reminder_email,reminder_phone,credit_card_enabled)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      ON CONFLICT(user_id) DO UPDATE SET
        company_name=EXCLUDED.company_name,
        default_payment_terms=EXCLUDED.default_payment_terms,
@@ -2561,12 +2570,13 @@ app.post('/api/settings', auth, async (req,res) => {
        reminder_retention=COALESCE(EXCLUDED.reminder_retention, company_settings.reminder_retention, TRUE),
        reminder_email=COALESCE(EXCLUDED.reminder_email, company_settings.reminder_email),
        reminder_phone=COALESCE(EXCLUDED.reminder_phone, company_settings.reminder_phone),
+       credit_card_enabled=COALESCE(EXCLUDED.credit_card_enabled, company_settings.credit_card_enabled, FALSE),
        updated_at=NOW()
      RETURNING *`,
     [req.user.id,company_name,default_payment_terms||'Due on receipt',default_retainage||10,
      contact_name||null,contact_phone||null,contact_email||null,job_number_format||null,
      reminder_7before??null,reminder_due??null,reminder_7after??null,reminder_retention??null,
-     reminder_email||null,reminder_phone||null]
+     reminder_email||null,reminder_phone||null,credit_card_enabled??null]
   );
   res.json(r.rows[0]);
 });
@@ -5127,7 +5137,8 @@ app.get('/api/pay/:token', async (req, res) => {
     const pa = (await pool.query(
       `SELECT pa.*, p.name as project_name, p.number as project_number, p.owner as project_owner,
               p.contractor, p.user_id, p.owner_email,
-              cs.company_name, cs.logo_filename, cs.contact_name, cs.contact_phone, cs.contact_email
+              cs.company_name, cs.logo_filename, cs.contact_name, cs.contact_phone, cs.contact_email,
+              cs.credit_card_enabled
        FROM pay_apps pa
        JOIN projects p ON pa.project_id=p.id
        LEFT JOIN company_settings cs ON cs.user_id=p.user_id
@@ -5195,6 +5206,7 @@ app.get('/api/pay/:token', async (req, res) => {
       po_number: pa.po_number,
       lines: lineItems,
       pay_app_id: pa.id,
+      credit_card_enabled: pa.credit_card_enabled === true || pa.credit_card_enabled === 'true',
     });
   } catch(e) { console.error('[Pay Page Error]', e.message); res.status(500).json({ error: e.message }); }
 });
@@ -5301,6 +5313,13 @@ app.post('/api/pay/:token/checkout', async (req, res) => {
     if (pa.bad_debt) return res.status(400).json({ error: 'This invoice has been marked as uncollectable.' });
     const acct = (await pool.query('SELECT stripe_account_id FROM connected_accounts WHERE user_id=$1 AND charges_enabled=TRUE', [pa.user_id])).rows[0];
     if (!acct) return res.status(400).json({ error: 'Payment not available' });
+    // Check if credit card is enabled for this GC
+    if (method === 'card') {
+      const ccSettings = (await pool.query('SELECT credit_card_enabled FROM company_settings WHERE user_id=$1', [pa.user_id])).rows[0];
+      if (!ccSettings || !ccSettings.credit_card_enabled) {
+        return res.status(400).json({ error: 'Credit card payments are not enabled. Please use ACH bank transfer.' });
+      }
+    }
     const amountCents = Math.round(parseFloat(amount) * 100);
     if (amountCents < 100) return res.status(400).json({ error: 'Minimum payment is $1.00' });
     const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
@@ -5613,18 +5632,24 @@ app.get('/api/projects/:id/other-invoices', auth, async (req, res) => {
   }
 });
 
-// Create other invoice
-app.post('/api/projects/:id/other-invoices', auth, async (req, res) => {
+// Create other invoice (supports multipart for file attachment)
+app.post('/api/projects/:id/other-invoices', auth, upload.single('file'), async (req, res) => {
   try {
     const proj = (await pool.query('SELECT id FROM projects WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id])).rows[0];
     if (!proj) return res.status(404).json({ error: 'Project not found' });
     const { invoice_number, category, description, vendor, amount, invoice_date, due_date, notes } = req.body;
     if (!description || !description.trim()) return res.status(400).json({ error: 'Description is required' });
+    let attachFilename = null, attachOriginalName = null;
+    if (req.file) {
+      attachFilename = req.file.filename;
+      attachOriginalName = req.file.originalname;
+    }
     const result = await pool.query(
-      `INSERT INTO other_invoices (project_id, user_id, invoice_number, category, description, vendor, amount, invoice_date, due_date, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      `INSERT INTO other_invoices (project_id, user_id, invoice_number, category, description, vendor, amount, invoice_date, due_date, notes, attachment_filename, attachment_original_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [req.params.id, req.user.id, invoice_number||null, category||'other', description.trim(), vendor||null,
-       parseFloat(amount)||0, invoice_date||new Date().toISOString().slice(0,10), due_date||null, notes||null]
+       parseFloat(amount)||0, invoice_date||new Date().toISOString().slice(0,10), due_date||null, notes||null,
+       attachFilename, attachOriginalName]
     );
     res.json(result.rows[0]);
   } catch(e) {
@@ -5633,26 +5658,49 @@ app.post('/api/projects/:id/other-invoices', auth, async (req, res) => {
   }
 });
 
-// Update other invoice
-app.put('/api/other-invoices/:id', auth, async (req, res) => {
+// Update other invoice (supports multipart for file attachment)
+app.put('/api/other-invoices/:id', auth, upload.single('file'), async (req, res) => {
   try {
     const inv = (await pool.query('SELECT * FROM other_invoices WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL', [req.params.id, req.user.id])).rows[0];
     if (!inv) return res.status(404).json({ error: 'Invoice not found' });
     const { invoice_number, category, description, vendor, amount, invoice_date, due_date, status, notes } = req.body;
+    let attachFilename = inv.attachment_filename;
+    let attachOriginalName = inv.attachment_original_name;
+    if (req.file) {
+      attachFilename = req.file.filename;
+      attachOriginalName = req.file.originalname;
+    }
     const result = await pool.query(
       `UPDATE other_invoices SET
         invoice_number=COALESCE($1,invoice_number), category=COALESCE($2,category),
         description=COALESCE($3,description), vendor=COALESCE($4,vendor),
         amount=COALESCE($5,amount), invoice_date=COALESCE($6,invoice_date),
-        due_date=COALESCE($7,due_date), status=COALESCE($8,status), notes=COALESCE($9,notes)
-       WHERE id=$10 RETURNING *`,
+        due_date=COALESCE($7,due_date), status=COALESCE($8,status), notes=COALESCE($9,notes),
+        attachment_filename=$10, attachment_original_name=$11
+       WHERE id=$12 RETURNING *`,
       [invoice_number, category, description, vendor, amount!=null?parseFloat(amount):null,
-       invoice_date||null, due_date||null, status||null, notes, req.params.id]
+       invoice_date||null, due_date||null, status||null, notes,
+       attachFilename, attachOriginalName, req.params.id]
     );
     res.json(result.rows[0]);
   } catch(e) {
     console.error('[PUT /api/other-invoices/:id]', e.message);
     res.status(500).json({ error: 'Failed to update invoice' });
+  }
+});
+
+// Download other invoice attachment
+app.get('/api/other-invoices/:id/attachment', auth, async (req, res) => {
+  try {
+    const inv = (await pool.query('SELECT * FROM other_invoices WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL', [req.params.id, req.user.id])).rows[0];
+    if (!inv) return res.status(404).json({ error: 'Invoice not found' });
+    if (!inv.attachment_filename) return res.status(404).json({ error: 'No attachment' });
+    const filePath = path.join(uploadDir, inv.attachment_filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found on disk' });
+    res.download(filePath, inv.attachment_original_name || inv.attachment_filename);
+  } catch(e) {
+    console.error('[GET /api/other-invoices/:id/attachment]', e.message);
+    res.status(500).json({ error: 'Failed to download attachment' });
   }
 });
 
@@ -5669,12 +5717,13 @@ app.delete('/api/other-invoices/:id', auth, async (req, res) => {
   }
 });
 
-// Download other invoice as simple one-page PDF
+// Download other invoice as professional one-page PDF
 app.get('/api/other-invoices/:id/pdf', auth, async (req, res) => {
   try {
     const inv = (await pool.query(
       `SELECT oi.*, p.name as project_name, p.number as project_number, p.owner as project_owner,
-              p.contractor, p.contact_name, p.contact_phone, p.contact_email
+              p.contractor, p.contact_name, p.contact_phone, p.contact_email,
+              p.job_number, p.address, p.owner_email, p.owner_phone
        FROM other_invoices oi JOIN projects p ON p.id=oi.project_id
        WHERE oi.id=$1 AND oi.user_id=$2 AND oi.deleted_at IS NULL`,
       [req.params.id, req.user.id]
@@ -5683,6 +5732,9 @@ app.get('/api/other-invoices/:id/pdf', auth, async (req, res) => {
 
     // Get company settings for logo/contact
     const settings = (await pool.query('SELECT * FROM company_settings WHERE user_id=$1', [req.user.id])).rows[0] || {};
+
+    // Check if user has Stripe Connect for pay link
+    const connAcct = (await pool.query('SELECT * FROM connected_accounts WHERE user_id=$1 AND charges_enabled=true', [req.user.id])).rows[0];
 
     const PDFDocument = require('pdfkit');
     const doc = new PDFDocument({ size: 'LETTER', margins: { top: 50, bottom: 50, left: 60, right: 60 } });
@@ -5702,14 +5754,15 @@ app.get('/api/other-invoices/:id/pdf', auth, async (req, res) => {
     }
 
     // Header
-    doc.fontSize(20).font('Helvetica-Bold').text('INVOICE', 0, 50, { align: 'right', width: 552 });
+    doc.fontSize(22).font('Helvetica-Bold').text('INVOICE', 0, 50, { align: 'right', width: 552 });
     doc.moveDown(0.3);
+    const catDisplay = inv.category ? inv.category.charAt(0).toUpperCase() + inv.category.slice(1) : 'Other';
     doc.fontSize(10).font('Helvetica').fillColor('#666').text(
-      inv.category ? inv.category.charAt(0).toUpperCase() + inv.category.slice(1) : 'Other',
+      catDisplay + '  ·  Non-contract item',
       0, doc.y, { align: 'right', width: 552 }
     );
 
-    // Invoice details box
+    // Invoice details box (left side)
     const yStart = 110;
     doc.fillColor('#000');
     doc.fontSize(9).font('Helvetica-Bold');
@@ -5718,12 +5771,15 @@ app.get('/api/other-invoices/:id/pdf', auth, async (req, res) => {
     if (inv.due_date) {
       doc.font('Helvetica-Bold').text('Due Date:', 60, yStart + 32); doc.font('Helvetica').text(new Date(inv.due_date).toLocaleDateString(), 140, yStart + 32);
     }
-    doc.font('Helvetica-Bold').text('Status:', 60, yStart + 48); doc.font('Helvetica').text((inv.status||'draft').toUpperCase(), 140, yStart + 48);
 
-    // Project info (right side)
-    doc.font('Helvetica-Bold').text('Project:', 340, yStart); doc.font('Helvetica').text(inv.project_name || '', 400, yStart);
-    if (inv.project_number) { doc.font('Helvetica-Bold').text('Project #:', 340, yStart + 16); doc.font('Helvetica').text(inv.project_number, 400, yStart + 16); }
-    if (inv.project_owner) { doc.font('Helvetica-Bold').text('Owner:', 340, yStart + 32); doc.font('Helvetica').text(inv.project_owner, 400, yStart + 32); }
+    // Project info (right side) — includes job #, address for long-term record keeping
+    let rightY = yStart;
+    doc.font('Helvetica-Bold').fontSize(9).text('Project:', 340, rightY); doc.font('Helvetica').text(inv.project_name || '', 410, rightY);
+    rightY += 16;
+    if (inv.job_number) { doc.font('Helvetica-Bold').text('Job #:', 340, rightY); doc.font('Helvetica').text(inv.job_number, 410, rightY); rightY += 16; }
+    if (inv.project_number) { doc.font('Helvetica-Bold').text('Project #:', 340, rightY); doc.font('Helvetica').text(inv.project_number, 410, rightY); rightY += 16; }
+    if (inv.address) { doc.font('Helvetica-Bold').text('Address:', 340, rightY); doc.font('Helvetica').text(inv.address, 410, rightY, { width: 142 }); rightY += 16; }
+    if (inv.project_owner) { doc.font('Helvetica-Bold').text('Owner:', 340, rightY); doc.font('Helvetica').text(inv.project_owner, 410, rightY); }
 
     // Divider
     const divY = yStart + 72;
@@ -5734,12 +5790,12 @@ app.get('/api/other-invoices/:id/pdf', auth, async (req, res) => {
     if (inv.contractor || settings.company_name) {
       doc.font('Helvetica-Bold').fontSize(9).fillColor('#888').text('FROM', 60, curY);
       doc.fillColor('#000').font('Helvetica').text(settings.company_name || inv.contractor || '', 60, curY + 14);
-      if (inv.contact_name) doc.text(inv.contact_name, 60, curY + 26);
-      if (inv.contact_phone) doc.text(inv.contact_phone, 60, curY + 38);
-      if (inv.contact_email) doc.text(inv.contact_email, 60, curY + 50);
+      if (settings.contact_name || inv.contact_name) doc.text(settings.contact_name || inv.contact_name, 60, curY + 26);
+      if (settings.contact_phone || inv.contact_phone) doc.text(settings.contact_phone || inv.contact_phone, 60, curY + 38);
+      if (settings.contact_email || inv.contact_email) doc.text(settings.contact_email || inv.contact_email, 60, curY + 50);
     }
     if (inv.vendor) {
-      doc.font('Helvetica-Bold').fontSize(9).fillColor('#888').text('VENDOR / PAYEE', 340, curY);
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('#888').text('TO / PAYEE', 340, curY);
       doc.fillColor('#000').font('Helvetica').text(inv.vendor, 340, curY + 14);
     }
 
@@ -5757,16 +5813,27 @@ app.get('/api/other-invoices/:id/pdf', auth, async (req, res) => {
     const amtStr = '$' + (parseFloat(inv.amount)||0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     doc.font('Helvetica-Bold').text(amtStr, 440, curY, { width: 112, align: 'right' });
 
-    // Total box
+    // Total box — highlighted
     curY += 40;
-    doc.moveTo(60, curY).lineTo(552, curY).strokeColor('#ccc').lineWidth(0.5).stroke();
-    curY += 10;
-    doc.font('Helvetica-Bold').fontSize(12).text('TOTAL DUE', 340, curY);
-    doc.text(amtStr, 440, curY, { width: 112, align: 'right' });
+    doc.rect(330, curY, 222, 30).fill('#f0f7ff').stroke('#c0d8f0');
+    doc.font('Helvetica-Bold').fontSize(12).fillColor('#1a365d').text('TOTAL DUE', 340, curY + 8);
+    doc.text(amtStr, 440, curY + 8, { width: 102, align: 'right' });
+
+    // Payment info
+    curY += 45;
+    if (connAcct) {
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('#1d4ed8').text('PAY THIS INVOICE', 60, curY);
+      curY += 14;
+      doc.font('Helvetica').fontSize(9).fillColor('#333').text(
+        'Pay online via ACH bank transfer at: ' + (process.env.BASE_URL || 'https://constructinv.varshyl.com'),
+        60, curY, { width: 492 }
+      );
+      curY += 16;
+    }
 
     // Notes
     if (inv.notes) {
-      curY += 40;
+      curY += 8;
       doc.font('Helvetica-Bold').fontSize(9).fillColor('#888').text('NOTES', 60, curY);
       curY += 14;
       doc.font('Helvetica').fontSize(9).fillColor('#000').text(inv.notes, 60, curY, { width: 492 });
@@ -5774,7 +5841,7 @@ app.get('/api/other-invoices/:id/pdf', auth, async (req, res) => {
 
     // Footer
     doc.fontSize(8).fillColor('#999').text(
-      'Generated by ConstructInvoice AI — This invoice is NOT part of the G702/G703 contract billing.',
+      'Generated by ConstructInvoice AI  ·  Non-contract item — not included in G702/G703 contract billing',
       60, 720, { width: 492, align: 'center' }
     );
 

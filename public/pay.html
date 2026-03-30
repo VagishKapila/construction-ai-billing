@@ -460,6 +460,10 @@ function renderInvoice() {
 
   // Fee labels
   document.getElementById('cc-fee-label').textContent = '+ ' + formatCurrency(d.cc_fee) + ' processing fee';
+  // Hide credit card option if GC has not enabled it
+  if (!d.credit_card_enabled) {
+    document.getElementById('btn-cc').style.display = 'none';
+  }
 
   // Download Invoice PDF button
   document.getElementById('btn-download-pdf').href = '/api/pay/' + token + '/pdf';

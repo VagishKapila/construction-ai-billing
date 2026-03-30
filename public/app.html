@@ -1194,6 +1194,12 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
             </div>
           </div>
           <div id="stripe-connect-actions"></div>
+          <div style="margin-top:14px;padding:12px 14px;background:var(--bg3);border-radius:var(--radius)">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="settings-cc-enabled" onchange="saveCreditCardSetting(this.checked)"/>
+              <span><strong>Enable credit card payments</strong><br/><span style="font-size:11px;color:var(--text2)">Off by default — ACH only. Enable if you want to accept credit cards (higher dispute risk).</span></span>
+            </label>
+          </div>
         </div>
         <div id="settings-upgrade-card"></div>
         <div class="card">
@@ -1263,6 +1269,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
           <div class="mc"><div class="ml">TOTAL BILLED</div><div class="mv blue" id="dash-total-billed">$0.00</div></div>
           <div class="mc"><div class="ml">RETAINAGE HELD</div><div class="mv amber" id="dash-total-ret">$0.00</div></div>
           <div class="mc"><div class="ml">PAY APPS</div><div class="mv" id="dash-pa-count">0</div></div>
+          <div class="mc"><div class="ml">OTHER INVOICES</div><div class="mv" id="dash-oi-total" style="font-size:14px">$0.00</div></div>
         </div>
         <div class="card">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
@@ -3019,6 +3026,8 @@ async function loadDash(){
     document.getElementById('dash-pa-count').textContent=totalPAs;
     document.getElementById('dash-total-billed').textContent=fmt(parseFloat(stats.total_billed)||0);
     document.getElementById('dash-total-ret').textContent=fmt(parseFloat(stats.total_retainage)||0);
+    const oiTotalEl=document.getElementById('dash-oi-total');
+    if(oiTotalEl) oiTotalEl.textContent=fmt(parseFloat(stats.other_invoice_total)||0);
     buildSidebarProjects(projects);
     // Module 6: show upgrade nudge based on trial age / usage
     checkAndShowNudge(totalPAs);
@@ -4344,6 +4353,9 @@ async function loadSettings() {
     renderSettingsUpgradeCard();
     // Load Stripe Connect status
     loadStripeConnectStatus().catch(()=>{});
+    // Credit card setting
+    const ccEl = document.getElementById('settings-cc-enabled');
+    if (ccEl) ccEl.checked = companySettings.credit_card_enabled === true;
   } catch(e) { console.log('No settings yet'); }
 }
 
@@ -5635,18 +5647,22 @@ async function loadOtherInvoices(projectId) {
         ? '<span class="badge badge-green" style="font-size:10px">paid</span>'
         : inv.status === 'sent'
         ? '<span class="badge" style="font-size:10px;background:#dbeafe;color:#1d4ed8">sent</span>'
-        : '<span class="badge badge-amber" style="font-size:10px">draft</span>';
+        : '';
+      const attachIcon = inv.attachment_original_name
+        ? `<button class="btn btn-sm" onclick="event.stopPropagation();downloadOtherInvAttachment(${inv.id})" title="Download ${inv.attachment_original_name}" style="font-size:10px">📎</button>`
+        : '';
       return `<div class="pa-item" onclick="openOtherInvoiceModal(${inv.id})" style="cursor:pointer">
         <div style="min-width:0">
           <div style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px">
             <span style="font-size:11px">${catLabel}</span>
             ${inv.invoice_number ? '#' + inv.invoice_number : ''} — ${inv.description || 'No description'}
           </div>
-          <div style="font-size:11px;color:var(--text2)">${inv.vendor ? inv.vendor + ' · ' : ''}${inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString() : ''}</div>
+          <div style="font-size:11px;color:var(--text2)">${inv.vendor ? inv.vendor + ' · ' : ''}${inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString() : ''}${inv.due_date ? ' · Due ' + new Date(inv.due_date).toLocaleDateString() : ''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
           <span style="font-size:13px;font-weight:600">${fmt(inv.amount)}</span>
           ${statusBadge}
+          ${attachIcon}
           <button class="btn btn-sm" onclick="event.stopPropagation();downloadOtherInvPDF(${inv.id})" title="Download PDF">📄</button>
           <button class="btn btn-sm" onclick="event.stopPropagation();deleteOtherInvoice(${inv.id},'${(inv.description||'').replace(/'/g,"\\'")}')" style="border-color:var(--red);color:var(--red);padding:3px 6px;font-size:10px" title="Delete">🗑</button>
         </div>
@@ -5675,6 +5691,8 @@ function openOtherInvoiceModal(editId) {
   document.getElementById('oi-date').value = new Date().toISOString().slice(0, 10);
   document.getElementById('oi-due-date').value = '';
   document.getElementById('oi-notes').value = '';
+  document.getElementById('oi-attachment').value = '';
+  document.getElementById('oi-attach-info').innerHTML = '';
 
   if (editId) {
     title.textContent = 'Edit invoice';
@@ -5692,10 +5710,24 @@ function openOtherInvoiceModal(editId) {
       document.getElementById('oi-date').value = inv.invoice_date ? inv.invoice_date.slice(0, 10) : '';
       document.getElementById('oi-due-date').value = inv.due_date ? inv.due_date.slice(0, 10) : '';
       document.getElementById('oi-notes').value = inv.notes || '';
+      // Show existing attachment if any
+      const attachInfo = document.getElementById('oi-attach-info');
+      if (inv.attachment_original_name) {
+        attachInfo.innerHTML = '<span style="color:var(--text2);font-size:12px">📎 ' + inv.attachment_original_name + '</span>';
+      } else {
+        attachInfo.innerHTML = '';
+      }
     });
   } else {
     title.textContent = 'New invoice';
     btn.textContent = 'Create invoice';
+    // Auto-fill vendor from company settings
+    if (companySettings && companySettings.company_name) {
+      document.getElementById('oi-vendor').value = companySettings.company_name;
+    }
+    // Auto-fill due date: 30 days from today by default
+    const due = new Date(); due.setDate(due.getDate() + 30);
+    document.getElementById('oi-due-date').value = due.toISOString().slice(0, 10);
   }
   modal.classList.remove('hidden');
 }
@@ -5710,23 +5742,48 @@ async function saveOtherInvoice() {
   const editId = document.getElementById('other-inv-edit-id').value;
   const desc = document.getElementById('oi-description').value.trim();
   if (!desc) { errEl.textContent = 'Description is required'; errEl.classList.remove('hidden'); return; }
-  const body = {
-    invoice_number: document.getElementById('oi-number').value.trim(),
-    category: document.getElementById('oi-category').value,
-    description: desc,
-    vendor: document.getElementById('oi-vendor').value.trim(),
-    amount: parseFloat(document.getElementById('oi-amount').value) || 0,
-    invoice_date: document.getElementById('oi-date').value || null,
-    due_date: document.getElementById('oi-due-date').value || null,
-    notes: document.getElementById('oi-notes').value.trim()
-  };
+
+  const fileInput = document.getElementById('oi-attachment');
+  const hasFile = fileInput.files && fileInput.files.length > 0;
+
   const btn = document.getElementById('oi-submit-btn');
   btn.disabled = true; btn.textContent = 'Saving...';
   try {
-    if (editId) {
-      await api('PUT', '/other-invoices/' + editId, body);
+    // Use FormData if there's an attachment, otherwise JSON
+    if (hasFile) {
+      const fd = new FormData();
+      fd.append('file', fileInput.files[0]);
+      fd.append('invoice_number', document.getElementById('oi-number').value.trim());
+      fd.append('category', document.getElementById('oi-category').value);
+      fd.append('description', desc);
+      fd.append('vendor', document.getElementById('oi-vendor').value.trim());
+      fd.append('amount', parseFloat(document.getElementById('oi-amount').value) || 0);
+      fd.append('invoice_date', document.getElementById('oi-date').value || '');
+      fd.append('due_date', document.getElementById('oi-due-date').value || '');
+      fd.append('notes', document.getElementById('oi-notes').value.trim());
+      const token = localStorage.getItem('caib_token');
+      const url = editId
+        ? '/api/other-invoices/' + editId
+        : '/api/projects/' + currentProjectId + '/other-invoices';
+      const method = editId ? 'PUT' : 'POST';
+      const r = await fetch(url, { method, headers: { Authorization: 'Bearer ' + token }, body: fd });
+      if (!r.ok) { const d = await r.json().catch(()=>({})); throw new Error(d.error || 'Upload failed'); }
     } else {
-      await api('POST', '/projects/' + currentProjectId + '/other-invoices', body);
+      const body = {
+        invoice_number: document.getElementById('oi-number').value.trim(),
+        category: document.getElementById('oi-category').value,
+        description: desc,
+        vendor: document.getElementById('oi-vendor').value.trim(),
+        amount: parseFloat(document.getElementById('oi-amount').value) || 0,
+        invoice_date: document.getElementById('oi-date').value || null,
+        due_date: document.getElementById('oi-due-date').value || null,
+        notes: document.getElementById('oi-notes').value.trim()
+      };
+      if (editId) {
+        await api('PUT', '/other-invoices/' + editId, body);
+      } else {
+        await api('POST', '/projects/' + currentProjectId + '/other-invoices', body);
+      }
     }
     closeOtherInvModal();
     loadOtherInvoices(currentProjectId);
@@ -5748,6 +5805,11 @@ async function deleteOtherInvoice(id, desc) {
 function downloadOtherInvPDF(id) {
   const token = localStorage.getItem('caib_token');
   window.open('/api/other-invoices/' + id + '/pdf?token=' + token, '_blank');
+}
+
+function downloadOtherInvAttachment(id) {
+  const token = localStorage.getItem('caib_token');
+  window.open('/api/other-invoices/' + id + '/attachment?token=' + token, '_blank');
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -6110,6 +6172,20 @@ async function loadStripeConnectStatus() {
   }
 }
 
+// Save credit card enabled/disabled setting
+async function saveCreditCardSetting(enabled) {
+  try {
+    await api('POST', '/settings', { credit_card_enabled: enabled });
+    companySettings.credit_card_enabled = enabled;
+    showToast(enabled ? '✓ Credit card payments enabled' : '✓ Credit card payments disabled — ACH only');
+  } catch(e) {
+    showToast('Failed to save setting', true);
+    // Revert checkbox
+    const el = document.getElementById('settings-cc-enabled');
+    if (el) el.checked = !enabled;
+  }
+}
+
 // Bad debt / write-off
 async function toggleBadDebt(paId, markBad) {
   const action = markBad ? 'write off' : 'undo the write-off for';
@@ -6421,6 +6497,10 @@ async function wgClose(){
       <div class="field"><label>Due date</label><input type="date" id="oi-due-date"/></div>
     </div>
     <div class="field"><label>Notes</label><textarea id="oi-notes" rows="2" placeholder="Optional notes..."></textarea></div>
+    <div class="field"><label>Attach receipt / document</label>
+      <input type="file" id="oi-attachment" accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls,.csv,.doc,.docx" style="font-size:13px"/>
+      <div id="oi-attach-info" style="margin-top:4px"></div>
+    </div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
       <button class="btn" onclick="closeOtherInvModal()">Cancel</button>
       <button class="btn btn-primary" id="oi-submit-btn" onclick="saveOtherInvoice()">Create invoice</button>

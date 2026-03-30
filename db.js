@@ -216,6 +216,7 @@ async function initDB() {
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_retention BOOLEAN DEFAULT TRUE;
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_email VARCHAR(300);
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_phone VARCHAR(50);
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS credit_card_enabled BOOLEAN DEFAULT FALSE;
 
     -- Contract document upload (optional signed contract attached to project)
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS contract_filename VARCHAR(300);
