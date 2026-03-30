@@ -2906,6 +2906,134 @@ app.get('/api/subscription', auth, async (req, res) => {
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// ── Stripe Subscription Billing ($40/month Pro plan) ────────────────────────
+
+// One-time setup: create the Stripe Product + Price (admin only, idempotent)
+app.post('/api/admin/setup-subscription-product', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  try {
+    // Check if we already have a price stored
+    const existing = (await pool.query("SELECT value FROM app_settings WHERE key='subscription_price_id'")).rows[0];
+    if (existing?.value) {
+      // Verify it still exists in Stripe
+      try {
+        const price = await stripe.prices.retrieve(existing.value);
+        return res.json({ message: 'Subscription product already exists', price_id: existing.value, product_id: price.product, amount: price.unit_amount, interval: price.recurring?.interval });
+      } catch(e) { /* price was deleted, recreate below */ }
+    }
+    // Create product
+    const product = await stripe.products.create({
+      name: 'ConstructInvoice AI Pro',
+      description: 'Full access to ConstructInvoice AI — G702/G703 pay apps, lien waivers, payment collection, AI assistant, and more.',
+      metadata: { app: 'constructinvoice', tier: 'pro' }
+    });
+    // Create price ($40/month)
+    const price = await stripe.prices.create({
+      product: product.id,
+      unit_amount: 4000, // $40.00 in cents
+      currency: 'usd',
+      recurring: { interval: 'month' },
+      metadata: { app: 'constructinvoice', tier: 'pro' }
+    });
+    // Store in app_settings table for future reference
+    await pool.query(
+      "INSERT INTO app_settings(key,value) VALUES('subscription_price_id',$1) ON CONFLICT(key) DO UPDATE SET value=$1",
+      [price.id]
+    );
+    await pool.query(
+      "INSERT INTO app_settings(key,value) VALUES('subscription_product_id',$1) ON CONFLICT(key) DO UPDATE SET value=$1",
+      [product.id]
+    );
+    console.log(`[Stripe] Created subscription product ${product.id} with price ${price.id} ($40/month)`);
+    res.json({ message: 'Subscription product created', product_id: product.id, price_id: price.id, amount: 4000, interval: 'month' });
+  } catch(e) { console.error('[Stripe Setup Error]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// Get subscription price ID (used by frontend to create checkout)
+app.get('/api/subscription/price', auth, async (req, res) => {
+  try {
+    const r = (await pool.query("SELECT value FROM app_settings WHERE key='subscription_price_id'")).rows[0];
+    if (!r?.value) return res.status(404).json({ error: 'Subscription not configured. Admin must run setup first.' });
+    res.json({ price_id: r.value, amount: 4000, currency: 'usd', interval: 'month' });
+  } catch(e) { res.status(500).json({ error: 'Internal error' }); }
+});
+
+// Create a Stripe Checkout Session for subscription
+app.post('/api/subscription/checkout', auth, requireStripe, async (req, res) => {
+  try {
+    const priceRow = (await pool.query("SELECT value FROM app_settings WHERE key='subscription_price_id'")).rows[0];
+    if (!priceRow?.value) return res.status(400).json({ error: 'Subscription price not configured. Admin must run setup first.' });
+    const user = (await pool.query('SELECT id, email, name, stripe_customer_id FROM users WHERE id=$1', [req.user.id])).rows[0];
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    // Create or reuse Stripe Customer
+    let customerId = user.stripe_customer_id;
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        name: user.name || undefined,
+        metadata: { user_id: String(user.id), app: 'constructinvoice' }
+      });
+      customerId = customer.id;
+      await pool.query('UPDATE users SET stripe_customer_id=$1 WHERE id=$2', [customerId, user.id]);
+    }
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const session = await stripe.checkout.sessions.create({
+      customer: customerId,
+      mode: 'subscription',
+      line_items: [{ price: priceRow.value, quantity: 1 }],
+      success_url: `${baseUrl}/app.html?subscription=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/app.html?subscription=cancelled`,
+      metadata: { user_id: String(user.id), app: 'constructinvoice' },
+      subscription_data: {
+        metadata: { user_id: String(user.id), app: 'constructinvoice' }
+      }
+    });
+    console.log(`[Subscription] Checkout session created for user ${user.id} (${user.email})`);
+    res.json({ checkout_url: session.url, session_id: session.id });
+  } catch(e) { console.error('[Subscription Checkout Error]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// Create Stripe Customer Portal session (manage subscription, cancel, update payment)
+app.post('/api/subscription/portal', auth, requireStripe, async (req, res) => {
+  try {
+    const user = (await pool.query('SELECT stripe_customer_id FROM users WHERE id=$1', [req.user.id])).rows[0];
+    if (!user?.stripe_customer_id) return res.status(400).json({ error: 'No active subscription found' });
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const session = await stripe.billingPortal.sessions.create({
+      customer: user.stripe_customer_id,
+      return_url: `${baseUrl}/app.html#settings`,
+    });
+    res.json({ portal_url: session.url });
+  } catch(e) { console.error('[Portal Error]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// Admin: update subscription price (change amount)
+app.post('/api/admin/update-subscription-price', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  try {
+    const { amount } = req.body; // amount in dollars
+    if (!amount || amount < 1) return res.status(400).json({ error: 'Amount must be at least $1' });
+    const productRow = (await pool.query("SELECT value FROM app_settings WHERE key='subscription_product_id'")).rows[0];
+    if (!productRow?.value) return res.status(400).json({ error: 'No subscription product exists. Run setup first.' });
+    // Create new price (Stripe prices are immutable — you archive old, create new)
+    const price = await stripe.prices.create({
+      product: productRow.value,
+      unit_amount: Math.round(amount * 100),
+      currency: 'usd',
+      recurring: { interval: 'month' },
+      metadata: { app: 'constructinvoice', tier: 'pro' }
+    });
+    // Archive old price
+    const oldPriceRow = (await pool.query("SELECT value FROM app_settings WHERE key='subscription_price_id'")).rows[0];
+    if (oldPriceRow?.value) {
+      try { await stripe.prices.update(oldPriceRow.value, { active: false }); } catch(e) {}
+    }
+    await pool.query("UPDATE app_settings SET value=$1 WHERE key='subscription_price_id'", [price.id]);
+    console.log(`[Stripe] Updated subscription price to $${amount}/month (${price.id})`);
+    res.json({ message: `Price updated to $${amount}/month`, price_id: price.id });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── User-facing AI Assistant (product help) ──────────────────────────────────
 const PRODUCT_KNOWLEDGE = `
 You are Aria, the friendly AI assistant built into ConstructInvoice AI — a construction billing platform for General Contractors.
@@ -5351,6 +5479,58 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
       const sessionId = session.id || session.metadata?.checkout_session_id;
       await pool.query("UPDATE payments SET payment_status='failed', failed_at=NOW(), failure_reason=$1 WHERE stripe_checkout_session_id=$2",
         [event.type === 'payment_intent.payment_failed' ? (session.last_payment_error?.message || 'Payment failed') : 'Session expired', sessionId]);
+    }
+
+    // ── Subscription lifecycle events ──────────────────────────────────────
+    if (event.type === 'invoice.paid') {
+      const invoice = event.data.object;
+      const customerId = invoice.customer;
+      const subscriptionId = invoice.subscription;
+      if (customerId && subscriptionId) {
+        const userRow = (await pool.query('SELECT id FROM users WHERE stripe_customer_id=$1', [customerId])).rows[0];
+        if (userRow) {
+          await pool.query(
+            "UPDATE users SET subscription_status='active', plan_type='pro', stripe_subscription_id=$1 WHERE id=$2",
+            [subscriptionId, userRow.id]
+          );
+          console.log(`[Subscription] User ${userRow.id} → active (invoice paid: ${invoice.id})`);
+        }
+      }
+    }
+    if (event.type === 'invoice.payment_failed') {
+      const invoice = event.data.object;
+      const customerId = invoice.customer;
+      if (customerId) {
+        const userRow = (await pool.query('SELECT id FROM users WHERE stripe_customer_id=$1', [customerId])).rows[0];
+        if (userRow) {
+          await pool.query("UPDATE users SET subscription_status='past_due' WHERE id=$1", [userRow.id]);
+          console.log(`[Subscription] User ${userRow.id} → past_due (invoice payment failed)`);
+        }
+      }
+    }
+    if (event.type === 'customer.subscription.deleted') {
+      const subscription = event.data.object;
+      const customerId = subscription.customer;
+      if (customerId) {
+        const userRow = (await pool.query('SELECT id FROM users WHERE stripe_customer_id=$1', [customerId])).rows[0];
+        if (userRow) {
+          await pool.query("UPDATE users SET subscription_status='canceled', plan_type='free_trial' WHERE id=$1", [userRow.id]);
+          console.log(`[Subscription] User ${userRow.id} → canceled`);
+        }
+      }
+    }
+    if (event.type === 'customer.subscription.updated') {
+      const subscription = event.data.object;
+      const customerId = subscription.customer;
+      if (customerId && subscription.status === 'active') {
+        const userRow = (await pool.query('SELECT id FROM users WHERE stripe_customer_id=$1', [customerId])).rows[0];
+        if (userRow) {
+          await pool.query(
+            "UPDATE users SET subscription_status='active', plan_type='pro', stripe_subscription_id=$1 WHERE id=$2",
+            [subscription.id, userRow.id]
+          );
+        }
+      }
     }
   } catch(e) { console.error('[Webhook Processing Error]', e.message); }
   res.json({ received: true });

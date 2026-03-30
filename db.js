@@ -324,6 +324,13 @@ async function initDB() {
     -- User Stripe Connect columns
     ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_connect_id VARCHAR(200);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS payments_enabled BOOLEAN DEFAULT FALSE;
+
+    -- App-level settings (Stripe price IDs, feature flags, etc.)
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key VARCHAR(100) PRIMARY KEY,
+      value TEXT,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
   `);
   console.log('Database ready');
 }
