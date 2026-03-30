@@ -1919,11 +1919,29 @@ ${pa.special_notes ? `<div style="margin-top:8px;padding:6px 10px;background:#fa
         <th style="text-align:right;width:72px">Balance to Finish</th>
       </tr>
     </thead>
-    <tbody>${g703Rows}</tbody>
+    <tbody>${g703Rows}${cos.length ? `
+      <tr style="background:#fffbe6;border-top:2px solid #999">
+        <td colspan="${showRet ? 10 : 8}" style="border:1px solid #ccc;padding:5px;font-weight:bold;font-size:8pt;color:#444">CHANGE ORDERS</td>
+      </tr>
+      ${cos.map(co => {
+        const coAmt = parseFloat(co.amount || 0);
+        tSV += coAmt; tComp2 += coAmt; // COs add to scheduled value and are 100% complete when approved
+        return `<tr style="background:#fffbe6">
+          <td style="border:1px solid #ccc;padding:3px 5px;font-style:italic">CO-${co.co_number||''}</td>
+          <td style="border:1px solid #ccc;padding:3px 5px">${co.description||''} ${co.status ? '('+co.status+')' : ''}</td>
+          <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(coAmt)}</td>
+          <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">-</td>
+          <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(coAmt)}</td>
+          <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(coAmt)}</td>
+          <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">100%</td>
+          ${showRet ? '<td style="border:1px solid #ccc;padding:3px 5px;text-align:right">-</td><td style="border:1px solid #ccc;padding:3px 5px;text-align:right">-</td>' : ''}
+          <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">$0.00</td>
+        </tr>`;
+      }).join('')}` : ''}</tbody>
     <tfoot>
       <tr class="tfoot-row">
         <td></td>
-        <td>GRAND TOTAL</td>
+        <td>GRAND TOTAL (incl. Change Orders)</td>
         <td style="text-align:right">${fmtM(tSV)}</td>
         <td style="text-align:right">${fmtM(tPrev2)}</td>
         <td style="text-align:right">${fmtM(tThis2)}</td>
@@ -3109,7 +3127,7 @@ KEY FEATURES & HOW-TO:
    - Save with the checkmark button or press Enter
 
 5. LIEN WAIVERS:
-   - After submitting a pay app, click "Generate waiver" (Conditional or Unconditional)
+   - Conditional waivers are auto-created when a pay app has an amount and signatory info in Settings. You can also manually create waivers from the Preview tab.
    - Supported types: Preliminary Notice, Conditional Progress, Unconditional Progress, Conditional Final, Unconditional Final
    - Currently supports California, Virginia, and Washington D.C.
    - Sign electronically by typing your name — PDF includes timestamp and IP
@@ -5834,11 +5852,11 @@ app.post('/api/projects/:id/other-invoices', auth, upload.single('file'), async 
       attachOriginalName = req.file.originalname;
     }
     const result = await pool.query(
-      `INSERT INTO other_invoices (project_id, user_id, invoice_number, category, description, vendor, amount, invoice_date, due_date, notes, attachment_filename, attachment_original_name)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      `INSERT INTO other_invoices (project_id, user_id, invoice_number, category, description, vendor, amount, invoice_date, due_date, notes, attachment_filename, attachment_original_name, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
       [req.params.id, req.user.id, invoice_number||null, category||'other', description.trim(), vendor||null,
        parseFloat(amount)||0, invoice_date||new Date().toISOString().slice(0,10), due_date||null, notes||null,
-       attachFilename, attachOriginalName]
+       attachFilename, attachOriginalName, 'sent']
     );
     res.json(result.rows[0]);
   } catch(e) {

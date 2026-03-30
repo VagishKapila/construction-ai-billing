@@ -346,7 +346,7 @@ async function initDB() {
       amount NUMERIC(14,2) DEFAULT 0,
       invoice_date DATE DEFAULT CURRENT_DATE,
       due_date DATE,
-      status VARCHAR(50) DEFAULT 'draft',
+      status VARCHAR(50) DEFAULT 'sent',
       notes TEXT,
       attachment_filename VARCHAR(300),
       attachment_original_name VARCHAR(300),
@@ -355,6 +355,9 @@ async function initDB() {
     );
     CREATE INDEX IF NOT EXISTS idx_other_invoices_project ON other_invoices(project_id);
     CREATE INDEX IF NOT EXISTS idx_other_invoices_user ON other_invoices(user_id);
+
+    -- Backfill: existing draft other invoices → sent
+    UPDATE other_invoices SET status = 'sent' WHERE status = 'draft';
 
     -- App-level settings (Stripe price IDs, feature flags, etc.)
     CREATE TABLE IF NOT EXISTS app_settings (

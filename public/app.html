@@ -859,7 +859,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
           <div class="lp-coming-badge">Coming soon</div>
           <div class="lp-feature-icon">📋</div>
           <h3 style="color:#1a1a2e">Lien Releases</h3>
-          <p style="color:#555">Generate conditional and unconditional lien releases right alongside your pay applications.</p>
+          <p style="color:#555">Conditional lien releases are auto-created alongside your pay applications. Unconditional releases available on demand.</p>
         </div>
         <div class="lp-coming-item" style="background:#eff6ff;border-color:rgba(24,95,165,0.15)">
           <div class="lp-coming-badge">Coming soon</div>
@@ -1981,7 +1981,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
               <div>
                 <div class="ct" style="margin:0">Lien documents</div>
-                <p style="font-size:12px;color:var(--text2);margin-top:4px">Generate and electronically sign lien waivers and preliminary notices. PDFs include your company logo and a timestamped signature.</p>
+                <p style="font-size:12px;color:var(--text2);margin-top:4px">Conditional lien waivers are auto-created with your pay apps. Electronically signed PDFs include your company logo and a timestamped signature.</p>
               </div>
               <button class="btn btn-primary btn-sm" onclick="openLienDocModal(currentProjectId)">+ New document</button>
             </div>
@@ -2162,7 +2162,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
           </div>
           <div class="card">
             <div class="ct">Attach Lien Waiver</div>
-            <p style="font-size:12px;color:var(--text2);margin-bottom:14px">Generate a signed lien waiver and attach it to your pay application. It will be included as page 3 of the PDF.</p>
+            <p style="font-size:12px;color:var(--text2);margin-bottom:14px">A conditional waiver is auto-created with each pay app. You can also create additional waivers below. They'll be included as page 3 of the PDF.</p>
             <div id="iw-err" class="err hidden" style="margin-bottom:8px"></div>
             <div id="iw-success" style="font-size:12px;color:var(--green);margin-bottom:10px;display:none"></div>
             <div class="fg">
@@ -3415,13 +3415,40 @@ async function renderPayAppLienStatus(paId) {
     });
     const lienEmailStatus = document.getElementById('lien-waiver-status');
     if (!linked.length) {
+      // Auto-generate conditional waiver if we have enough data (amount > 0 and signatory name)
+      if (amtDue > 0 && signatoryName) {
+        // Prevent duplicate auto-generation with a flag
+        if (!window._autoLienGenerating) {
+          window._autoLienGenerating = true;
+          el.innerHTML = `<div style="display:inline-flex;align-items:center;gap:8px;padding:7px 12px;background:var(--blue-light,#dbeafe);border-radius:var(--radius);font-size:11px;border:1px solid rgba(59,130,246,0.2)">
+            <span>⏳ Auto-generating conditional waiver…</span>
+          </div>`;
+          try {
+            const doc = await api('POST', '/projects/' + currentProjectId + '/lien-docs', {
+              doc_type: 'conditional_waiver', through_date: throughDate,
+              amount: amtDue, maker_of_check: makerOfCheck,
+              check_payable_to: payableTo, signatory_name: signatoryName,
+              signatory_title: signatoryTitle, jurisdiction: 'california',
+              pay_app_id: paId
+            });
+            window._autoLienGenerating = false;
+            // Re-render now that lien doc exists
+            renderPayAppLienStatus(paId);
+            return;
+          } catch(autoErr) {
+            console.error('Auto-generate lien waiver failed:', autoErr);
+            window._autoLienGenerating = false;
+          }
+        }
+      }
+      // Fallback: show manual buttons if auto-generate not possible or failed
       el.innerHTML = `<div style="display:inline-flex;align-items:center;gap:8px;padding:7px 12px;background:var(--amber-light);border-radius:var(--radius);font-size:11px;border:1px solid rgba(133,79,11,0.2)">
-        <span>📋 No lien waiver linked.</span>
+        <span>📋 No lien waiver linked${!signatoryName ? ' — add signatory name in Settings to auto-generate' : ''}.</span>
         <button class="btn btn-sm" onclick="openLienDocModal(${currentProjectId},${lienOpts('conditional_waiver')})">Conditional waiver</button>
         <button class="btn btn-sm" onclick="openLienDocModal(${currentProjectId},${lienOpts('unconditional_waiver')})">Unconditional waiver</button>
       </div>`;
       if (btnWithLien) btnWithLien.style.display = 'none';
-      if (lienEmailStatus) lienEmailStatus.textContent = '(none generated yet)';
+      if (lienEmailStatus) lienEmailStatus.textContent = signatoryName ? '(generating…)' : '(add signatory in Settings)';
       if (lienEmailStatus) lienEmailStatus.style.color = 'var(--amber)';
       window._linkedLienDocId = null;
       return;
@@ -5158,7 +5185,7 @@ const ARIA_SCRIPTS = [
   {keys:['hello','hi','hey','howdy','hola'],reply:"Hey! 👋 I'm Aria, your Construction AI assistant. I can help you with pay apps, lien waivers, uploading your SOV, or anything else. What can I do for you today?"},
   {keys:['create','new','start','begin','how do i'],sub:['pay app','application','invoice','billing'],reply:"To create a pay app: open your project from the Dashboard, go to the Pay Apps tab, and click '+ New Pay App'. Fill in the period dates, adjust % complete per line, and hit Save. Your G702/G703 will be ready to download. 📄"},
   {keys:['sov','schedule of values','upload','import'],reply:"You can upload your Schedule of Values as Excel (.xlsx/.xls), CSV, PDF, or Word. In the New Project wizard, go to Step 2 and drag-and-drop your file. The parser handles messy contractor files — it auto-detects the amount and description columns. 💪"},
-  {keys:['lien','waiver','release','prelim','preliminary'],reply:"We support all 5 California lien document types: Preliminary Notice, Conditional Progress Waiver, Unconditional Progress Waiver, Conditional Final, and Unconditional Final. After submitting a pay app, tap 'Generate waiver' from the notification or the Preview tab. The PDF is signed with your name, timestamp, and IP. ✅"},
+  {keys:['lien','waiver','release','prelim','preliminary'],reply:"We support all 5 California lien document types: Preliminary Notice, Conditional Progress Waiver, Unconditional Progress Waiver, Conditional Final, and Unconditional Final. Conditional waivers are auto-generated when your pay app has an amount and signatory info set up in Settings. You can also manually create waivers from the Preview tab. The PDF is signed with your name, timestamp, and IP. ✅"},
   {keys:['retention','retainage'],reply:"Retainage is tracked per line item in your pay app. Your default retainage % is set in Settings. When the project reaches final payment (≥98% complete), Aria will prompt you to generate an Unconditional Final Release. Remember: retention is often forgotten — that's why we built automatic reminders! 🔔"},
   {keys:['pdf','download','print','export'],reply:"Click 'Download PDF' on the Preview & Send tab. Your browser print dialog will open — choose Save as PDF to get a formatted G702/G703 that looks exactly like the on-screen preview, including your logo and signature. ✨"},
   {keys:['contract','agreement','upload contract'],reply:"In the New Project wizard (Step 4), you can upload your contract PDF or Word doc. We extract the contract sum and compare it against your SOV total — so you catch mismatches before billing. 📋"},
@@ -5771,9 +5798,7 @@ async function loadOtherInvoices(projectId) {
       const catLabel = oiCategoryLabels[inv.category] || '📎 Other';
       const statusBadge = inv.status === 'paid'
         ? '<span class="badge badge-green" style="font-size:10px">paid</span>'
-        : inv.status === 'sent'
-        ? '<span class="badge" style="font-size:10px;background:#dbeafe;color:#1d4ed8">sent</span>'
-        : '';
+        : '<span class="badge" style="font-size:10px;background:#dbeafe;color:#1d4ed8">sent</span>';
       const attachIcon = inv.attachment_original_name
         ? `<button class="btn btn-sm" onclick="event.stopPropagation();downloadOtherInvAttachment(${inv.id})" title="Download ${inv.attachment_original_name}" style="font-size:10px">📎</button>`
         : '';
@@ -6027,7 +6052,7 @@ function openLienDocModal(projectId, opts) {
   if (opts.jurisdiction) document.getElementById('lien-doc-jurisdiction').value = opts.jurisdiction;
   // Re-enable submit button in case it was disabled from a prior attempt
   const btn = document.getElementById('lien-doc-submit-btn');
-  btn.disabled = false; btn.textContent = 'Generate & Sign Document';
+  btn.disabled = false; btn.textContent = 'Create & Sign Document';
 }
 function closeLienDocModal() {
   document.getElementById('lien-doc-modal').classList.add('hidden');
@@ -6046,7 +6071,7 @@ async function submitLienDoc() {
   const errEl = document.getElementById('lien-doc-err');
   if (!signatory_name) { errEl.textContent = 'Signatory name is required.'; errEl.classList.remove('hidden'); return; }
   const btn = document.getElementById('lien-doc-submit-btn');
-  btn.disabled = true; btn.textContent = 'Generating PDF…';
+  btn.disabled = true; btn.textContent = 'Creating PDF…';
   errEl.classList.add('hidden');
   try {
     const doc = await api('POST', `/projects/${projectId}/lien-docs`, {
@@ -6062,7 +6087,7 @@ async function submitLienDoc() {
     window.open(`/api/lien-docs/${doc.id}/pdf?token=${getToken()}`, '_blank');
   } catch(e) {
     errEl.textContent = 'Error: '+e.message; errEl.classList.remove('hidden');
-    btn.disabled = false; btn.textContent = 'Generate & Sign Document';
+    btn.disabled = false; btn.textContent = 'Create & Sign Document';
   }
 }
 
@@ -6628,7 +6653,7 @@ const WG_CARDS=[
     <div style="text-align:right;margin-top:6px"><strong style="color:#059669;border-bottom:2px solid #ff3b30;padding-bottom:1px">Payment Due: $148,027</strong></div>
   </div>`},
 
-  {title:'Change orders & lien waivers',body:'Add change orders right in the pay app — totals update automatically. Generate lien waivers with one click, signed electronically.',
+  {title:'Change orders & lien waivers',body:'Add change orders right in the pay app — totals update automatically. Conditional lien waivers are auto-created with your pay app, signed electronically.',
    mockup:`<div class="wg-mockup">
     <span class="wg-anno arr-down" style="top:-14px;right:10px">Auto-added to totals</span>
     <div class="wg-mockup-title">Change orders</div>
@@ -6797,7 +6822,7 @@ async function wgClose(){
     <div class="ai-chat-quick" id="ai-quick-btns">
       <button class="ai-quick-btn" onclick="aiQuickReply('How do I create a pay app?')">Pay app help</button>
       <button class="ai-quick-btn" onclick="aiQuickReply('How do I upload my SOV?')">Upload SOV</button>
-      <button class="ai-quick-btn" onclick="aiQuickReply('How do I generate a lien waiver?')">Lien waiver</button>
+      <button class="ai-quick-btn" onclick="aiQuickReply('How do lien waivers work?')">Lien waiver</button>
       <button class="ai-quick-btn" onclick="aiQuickReply('What file formats can I upload?')">File formats</button>
       <button class="ai-quick-btn" onclick="aiQuickReply('How do I add a change order?')">Change orders</button>
       <button class="ai-quick-btn" onclick="aiQuickReply('Something is broken')">Report a bug</button>
@@ -6863,7 +6888,7 @@ async function wgClose(){
 
 <div class="modal-overlay hidden" id="lien-doc-modal" onclick="if(event.target===this)closeLienDocModal()">
   <div class="modal-box">
-    <h3>Generate lien document</h3>
+    <h3>Create lien document</h3>
     <p class="modal-sub">Electronically sign a lien waiver or preliminary notice. A timestamped PDF will be created.</p>
     <div id="lien-doc-err" class="err hidden"></div>
     <div class="field">
@@ -6898,7 +6923,7 @@ async function wgClose(){
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
       <button class="btn" onclick="closeLienDocModal()">Cancel</button>
-      <button class="btn btn-primary" id="lien-doc-submit-btn" onclick="submitLienDoc()">Generate &amp; Sign Document</button>
+      <button class="btn btn-primary" id="lien-doc-submit-btn" onclick="submitLienDoc()">Create &amp; Sign Document</button>
     </div>
   </div>
 </div>
