@@ -1825,6 +1825,17 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               <div id="trash-list" style="display:none;padding:8px 0;border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius) var(--radius)"></div>
             </div>
           </div>
+          <!-- Other Invoices section (non-contract: permits, materials, misc) -->
+          <div class="card" id="other-invoices-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <div>
+                <div class="ct" style="margin:0">Other invoices</div>
+                <div style="font-size:11px;color:var(--text3);margin-top:2px">Permits, materials, misc — not part of contract total</div>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="openOtherInvoiceModal()">+ New invoice</button>
+            </div>
+            <div id="other-invoices-list"><div style="color:var(--text3);font-size:12px;text-align:center;padding:16px">No other invoices yet</div></div>
+          </div>
         </div>
         <!-- Contract & Docs tab -->
         <div class="tp" id="proj-tp1">
@@ -3122,9 +3133,10 @@ async function loadProject(id, opts={}){
     currentProjects=projects;
     sidebarPACache[id]=payapps;
     buildSidebarProjects(projects, id);
-    // Load contract, lien docs, and trash drawer (non-blocking)
+    // Load contract, lien docs, other invoices, and trash drawer (non-blocking)
     loadContractIntel(id).catch(()=>{});
     loadLienDocs(id).catch(()=>{});
+    loadOtherInvoices(id).catch(()=>{});
     loadTrashDrawer(id).catch(()=>{});
   }catch(e){console.error(e);}
 }
@@ -5593,6 +5605,152 @@ function showSOVComparisonBanner(cmp) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// OTHER INVOICES (non-contract: permits, materials, misc)
+// ═══════════════════════════════════════════════════════════════════
+
+const oiCategoryLabels = {
+  permit: '📋 Permit', materials: '🧱 Materials', equipment: '🏗️ Equipment',
+  labor: '👷 Day labor', inspection: '🔍 Inspection', insurance: '🛡️ Insurance',
+  bond: '📄 Bond', other: '📎 Other'
+};
+
+async function loadOtherInvoices(projectId) {
+  const el = document.getElementById('other-invoices-list');
+  if (!el) return;
+  try {
+    const invoices = await api('GET', '/projects/' + projectId + '/other-invoices');
+    if (!invoices.length) {
+      el.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:16px">No other invoices yet — use the + button above to create one</div>';
+      return;
+    }
+    // Summary line
+    const totalAmt = invoices.reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    let html = `<div style="font-size:11px;color:var(--text2);margin-bottom:8px;padding:6px 10px;background:var(--bg3);border-radius:var(--radius);display:flex;justify-content:space-between">
+      <span>${invoices.length} invoice${invoices.length > 1 ? 's' : ''}</span>
+      <span style="font-weight:600">Total: ${fmt(totalAmt)}</span>
+    </div>`;
+    html += invoices.map(inv => {
+      const catLabel = oiCategoryLabels[inv.category] || '📎 Other';
+      const statusBadge = inv.status === 'paid'
+        ? '<span class="badge badge-green" style="font-size:10px">paid</span>'
+        : inv.status === 'sent'
+        ? '<span class="badge" style="font-size:10px;background:#dbeafe;color:#1d4ed8">sent</span>'
+        : '<span class="badge badge-amber" style="font-size:10px">draft</span>';
+      return `<div class="pa-item" onclick="openOtherInvoiceModal(${inv.id})" style="cursor:pointer">
+        <div style="min-width:0">
+          <div style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px">
+            <span style="font-size:11px">${catLabel}</span>
+            ${inv.invoice_number ? '#' + inv.invoice_number : ''} — ${inv.description || 'No description'}
+          </div>
+          <div style="font-size:11px;color:var(--text2)">${inv.vendor ? inv.vendor + ' · ' : ''}${inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString() : ''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <span style="font-size:13px;font-weight:600">${fmt(inv.amount)}</span>
+          ${statusBadge}
+          <button class="btn btn-sm" onclick="event.stopPropagation();downloadOtherInvPDF(${inv.id})" title="Download PDF">📄</button>
+          <button class="btn btn-sm" onclick="event.stopPropagation();deleteOtherInvoice(${inv.id},'${(inv.description||'').replace(/'/g,"\\'")}')" style="border-color:var(--red);color:var(--red);padding:3px 6px;font-size:10px" title="Delete">🗑</button>
+        </div>
+      </div>`;
+    }).join('');
+    el.innerHTML = html;
+  } catch(e) {
+    el.innerHTML = '<div style="color:var(--red);font-size:12px;padding:12px">Failed to load other invoices</div>';
+    console.error('loadOtherInvoices:', e);
+  }
+}
+
+function openOtherInvoiceModal(editId) {
+  const modal = document.getElementById('other-inv-modal');
+  const title = document.getElementById('other-inv-modal-title');
+  const btn = document.getElementById('oi-submit-btn');
+  const errEl = document.getElementById('other-inv-err');
+  errEl.classList.add('hidden');
+  // Reset form
+  document.getElementById('other-inv-edit-id').value = '';
+  document.getElementById('oi-number').value = '';
+  document.getElementById('oi-category').value = 'other';
+  document.getElementById('oi-description').value = '';
+  document.getElementById('oi-vendor').value = '';
+  document.getElementById('oi-amount').value = '';
+  document.getElementById('oi-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('oi-due-date').value = '';
+  document.getElementById('oi-notes').value = '';
+
+  if (editId) {
+    title.textContent = 'Edit invoice';
+    btn.textContent = 'Save changes';
+    document.getElementById('other-inv-edit-id').value = editId;
+    // Load existing data
+    api('GET', '/projects/' + currentProjectId + '/other-invoices').then(invoices => {
+      const inv = invoices.find(i => i.id === editId);
+      if (!inv) return;
+      document.getElementById('oi-number').value = inv.invoice_number || '';
+      document.getElementById('oi-category').value = inv.category || 'other';
+      document.getElementById('oi-description').value = inv.description || '';
+      document.getElementById('oi-vendor').value = inv.vendor || '';
+      document.getElementById('oi-amount').value = inv.amount || '';
+      document.getElementById('oi-date').value = inv.invoice_date ? inv.invoice_date.slice(0, 10) : '';
+      document.getElementById('oi-due-date').value = inv.due_date ? inv.due_date.slice(0, 10) : '';
+      document.getElementById('oi-notes').value = inv.notes || '';
+    });
+  } else {
+    title.textContent = 'New invoice';
+    btn.textContent = 'Create invoice';
+  }
+  modal.classList.remove('hidden');
+}
+
+function closeOtherInvModal() {
+  document.getElementById('other-inv-modal').classList.add('hidden');
+}
+
+async function saveOtherInvoice() {
+  const errEl = document.getElementById('other-inv-err');
+  errEl.classList.add('hidden');
+  const editId = document.getElementById('other-inv-edit-id').value;
+  const desc = document.getElementById('oi-description').value.trim();
+  if (!desc) { errEl.textContent = 'Description is required'; errEl.classList.remove('hidden'); return; }
+  const body = {
+    invoice_number: document.getElementById('oi-number').value.trim(),
+    category: document.getElementById('oi-category').value,
+    description: desc,
+    vendor: document.getElementById('oi-vendor').value.trim(),
+    amount: parseFloat(document.getElementById('oi-amount').value) || 0,
+    invoice_date: document.getElementById('oi-date').value || null,
+    due_date: document.getElementById('oi-due-date').value || null,
+    notes: document.getElementById('oi-notes').value.trim()
+  };
+  const btn = document.getElementById('oi-submit-btn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  try {
+    if (editId) {
+      await api('PUT', '/other-invoices/' + editId, body);
+    } else {
+      await api('POST', '/projects/' + currentProjectId + '/other-invoices', body);
+    }
+    closeOtherInvModal();
+    loadOtherInvoices(currentProjectId);
+  } catch(e) {
+    errEl.textContent = e.message || 'Failed to save'; errEl.classList.remove('hidden');
+  } finally {
+    btn.disabled = false; btn.textContent = editId ? 'Save changes' : 'Create invoice';
+  }
+}
+
+async function deleteOtherInvoice(id, desc) {
+  if (!confirm('Delete invoice "' + desc + '"? This cannot be undone.')) return;
+  try {
+    await api('DELETE', '/other-invoices/' + id);
+    loadOtherInvoices(currentProjectId);
+  } catch(e) { alert('Failed to delete: ' + e.message); }
+}
+
+function downloadOtherInvPDF(id) {
+  const token = localStorage.getItem('caib_token');
+  window.open('/api/other-invoices/' + id + '/pdf?token=' + token, '_blank');
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // PHASE 1 — LIEN DOCUMENTS
 // ═══════════════════════════════════════════════════════════════════
 async function loadLienDocs(projectId) {
@@ -6233,6 +6391,43 @@ async function wgClose(){
 </div>
 
 <!-- ── LIEN DOCUMENT MODAL ────────────────────────────────────────────── -->
+<!-- Other Invoice modal -->
+<div class="modal-overlay hidden" id="other-inv-modal" onclick="if(event.target===this)closeOtherInvModal()">
+  <div class="modal-box" style="max-width:520px">
+    <h3 id="other-inv-modal-title">New invoice</h3>
+    <p class="modal-sub">Non-contract invoice — not included in G702/G703 totals</p>
+    <div id="other-inv-err" class="err hidden"></div>
+    <input type="hidden" id="other-inv-edit-id"/>
+    <div class="fg" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="field"><label>Invoice #</label><input type="text" id="oi-number" placeholder="e.g. INV-001"/></div>
+      <div class="field"><label>Category</label>
+        <select id="oi-category">
+          <option value="permit">Permit</option>
+          <option value="materials">Materials</option>
+          <option value="equipment">Equipment rental</option>
+          <option value="labor">Day labor</option>
+          <option value="inspection">Inspection fee</option>
+          <option value="insurance">Insurance</option>
+          <option value="bond">Bond</option>
+          <option value="other" selected>Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="field"><label>Description *</label><input type="text" id="oi-description" placeholder="What is this invoice for?"/></div>
+    <div class="field"><label>Vendor / Payee</label><input type="text" id="oi-vendor" placeholder="Who is being paid?"/></div>
+    <div class="fg" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div class="field"><label>Amount ($)</label><input type="number" id="oi-amount" step="0.01" placeholder="0.00"/></div>
+      <div class="field"><label>Invoice date</label><input type="date" id="oi-date"/></div>
+      <div class="field"><label>Due date</label><input type="date" id="oi-due-date"/></div>
+    </div>
+    <div class="field"><label>Notes</label><textarea id="oi-notes" rows="2" placeholder="Optional notes..."></textarea></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+      <button class="btn" onclick="closeOtherInvModal()">Cancel</button>
+      <button class="btn btn-primary" id="oi-submit-btn" onclick="saveOtherInvoice()">Create invoice</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay hidden" id="lien-doc-modal" onclick="if(event.target===this)closeLienDocModal()">
   <div class="modal-box">
     <h3>Generate lien document</h3>

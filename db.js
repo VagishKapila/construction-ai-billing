@@ -329,6 +329,28 @@ async function initDB() {
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS include_architect BOOLEAN DEFAULT TRUE;
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS include_retainage BOOLEAN DEFAULT TRUE;
 
+    -- Other invoices: non-contract items (permits, materials, misc) tracked per project
+    CREATE TABLE IF NOT EXISTS other_invoices (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      invoice_number VARCHAR(100),
+      category VARCHAR(100) DEFAULT 'other',
+      description TEXT,
+      vendor VARCHAR(300),
+      amount NUMERIC(14,2) DEFAULT 0,
+      invoice_date DATE DEFAULT CURRENT_DATE,
+      due_date DATE,
+      status VARCHAR(50) DEFAULT 'draft',
+      notes TEXT,
+      attachment_filename VARCHAR(300),
+      attachment_original_name VARCHAR(300),
+      deleted_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_other_invoices_project ON other_invoices(project_id);
+    CREATE INDEX IF NOT EXISTS idx_other_invoices_user ON other_invoices(user_id);
+
     -- App-level settings (Stripe price IDs, feature flags, etc.)
     CREATE TABLE IF NOT EXISTS app_settings (
       key VARCHAR(100) PRIMARY KEY,
