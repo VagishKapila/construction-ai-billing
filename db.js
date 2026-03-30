@@ -325,6 +325,10 @@ async function initDB() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_connect_id VARCHAR(200);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS payments_enabled BOOLEAN DEFAULT FALSE;
 
+    -- Optional G702/G703 sections per project (Mar 30 2026)
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS include_architect BOOLEAN DEFAULT TRUE;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS include_retainage BOOLEAN DEFAULT TRUE;
+
     -- App-level settings (Stripe price IDs, feature flags, etc.)
     CREATE TABLE IF NOT EXISTS app_settings (
       key VARCHAR(100) PRIMARY KEY,

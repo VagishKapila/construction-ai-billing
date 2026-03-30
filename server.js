@@ -647,22 +647,24 @@ app.get('/api/projects', auth, async (req,res) => {
 });
 
 app.post('/api/projects', auth, async (req,res) => {
-  const {name,number,owner,owner_email,owner_phone,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date,est_date,default_retainage,payment_terms} = req.body;
+  const {name,number,owner,owner_email,owner_phone,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date,est_date,default_retainage,payment_terms,include_architect,include_retainage} = req.body;
   const retPct = (default_retainage !== undefined && default_retainage !== null) ? parseFloat(default_retainage) : 10;
+  const inclArch = include_architect !== false;
+  const inclRet = include_retainage !== false;
   const r = await pool.query(
-    `INSERT INTO projects(user_id,name,number,owner,owner_email,owner_phone,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date,est_date,default_retainage,payment_terms)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
-    [req.user.id,name,number,owner,owner_email||null,owner_phone||null,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date||null,est_date||null,retPct,payment_terms||null]
+    `INSERT INTO projects(user_id,name,number,owner,owner_email,owner_phone,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date,est_date,default_retainage,payment_terms,include_architect,include_retainage)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
+    [req.user.id,name,number,owner,owner_email||null,owner_phone||null,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date||null,est_date||null,retPct,payment_terms||null,inclArch,inclRet]
   );
   await logEvent(req.user.id, 'project_created', { project_id: r.rows[0].id, contract_value: original_contract });
   res.json(r.rows[0]);
 });
 
 app.put('/api/projects/:id', auth, async (req,res) => {
-  const {name,number,owner,contractor,architect,contact,building_area,original_contract,contract_date} = req.body;
+  const {name,number,owner,contractor,architect,contact,building_area,original_contract,contract_date,include_architect,include_retainage} = req.body;
   const r = await pool.query(
-    'UPDATE projects SET name=$1,number=$2,owner=$3,contractor=$4,architect=$5,contact=$6,building_area=$7,original_contract=$8,contract_date=$9 WHERE id=$10 AND user_id=$11 RETURNING *',
-    [name,number,owner,contractor,architect,contact,building_area,original_contract,contract_date,req.params.id,req.user.id]
+    'UPDATE projects SET name=$1,number=$2,owner=$3,contractor=$4,architect=$5,contact=$6,building_area=$7,original_contract=$8,contract_date=$9,include_architect=COALESCE($12,include_architect),include_retainage=COALESCE($13,include_retainage) WHERE id=$10 AND user_id=$11 RETURNING *',
+    [name,number,owner,contractor,architect,contact,building_area,original_contract,contract_date,req.params.id,req.user.id,include_architect,include_retainage]
   );
   res.json(r.rows[0]);
 });
@@ -748,7 +750,7 @@ app.post('/api/projects/:id/payapps', auth, async (req,res) => {
 
 app.get('/api/payapps/:id', auth, async (req,res) => {
   const pa = await pool.query(
-    'SELECT pa.*,p.name as project_name,p.owner,p.contractor,p.architect,p.contact,p.contact_name,p.contact_phone,p.contact_email,p.original_contract,p.number as project_number,p.building_area,p.id as project_id,p.contract_date,p.payment_terms FROM pay_apps pa JOIN projects p ON p.id=pa.project_id WHERE pa.id=$1 AND p.user_id=$2 AND pa.deleted_at IS NULL',
+    'SELECT pa.*,p.name as project_name,p.owner,p.contractor,p.architect,p.contact,p.contact_name,p.contact_phone,p.contact_email,p.original_contract,p.number as project_number,p.building_area,p.id as project_id,p.contract_date,p.payment_terms,p.include_architect,p.include_retainage FROM pay_apps pa JOIN projects p ON p.id=pa.project_id WHERE pa.id=$1 AND p.user_id=$2 AND pa.deleted_at IS NULL',
     [req.params.id, req.user.id]
   );
   if(!pa.rows[0]) return res.status(404).json({error:'Not found'});
@@ -1722,6 +1724,7 @@ function generatePayAppHTML(pa, lines, cos, totals, logoBase64, sigBase64, photo
   const fmtM = n => '$' + parseFloat(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 
   // Build G703 rows and accumulate totals
+  const showRet = pa.include_retainage !== false;
   let tSV=0, tPrev2=0, tThis2=0, tComp2=0, tRet2=0;
   const g703Rows = lines.map(r => {
     const sv   = parseFloat(r.scheduled_value);
@@ -1740,8 +1743,7 @@ function generatePayAppHTML(pa, lines, cos, totals, logoBase64, sigBase64, photo
       <td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td>
       <td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td>
       <td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td>
-      <td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td>
-      <td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td>
+      ${showRet ? '<td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td><td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td>' : ''}
       <td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td>
     </tr>`;
     return `<tr>
@@ -1752,8 +1754,8 @@ function generatePayAppHTML(pa, lines, cos, totals, logoBase64, sigBase64, photo
       <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(thisPer)}</td>
       <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(comp)}</td>
       <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${pctComp.toFixed(0)}%</td>
-      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${parseFloat(r.retainage_pct).toFixed(0)}%</td>
-      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(ret)}</td>
+      ${showRet ? `<td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${parseFloat(r.retainage_pct).toFixed(0)}%</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(ret)}</td>` : ''}
       <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(bal)}</td>
     </tr>`;
   }).join('');
@@ -1833,7 +1835,7 @@ td{border:1px solid #ddd;padding:2px 5px}
     <h1>Application and Certificate for Payment</h1>
     <h2>Document G702</h2>
     <p>TO OWNER: <strong>${pa.owner||'—'}</strong> &nbsp;&nbsp; PROJECT: <strong>${pa.pname||'—'}</strong></p>
-    <p>FROM CONTRACTOR: <strong>${pa.contractor||'—'}</strong> &nbsp;&nbsp; ARCHITECT: <strong>${pa.architect||'—'}</strong></p>
+    <p>FROM CONTRACTOR: <strong>${pa.contractor||'—'}</strong>${pa.include_architect !== false ? ` &nbsp;&nbsp; ARCHITECT: <strong>${pa.architect||'—'}</strong>` : ''}</p>
   </div>
   <div class="aia-appnum">
     <span class="big">#${pa.app_number}</span>
@@ -1868,7 +1870,7 @@ td{border:1px solid #ddd;padding:2px 5px}
   </div>
 </div>
 
-<div class="aia-sig-grid">
+<div class="aia-sig-grid" ${pa.include_architect === false ? 'style="grid-template-columns:1fr"' : ''}>
   <div class="aia-sig-box">
     <div class="aia-sig-title">Contractor's Signed Certification</div>
     <p class="aia-sig-note">The undersigned Contractor certifies that to the best of the Contractor's knowledge, information and belief the Work covered by this Application for Payment has been completed in accordance with the Contract Documents.</p>
@@ -1878,14 +1880,14 @@ td{border:1px solid #ddd;padding:2px 5px}
     <div class="aia-sig-label">Authorized Signature &nbsp;&nbsp;&nbsp; Date: ${today}</div>
     ${contactName ? `<div style="font-size:8.5pt;font-weight:bold;margin-top:5px;color:#222">${contactName}</div><div style="font-size:7.5pt;color:#666">${companyDisplayName}</div>` : (companyDisplayName ? `<div style="font-size:8.5pt;font-weight:bold;margin-top:5px;color:#222">${companyDisplayName}</div>` : '')}
   </div>
-  <div class="aia-sig-box">
+  ${pa.include_architect !== false ? `<div class="aia-sig-box">
     <div class="aia-sig-title">Architect's Certificate for Payment</div>
     <p class="aia-sig-note">In accordance with the Contract Documents, the Architect certifies to the Owner that the Work has progressed to the point indicated and the quality of the Work is in accordance with the Contract Documents.</p>
     <div style="font-size:8pt;margin-bottom:4px">Amount Certified: <strong>${pa.architect_certified ? fmtM(pa.architect_certified) : 'Pending'}</strong></div>
     <div class="aia-sig-spacer"></div>
     <div class="aia-sig-line"></div>
     <div class="aia-sig-label">Architect Signature &nbsp;&nbsp;&nbsp; Date: ${pa.architect_date ? new Date(pa.architect_date).toLocaleDateString() : ''}</div>
-  </div>
+  </div>` : ''}
 </div>
 
 ${pa.special_notes ? `<div style="margin-top:8px;padding:6px 10px;background:#fafafa;border:1px solid #ddd;border-radius:4px;font-size:8pt;color:#333"><strong>Notes:</strong> ${pa.special_notes}</div>` : ''}
@@ -1904,8 +1906,7 @@ ${pa.special_notes ? `<div style="margin-top:8px;padding:6px 10px;background:#fa
         <th style="text-align:right;width:72px">Work This Period</th>
         <th style="text-align:right;width:72px">Total Completed</th>
         <th style="text-align:right;width:44px">% Comp.</th>
-        <th style="text-align:right;width:40px">Ret.%</th>
-        <th style="text-align:right;width:70px">Retainage $</th>
+        ${showRet ? '<th style="text-align:right;width:40px">Ret.%</th><th style="text-align:right;width:70px">Retainage $</th>' : ''}
         <th style="text-align:right;width:72px">Balance to Finish</th>
       </tr>
     </thead>
@@ -1919,8 +1920,7 @@ ${pa.special_notes ? `<div style="margin-top:8px;padding:6px 10px;background:#fa
         <td style="text-align:right">${fmtM(tThis2)}</td>
         <td style="text-align:right">${fmtM(tComp2)}</td>
         <td style="text-align:right">${tSV>0?(tComp2/tSV*100).toFixed(0)+'%':'0%'}</td>
-        <td></td>
-        <td style="text-align:right">${fmtM(tRet2)}</td>
+        ${showRet ? `<td></td><td style="text-align:right">${fmtM(tRet2)}</td>` : ''}
         <td style="text-align:right">${fmtM(tSV-tComp2)}</td>
       </tr>
     </tfoot>
@@ -1979,6 +1979,7 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
   const paRes = await pool.query(
     `SELECT pa.*,p.name as pname,p.owner,p.contractor,p.architect,p.original_contract,
             p.number as pnum,p.payment_terms,p.contract_date,
+            p.include_architect,p.include_retainage,
             cs.logo_filename,cs.signature_filename,cs.default_payment_terms,
             cs.contact_name,cs.company_name
      FROM pay_apps pa
@@ -2255,6 +2256,7 @@ app.post('/api/payapps/:id/email', auth, async (req, res) => {
     const paRes = await pool.query(
       `SELECT pa.*,p.name as pname,p.owner,p.contractor,p.architect,p.original_contract,
               p.number as pnum,p.payment_terms,p.contract_date,
+              p.include_architect,p.include_retainage,
               cs.logo_filename,cs.signature_filename,cs.default_payment_terms,
               cs.contact_name,cs.company_name
        FROM pay_apps pa
@@ -2628,15 +2630,18 @@ app.get('/api/settings/signature', auth, async (req,res) => {
 // EDIT PROJECT
 app.put('/api/projects/:id/full', auth, async (req,res) => {
   const {name,number,owner,contractor,architect,contact,contact_name,contact_phone,
-         contact_email,building_area,original_contract,contract_date,est_date} = req.body;
+         contact_email,building_area,original_contract,contract_date,est_date,include_architect,include_retainage} = req.body;
+  const inclArch = include_architect !== undefined ? include_architect : null;
+  const inclRet  = include_retainage !== undefined ? include_retainage : null;
   const r = await pool.query(
     `UPDATE projects SET name=$1,number=$2,owner=$3,contractor=$4,architect=$5,
      contact=$6,contact_name=$7,contact_phone=$8,contact_email=$9,
-     building_area=$10,original_contract=$11,contract_date=$12,est_date=$13
+     building_area=$10,original_contract=$11,contract_date=$12,est_date=$13,
+     include_architect=COALESCE($16,include_architect),include_retainage=COALESCE($17,include_retainage)
      WHERE id=$14 AND user_id=$15 RETURNING *`,
     [name,number,owner,contractor,architect,contact,contact_name,contact_phone,
      contact_email,building_area,original_contract,contract_date,est_date,
-     req.params.id,req.user.id]
+     req.params.id,req.user.id,inclArch,inclRet]
   );
   res.json(r.rows[0]);
 });
@@ -5200,6 +5205,7 @@ app.get('/api/pay/:token/pdf', async (req, res) => {
     const pa = (await pool.query(
       `SELECT pa.*, p.name as pname, p.number as pnum, p.owner, p.contractor, p.architect,
               p.original_contract, p.payment_terms, p.contract_date, p.user_id,
+              p.include_architect, p.include_retainage,
               cs.logo_filename, cs.signature_filename, cs.default_payment_terms,
               cs.contact_name, cs.company_name
        FROM pay_apps pa JOIN projects p ON pa.project_id=p.id

@@ -1232,6 +1232,21 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
             <div class="field"><label>Contact email</label><input type="email" id="ep-contact-email"/></div>
           </div>
         </div>
+        <div class="card">
+          <div class="ct">Invoice options</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="ep-include-retainage" checked style="width:16px;height:16px;accent-color:var(--primary)"/>
+              Show retainage on invoices
+              <span style="font-size:11px;color:var(--text3);margin-left:4px">(uncheck if this project has no retainage)</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="ep-include-architect" checked style="width:16px;height:16px;accent-color:var(--primary)"/>
+              Include architect/engineer section
+              <span style="font-size:11px;color:var(--text3);margin-left:4px">(uncheck if no architect on this project)</span>
+            </label>
+          </div>
+        </div>
         <div class="br">
           <button class="btn" onclick="loadProject(editingProjectId)">Cancel</button>
           <button class="btn btn-primary" onclick="saveEditProject()">Save changes</button>
@@ -1392,6 +1407,20 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               <div style="font-size:12px;color:var(--text2);max-width:380px">
                 Applied to all pay app line items by default. Use <strong>0%</strong> for lump-sum contracts with no retainage. You can override per line item later.
               </div>
+            </div>
+            <!-- Invoice options: architect & retainage toggles -->
+            <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+              <div style="font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Invoice options</div>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px;font-size:13px;color:var(--text1)">
+                <input type="checkbox" id="np-include-retainage" checked style="width:16px;height:16px;accent-color:var(--primary)"/>
+                Show retainage on invoices
+                <span style="font-size:11px;color:var(--text3);margin-left:4px">(uncheck if this project has no retainage)</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text1)">
+                <input type="checkbox" id="np-include-architect" checked style="width:16px;height:16px;accent-color:var(--primary)"/>
+                Include architect/engineer section
+                <span style="font-size:11px;color:var(--text3);margin-left:4px">(uncheck if no architect on this project)</span>
+              </label>
             </div>
           </div>
           <div class="card">
@@ -1869,7 +1898,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
             <input class="bulk-in" type="number" id="bulk-pct" value="20" min="0" max="100" step="1"/>
             <button class="btn btn-primary btn-sm" onclick="applyBulk()">Apply to all</button>
             <button class="btn btn-sm" onclick="clearAll()">Clear all</button>
-            <span style="font-size:11px;color:var(--text2)">Retainage % editable per line</span>
+            <span id="ret-hint" style="font-size:11px;color:var(--text2)">Retainage % editable per line</span>
           </div>
           <div class="tbl-wrap">
             <table style="min-width:950px">
@@ -1881,8 +1910,8 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
                 <th class="c" style="width:60px">% prev.</th>
                 <th class="c" style="width:90px">% this period</th>
                 <th class="r" style="width:100px">This period $</th>
-                <th class="c" style="width:58px">Ret. %</th>
-                <th class="r" style="width:90px">Retainage $</th>
+                <th class="c" id="g703-head-ret" style="width:58px">Ret. %</th>
+                <th class="r" id="g703-head-ret" style="width:90px">Retainage $</th>
                 <th class="r" style="width:110px">Total complete</th>
                 <th class="r" style="width:88px">Balance</th>
               </tr></thead>
@@ -1949,15 +1978,15 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
             <button class="btn btn-primary btn-sm" onclick="paTab(4)">Next: Lien Waiver →</button>
           </div>
           <div class="card">
-            <div class="ct">Billing period &amp; architect certificate</div>
+            <div class="ct" id="g702-period-title">Billing period &amp; architect certificate</div>
             <div class="fg">
               <div class="field"><label>Period label</label><input type="text" id="pa-period-label" placeholder="e.g. January 2022" onchange="savePAMeta()"/></div>
               <div class="field"><label>Period start</label><input type="date" id="pa-period-start" onchange="savePAMeta()"/></div>
               <div class="field"><label>Period end</label><input type="date" id="pa-period-end" onchange="savePAMeta()"/></div>
               <div class="field"><label>PO / Reference #</label><input type="text" id="pa-po-number" placeholder="e.g. PO-2026-0042" onchange="savePAMeta()"/></div>
-              <div class="field"><label>Amount certified ($)</label><input type="text" id="arch-cert-amt" placeholder="Enter certified amount" onchange="saveArchCert()"/></div>
-              <div class="field"><label>Certificate date</label><input type="date" id="arch-cert-date" onchange="saveArchCert()"/></div>
-              <div class="field"><label>Architect name</label><input type="text" id="arch-cert-name" placeholder="Architect of record" onchange="saveArchCert()"/></div>
+              <div class="field arch-field"><label>Amount certified ($)</label><input type="text" id="arch-cert-amt" placeholder="Enter certified amount" onchange="saveArchCert()"/></div>
+              <div class="field arch-field"><label>Certificate date</label><input type="date" id="arch-cert-date" onchange="saveArchCert()"/></div>
+              <div class="field arch-field"><label>Architect name</label><input type="text" id="arch-cert-name" placeholder="Architect of record" onchange="saveArchCert()"/></div>
             </div>
           </div>
           <div class="card">
@@ -2116,7 +2145,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
                   <input type="file" id="sig-contractor-input" accept="image/*" style="display:none" onchange="uploadSig(this,'contractor')"/>
                 </div>
               </div>
-              <div class="aia-sig-box">
+              <div class="aia-sig-box arch-preview-field">
                 <div class="aia-sig-title">Architect's Certificate for Payment</div>
                 <p style="font-size:7.5pt;color:#555;margin-bottom:4px">In accordance with the Contract Documents, the Architect certifies to the Owner that the Work has progressed to the point indicated and the quality of the Work is in accordance with the Contract Documents.</p>
                 <div style="font-size:8pt;margin-bottom:4px">Amount Certified: <strong id="prev-arch-cert"></strong></div>
@@ -2150,8 +2179,8 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
                     <th style="border:1px solid #999;padding:3px 4px;text-align:right;width:65px">Work This Period</th>
                     <th style="border:1px solid #999;padding:3px 4px;text-align:right;width:65px">Total Completed</th>
                     <th style="border:1px solid #999;padding:3px 4px;text-align:right;width:45px">% Comp.</th>
-                    <th style="border:1px solid #999;padding:3px 4px;text-align:right;width:45px">Ret.%</th>
-                    <th style="border:1px solid #999;padding:3px 4px;text-align:right;width:70px">Retainage $</th>
+                    <th class="g703-prev-ret-hdr" style="border:1px solid #999;padding:3px 4px;text-align:right;width:45px">Ret.%</th>
+                    <th class="g703-prev-ret-hdr" style="border:1px solid #999;padding:3px 4px;text-align:right;width:70px">Retainage $</th>
                     <th style="border:1px solid #999;padding:3px 4px;text-align:right;width:70px">Balance to Finish</th>
                   </tr>
                 </thead>
@@ -3506,6 +3535,18 @@ function renderG702(pa){
     <div class="ir"><span style="color:var(--text2)">G. Less previous certificates</span><span>${fmt(t.tPrevCert)}</span></div>
     <div class="ir tot"><span style="color:var(--text2)">H. Current payment due</span><span style="color:var(--blue);font-size:15px">${fmt(t.due)}</span></div>
     <div class="ir"><span style="color:var(--text2)">I. Balance to finish + retainage</span><span>${fmt(t.contract-t.tComp+t.tRet)}</span></div>`;
+  // Toggle architect fields visibility
+  const showArch = pa.include_architect !== false;
+  document.querySelectorAll('.arch-field').forEach(el=>el.style.display=showArch?'':'none');
+  const titleEl=document.getElementById('g702-period-title');
+  if(titleEl) titleEl.innerHTML=showArch?'Billing period &amp; architect certificate':'Billing period';
+  // Toggle architect row in project info box
+  const projInfoEl=document.getElementById('g702-proj-info');
+  if(projInfoEl&&!showArch){
+    projInfoEl.querySelectorAll('.ir').forEach(row=>{
+      if(row.textContent.includes('Architect')) row.style.display='none';
+    });
+  }
 }
 
 function renderAIAPreview(pa){
@@ -3556,6 +3597,18 @@ function renderAIAPreview(pa){
     const lb=document.getElementById('preview-logo-box');
     if(lb) lb.innerHTML=`<img src="${logoDataURL}"/>`;
   }
+  // Toggle architect visibility in preview
+  const showArch=pa.include_architect!==false;
+  const showRet=pa.include_retainage!==false;
+  document.querySelectorAll('.arch-preview-field').forEach(el=>el.style.display=showArch?'':'none');
+  // Hide ARCHITECT label in header if no architect
+  const archLabel=document.querySelector('#aia-preview .aia-title p:last-child');
+  if(archLabel){
+    if(showArch) archLabel.innerHTML=`FROM CONTRACTOR: <span id="prev-contractor">${pa.contractor||'—'}</span> &nbsp;&nbsp; ARCHITECT: <span id="prev-architect">${pa.architect||'—'}</span>`;
+    else archLabel.innerHTML=`FROM CONTRACTOR: <span id="prev-contractor">${pa.contractor||'—'}</span>`;
+  }
+  // Toggle retainage header columns in G703 preview
+  document.querySelectorAll('.g703-prev-ret-hdr').forEach(el=>el.style.display=showRet?'':'none');
   // G703 preview table
   let tSV=0,tPrev=0,tThis=0,tComp=0,tRet2=0;
   const tbody=document.getElementById('g703-preview-body');
@@ -3577,8 +3630,7 @@ function renderAIAPreview(pa){
         <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">-</td>
         <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">-</td>
         <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">-</td>
-        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">-</td>
-        <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">-</td>
+        ${showRet?'<td style="border:1px solid #ddd;padding:2px 4px;text-align:center">-</td><td style="border:1px solid #ddd;padding:2px 4px;text-align:center">-</td>':''}
         <td style="border:1px solid #ddd;padding:2px 4px;text-align:center">-</td>
       </tr>`;
       return`<tr style="border-bottom:0.5px solid #ddd">
@@ -3589,8 +3641,8 @@ function renderAIAPreview(pa){
         <td style="border:1px solid #ddd;padding:2px 4px;text-align:right">${fmtR(thisPer)}</td>
         <td style="border:1px solid #ddd;padding:2px 4px;text-align:right">${fmtR(comp)}</td>
         <td style="border:1px solid #ddd;padding:2px 4px;text-align:right">${pctComp.toFixed(0)}%</td>
-        <td style="border:1px solid #ddd;padding:2px 4px;text-align:right">${parseFloat(r.retainage_pct).toFixed(0)}%</td>
-        <td style="border:1px solid #ddd;padding:2px 4px;text-align:right">${fmtR(ret)}</td>
+        ${showRet?`<td style="border:1px solid #ddd;padding:2px 4px;text-align:right">${parseFloat(r.retainage_pct).toFixed(0)}%</td>
+        <td style="border:1px solid #ddd;padding:2px 4px;text-align:right">${fmtR(ret)}</td>`:''}
         <td style="border:1px solid #ddd;padding:2px 4px;text-align:right">${fmtR(bal)}</td>
       </tr>`;
     }).join('');
@@ -3603,14 +3655,15 @@ function renderAIAPreview(pa){
       <td style="border:1px solid #ddd;padding:3px 4px;text-align:right">${fmtR(tThis)}</td>
       <td style="border:1px solid #ddd;padding:3px 4px;text-align:right">${fmtR(tComp)}</td>
       <td style="border:1px solid #ddd;padding:3px 4px;text-align:right">${tSV>0?(tComp/tSV*100).toFixed(0)+'%':'0%'}</td>
-      <td style="border:1px solid #ddd;padding:3px 4px"></td>
-      <td style="border:1px solid #ddd;padding:3px 4px;text-align:right">${fmtR(tRet2)}</td>
+      ${showRet?`<td style="border:1px solid #ddd;padding:3px 4px"></td>
+      <td style="border:1px solid #ddd;padding:3px 4px;text-align:right">${fmtR(tRet2)}</td>`:''}
       <td style="border:1px solid #ddd;padding:3px 4px;text-align:right">${fmtR(tSV-tComp)}</td>
     </tr>`;
   }
 }
 
 function renderG703(pa){
+  const showRet=pa.include_retainage!==false;
   let tSV=0,tPrev=0,tThis=0,tRet=0,tComp=0,tBal=0;
   const rows=(pa.lines||[]).map(r=>{
     const sv=parseFloat(r.scheduled_value);
@@ -3628,7 +3681,7 @@ function renderG703(pa){
       <td style="font-size:12px;font-style:italic">${r.description}</td>
       <td class="r" style="font-style:italic;font-size:10px">Included</td>
       <td class="r">-</td><td class="c">-</td><td class="c">-</td>
-      <td class="r">-</td><td class="c">-</td><td class="r">-</td>
+      <td class="r">-</td>${showRet?'<td class="c">-</td><td class="r">-</td>':''}
       <td class="r">-</td><td class="r">-</td>
     </tr>`;
     return`<tr>
@@ -3639,8 +3692,8 @@ function renderG703(pa){
       <td class="c" style="color:var(--text2);font-size:10px">${parseFloat(r.prev_pct).toFixed(0)}%</td>
       <td class="c"><input class="num-in${changed?' changed':''}" type="number" value="${parseFloat(r.this_pct)}" min="0" max="${100-parseFloat(r.prev_pct)}" step="1" data-id="${r.id}" data-sv="${sv}" data-prev="${r.prev_pct}" onchange="chgPct(this)"/></td>
       <td class="r this-d">${fmtR(thisPer)}</td>
-      <td class="c"><input class="num-in" style="width:50px" type="number" value="${parseFloat(r.retainage_pct)}" min="0" max="100" step="5" data-id="${r.id}" onchange="chgRet(this)"/></td>
-      <td class="r ret-d">${fmtR(ret)}</td>
+      ${showRet?`<td class="c"><input class="num-in" style="width:50px" type="number" value="${parseFloat(r.retainage_pct)}" min="0" max="100" step="5" data-id="${r.id}" onchange="chgRet(this)"/></td>
+      <td class="r ret-d">${fmtR(ret)}</td>`:''}
       <td class="r tot-comp">${fmtR(comp)}<span style="font-size:9px;color:var(--text2);margin-left:2px">${totPct.toFixed(0)}%</span></td>
       <td class="r">${fmtR(bal)}</td>
     </tr>`;
@@ -3654,11 +3707,16 @@ function renderG703(pa){
     <td class="r">${fmtR(tSV)}</td><td class="r">${fmtR(tPrev)}</td>
     <td class="c">—</td><td class="c">—</td>
     <td class="r" id="ft-this">${fmtR(tThis)}</td>
-    <td class="c">—</td>
-    <td class="r" id="ft-ret">${fmtR(tRet)}</td>
+    ${showRet?`<td class="c">—</td>
+    <td class="r" id="ft-ret">${fmtR(tRet)}</td>`:''}
     <td class="r" id="ft-comp">${fmtR(tComp)}</td>
     <td class="r" id="ft-bal">${fmtR(tBal)}</td>
   </tr>`;
+  // Toggle retainage header columns and bulk bar text
+  const retHdrCells=document.querySelectorAll('#g703-head-ret');
+  retHdrCells.forEach(el=>el.style.display=showRet?'':'none');
+  const retHint=document.getElementById('ret-hint');
+  if(retHint) retHint.style.display=showRet?'':'none';
 }
 
 function chgPct(el){
@@ -4079,6 +4137,8 @@ async function createProject(){
       est_date:document.getElementById('np-est-date').value||null,
       default_retainage:parseFloat(document.getElementById('np-retainage').value)||0,
       payment_terms:document.getElementById('np-payment-terms').value||'Due on receipt',
+      include_architect:document.getElementById('np-include-architect').checked,
+      include_retainage:document.getElementById('np-include-retainage').checked,
     });
     await api('POST','/projects/'+proj.id+'/sov',{lines:validRows});
     ph('project_created',{sov_line_count:validRows.length,contract_value:parseFloat(document.getElementById('np-contract').value.replace(/,/g,''))});
@@ -4113,6 +4173,8 @@ async function createProjectAndNext(){
       est_date:document.getElementById('np-est-date').value||null,
       default_retainage:parseFloat(document.getElementById('np-retainage').value)||0,
       payment_terms:document.getElementById('np-payment-terms').value||'Due on receipt',
+      include_architect:document.getElementById('np-include-architect').checked,
+      include_retainage:document.getElementById('np-include-retainage').checked,
     });
     await api('POST','/projects/'+proj.id+'/sov',{lines:validRows});
     ph('project_created',{sov_line_count:validRows.length,contract_value:parseFloat(document.getElementById('np-contract').value.replace(/,/g,''))});
@@ -4381,6 +4443,8 @@ async function loadEditProjectForm(id) {
     document.getElementById('ep-contract').value = p.original_contract || '';
     document.getElementById('ep-contract-date').value = p.contract_date ? p.contract_date.split('T')[0] : '';
     document.getElementById('ep-est-date').value = p.est_date ? p.est_date.split('T')[0] : '';
+    document.getElementById('ep-include-architect').checked = p.include_architect !== false;
+    document.getElementById('ep-include-retainage').checked = p.include_retainage !== false;
     document.getElementById('ep-err').classList.add('hidden');
     document.getElementById('ep-success').classList.add('hidden');
   } catch(e) { alert('Error: ' + e.message); }
@@ -4404,7 +4468,9 @@ async function saveEditProject() {
       building_area: document.getElementById('ep-area').value,
       original_contract: parseFloat(contract),
       contract_date: document.getElementById('ep-contract-date').value || null,
-      est_date: document.getElementById('ep-est-date').value || null
+      est_date: document.getElementById('ep-est-date').value || null,
+      include_architect: document.getElementById('ep-include-architect').checked,
+      include_retainage: document.getElementById('ep-include-retainage').checked
     });
     document.getElementById('ep-err').classList.add('hidden');
     document.getElementById('ep-success').classList.remove('hidden');
@@ -5796,7 +5862,7 @@ async function loadPaymentsDashboard() {
       </div>
       <div class="card" style="padding:16px;text-align:center">
         <div style="font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Payments</div>
-        <div style="font-size:22px;font-weight:700;color:var(--text1)">${data.count || payments.length || 0}</div>
+        <div style="font-size:22px;font-weight:700;color:var(--text1)">${data.count || (data.payments && data.payments.length) || 0}</div>
       </div>
       ${stripeActive ? '<div class="card" style="padding:16px;text-align:center;cursor:pointer" onclick="openStripeDashboard()"><div style="font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Stripe</div><div style="font-size:15px;font-weight:600;color:#635bff;margin-top:6px">Open Dashboard</div></div>' : ''}`;
     // Payment list
