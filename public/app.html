@@ -660,6 +660,20 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
 .wg-btn-back{background:#f1f5f9;color:#475569}.wg-btn-back:hover{background:#e2e8f0}
 .wg-btn-next{background:var(--gradient);color:#fff;box-shadow:0 2px 8px rgba(99,102,241,0.3)}.wg-btn-next:hover{opacity:0.9}
 @media(max-width:500px){.wg-modal{max-height:95vh;border-radius:12px}.wg-header{padding:16px}.wg-card{padding:16px}.wg-footer{padding:12px 16px}}
+/* ── Pay App Status Timeline ─────────────────────────────── */
+.pa-timeline{display:flex;align-items:center;gap:0;margin:12px 0 16px;padding:0}
+.pa-timeline-step{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--text3);position:relative}
+.pa-timeline-step .tl-dot{width:28px;height:28px;border-radius:50%;border:2.5px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:13px;background:#fff;transition:all .2s}
+.pa-timeline-step.done .tl-dot{background:#ecfdf5;border-color:#059669;color:#059669}
+.pa-timeline-step.active .tl-dot{background:var(--gradient);border-color:#6366f1;color:#fff;box-shadow:0 0 0 4px rgba(99,102,241,.15)}
+.pa-timeline-step.done{color:#059669}.pa-timeline-step.active{color:#6366f1}
+.pa-timeline-line{width:40px;height:2.5px;background:var(--border);margin:0 2px;flex-shrink:0}
+.pa-timeline-line.done{background:#059669}
+/* ── Contextual Help Tooltips ────────────────────────────── */
+.help-tip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--border);color:var(--text3);font-size:10px;font-weight:700;cursor:help;margin-left:4px;position:relative;vertical-align:middle}
+.help-tip:hover{background:#6366f1;color:#fff}
+.help-tip:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:8px 12px;border-radius:8px;font-size:11px;font-weight:400;white-space:normal;width:220px;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,.2);line-height:1.5;pointer-events:none}
+.help-tip:hover::before{content:'';position:absolute;bottom:calc(100% + 2px);left:50%;transform:translateX(-50%);border:6px solid transparent;border-top-color:#1a1a2e;z-index:101}
 /* ── Pro Upgrade Nudge Banner ─────────────────────────────── */
 .nudge-banner{background:linear-gradient(135deg,#ede9fe,#e8e0ff);border:2px solid var(--purple-light);border-radius:var(--radius-lg);padding:16px 22px;margin-bottom:18px;display:flex;align-items:center;gap:14px;animation:wgFadeIn .3s ease;box-shadow:var(--shadow)}
 .nudge-banner .nudge-icon{font-size:24px;flex-shrink:0}
@@ -1229,10 +1243,10 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
         <div class="ptitle">Dashboard</div>
         <div class="psub">All your projects and billing activity</div>
         <div class="mg">
-          <div class="mc"><div class="ml">Total projects</div><div class="mv" id="dash-proj-count">0</div></div>
-          <div class="mc"><div class="ml">Total billed</div><div class="mv blue" id="dash-total-billed">$0.00</div></div>
-          <div class="mc"><div class="ml">Retainage held</div><div class="mv amber" id="dash-total-ret">$0.00</div></div>
-          <div class="mc"><div class="ml">Pay apps</div><div class="mv" id="dash-pa-count">0</div></div>
+          <div class="mc"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:20px">🏗️</span><div><div class="ml">Total projects</div><div class="mv" id="dash-proj-count">0</div></div></div></div>
+          <div class="mc"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:20px">💰</span><div><div class="ml">Total billed</div><div class="mv blue" id="dash-total-billed">$0.00</div></div></div></div>
+          <div class="mc"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:20px">🔒</span><div><div class="ml">Retainage held</div><div class="mv amber" id="dash-total-ret">$0.00</div></div></div></div>
+          <div class="mc"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:20px">📄</span><div><div class="ml">Pay apps</div><div class="mv" id="dash-pa-count">0</div></div></div></div>
         </div>
         <div class="card">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
@@ -1264,12 +1278,12 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               <div class="field"><label>Project name *</label><input type="text" id="np-name" placeholder="e.g. Law Office TI Renovation"/></div>
               <div class="field"><label>Project number</label><input type="text" id="np-number" placeholder="e.g. 3011"/></div>
               <div class="field"><label>Owner / Client</label><input type="text" id="np-owner" placeholder="Owner name"/></div>
-              <div class="field"><label>Owner email <span style="color:var(--text2);font-weight:400;font-size:11px">(invoices &amp; reminders sent here)</span></label><input type="email" id="np-owner-email" placeholder="owner@company.com"/></div>
+              <div class="field"><label>Owner email <span class="help-tip" data-tip="This is where your pay app invoices and payment reminders will be sent. Make sure it's the right person who approves payments.">?</span></label><input type="email" id="np-owner-email" placeholder="owner@company.com"/></div>
               <div class="field"><label>Owner phone <span style="color:var(--text2);font-weight:400;font-size:11px">(future SMS)</span></label><input type="tel" id="np-owner-phone" placeholder="e.g. 415-555-0100"/></div>
               <div class="field"><label>General contractor</label><input type="text" id="np-contractor" placeholder="Contractor name"/></div>
               <div class="field"><label>Architect</label><input type="text" id="np-architect" placeholder="Architect name"/></div>
               <div class="field"><label>Building area (SF)</label><input type="text" id="np-area" placeholder="e.g. 8720"/></div>
-              <div class="field"><label>Original contract amount ($) *</label><input type="text" id="np-contract" placeholder="e.g. 1247743"/></div>
+              <div class="field"><label>Original contract amount ($) * <span class="help-tip" data-tip="The total value of your contract before any change orders. This becomes the base for all G702 calculations.">?</span></label><input type="text" id="np-contract" placeholder="e.g. 1247743"/></div>
               <div class="field"><label>Contract date</label><input type="date" id="np-contract-date"/></div>
               <div class="field"><label>Est. start date</label><input type="date" id="np-est-date"/></div>
             </div>
@@ -1294,7 +1308,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
                 <input type="file" id="logo-file-input" accept="image/*" style="display:none" onchange="previewLogo(this)"/>
               </div>
               <div style="flex:1;min-width:200px">
-                <div class="field"><label>Payment terms</label>
+                <div class="field"><label>Payment terms <span class="help-tip" data-tip="How long the owner has to pay after you submit. Net 30 = 30 days. This sets the due date on your invoices and triggers payment reminders.">?</span></label>
                   <select id="np-payment-terms">
                     <option value="Due on receipt">Due on receipt</option>
                     <option value="Net 15">Net 15</option>
@@ -1626,8 +1640,17 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               </select>
             </div>
             <div id="payments-list" style="max-height:500px;overflow-y:auto"></div>
-            <div id="payments-empty" class="hidden" style="padding:40px;text-align:center;color:var(--text2);font-size:14px">
-              No payments yet. Payment links are automatically included when you email invoices.
+            <div id="payments-empty" class="hidden" style="padding:48px 20px;text-align:center">
+              <div style="font-size:48px;margin-bottom:12px;opacity:0.8">💳</div>
+              <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px">No payments yet</div>
+              <div style="font-size:13px;color:var(--text2);max-width:340px;margin:0 auto 16px;line-height:1.6">When your clients pay through the "Pay Now" button in your invoice email, their payments show up here automatically.</div>
+              <div style="display:flex;justify-content:center;gap:16px;flex-wrap:wrap;margin-top:12px">
+                <div style="text-align:center"><div style="font-size:24px;margin-bottom:4px">📧</div><div style="font-size:11px;color:var(--text3)">Send invoice</div></div>
+                <div style="font-size:18px;color:var(--border2);margin-top:10px">→</div>
+                <div style="text-align:center"><div style="font-size:24px;margin-bottom:4px">💰</div><div style="font-size:11px;color:var(--text3)">Client pays online</div></div>
+                <div style="font-size:18px;color:var(--border2);margin-top:10px">→</div>
+                <div style="text-align:center"><div style="font-size:24px;margin-bottom:4px">🏦</div><div style="font-size:11px;color:var(--text3)">Money in your bank</div></div>
+              </div>
             </div>
           </div>
         </div>
@@ -1841,7 +1864,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
             <button class="btn btn-primary btn-sm" onclick="saveAndNext(1)">Save &amp; Next: Change Orders →</button>
           </div>
           <div class="bulk-bar">
-            <label>Apply billing % to all lines:</label>
+            <label>Apply billing % to all lines: <span class="help-tip" data-tip="Sets the '% This Period' for every line at once. For example, 20% means you're billing 20% of each line item's scheduled value this month. You can adjust individual lines after.">?</span></label>
             <input class="bulk-in" type="number" id="bulk-pct" value="20" min="0" max="100" step="1"/>
             <button class="btn btn-primary btn-sm" onclick="applyBulk()">Apply to all</button>
             <button class="btn btn-sm" onclick="clearAll()">Clear all</button>
@@ -2147,7 +2170,17 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
 
           <!-- EMAIL -->
           <div class="card no-print" style="margin-top:16px">
-            <div class="ct">Email to client</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <div class="ct" style="margin:0">Email to client</div>
+              <span style="font-size:11px;color:var(--text3);background:var(--bg3);padding:4px 10px;border-radius:20px">📎 PDF auto-attached</span>
+            </div>
+            <div style="background:linear-gradient(135deg,#ede9fe,#f0fdf4);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">
+              <span style="font-size:28px">📧</span>
+              <div style="flex:1">
+                <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:2px">What your client receives:</div>
+                <div style="font-size:11px;color:var(--text2);line-height:1.5">Professional invoice email with your G702/G703 PDF, lien waiver, and a "Pay Now" button. They click it and pay by ACH or card — money goes straight to your bank.</div>
+              </div>
+            </div>
             <form onsubmit="event.preventDefault();sendEmail()" autocomplete="on">
             <div class="fg" style="margin-bottom:10px">
               <div class="field"><label>To</label><input type="email" id="email-to" name="email-to" autocomplete="email" placeholder="client@email.com"/></div>
@@ -2168,9 +2201,12 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
                 <label for="include-payment-link" style="font-size:12px;color:var(--text2);cursor:pointer">Include "Pay Now" button in email <span style="font-size:10px;color:var(--green)">(ACH or card — get paid faster)</span></label>
               </div>
             </div>
-            <div class="br">
-              <button type="button" class="btn btn-success" onclick="sendEmail()" id="btn-send-email">📤 Send &amp; Mark Submitted</button>
-              <span style="font-size:11px;color:var(--text2)">Pay app PDF attached automatically</span>
+            <div class="br" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+              <button type="button" class="btn btn-success" onclick="sendEmail()" id="btn-send-email" style="font-size:14px;padding:12px 28px">📤 Send &amp; Mark Submitted</button>
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <span style="font-size:11px;color:var(--text2)">Your client gets: PDF + lien waiver + Pay Now link</span>
+                <span style="font-size:10px;color:var(--green)">They can pay online instantly — no follow-up needed</span>
+              </div>
             </div>
             </form>
           </div>
@@ -2830,18 +2866,46 @@ async function loadDash(){
     document.getElementById('dash-proj-count').textContent=projects.length;
     const list=document.getElementById('dash-proj-list');
     if(!projects.length){
-      list.innerHTML='<div style="font-size:12px;color:var(--text2);padding:8px 0">No projects yet. Click + New project to get started.</div>';
+      list.innerHTML=`<div style="text-align:center;padding:40px 20px">
+        <div style="font-size:56px;margin-bottom:16px;opacity:0.8">🏗️</div>
+        <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:8px">Create your first project</div>
+        <div style="font-size:13px;color:var(--text2);max-width:360px;margin:0 auto 20px;line-height:1.6">Upload your Schedule of Values (Excel, CSV, PDF, or Word) and we'll auto-detect your line items. Then generate G702/G703 pay apps in seconds.</div>
+        <button class="btn btn-primary" onclick="showNewProject()" style="font-size:14px;padding:12px 28px">+ Create First Project</button>
+        <div style="margin-top:16px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:4px">📄 Upload SOV</span>
+          <span style="font-size:11px;color:var(--text3)">→</span>
+          <span style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:4px">📊 Generate pay apps</span>
+          <span style="font-size:11px;color:var(--text3)">→</span>
+          <span style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:4px">💰 Get paid</span>
+        </div>
+      </div>`;
       buildSidebarProjects(projects);
       return;
     }
-    list.innerHTML=projects.map(p=>`
-      <div class="proj-item" onclick="loadProject(${p.id})">
-        <div>
-          <div style="font-size:14px;font-weight:600">${p.name}</div>
-          <div style="font-size:11px;color:var(--text2)">#${p.number||'—'} · ${p.contractor||'—'} · ${fmt(p.original_contract)}</div>
+    list.innerHTML=projects.map(p=>{
+      const pPAs=sidebarPACache[p.id]||[];
+      const hasPAs=pPAs.length>0;
+      const lastPA=hasPAs?pPAs[pPAs.length-1]:null;
+      const submitted=pPAs.filter(pa=>pa.status==='submitted').length;
+      const paid=pPAs.filter(pa=>pa.payment_status==='paid').length;
+      const draft=pPAs.length-submitted-paid;
+      return`<div class="proj-item" onclick="loadProject(${p.id})" style="padding:16px 20px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <div style="font-size:15px;font-weight:700;color:var(--text)">${p.name}</div>
+          </div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:8px">#${p.number||'—'} · ${p.contractor||'—'} · ${fmt(p.original_contract)}</div>
+          ${hasPAs?`<div style="display:flex;gap:8px;flex-wrap:wrap">
+            <span style="font-size:11px;padding:3px 10px;border-radius:20px;background:#ede9fe;color:#6366f1;font-weight:600">${pPAs.length} pay app${pPAs.length>1?'s':''}</span>
+            ${submitted?`<span style="font-size:11px;padding:3px 10px;border-radius:20px;background:#ecfdf5;color:#059669;font-weight:600">${submitted} submitted</span>`:''}
+            ${paid?`<span style="font-size:11px;padding:3px 10px;border-radius:20px;background:#dcfce7;color:#16a34a;font-weight:600">${paid} paid</span>`:''}
+          </div>`:`<div style="font-size:11px;color:var(--text3);font-style:italic">No pay apps yet — click to create one</div>`}
         </div>
-        <span class="badge badge-green">Active</span>
-      </div>`).join('');
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+          <span class="badge badge-green">Active</span>
+          ${hasPAs?`<span style="font-size:11px;color:var(--text3)">Last: PA #${lastPA.app_number}</span>`:''}
+        </div>
+      </div>`}).join('');
     // Parallel-fetch all pay app lists + billing stats
     const [lists,stats]=await Promise.all([
       Promise.all(projects.map(p=>api('GET','/projects/'+p.id+'/payapps').catch(()=>[]))),
@@ -3245,8 +3309,12 @@ function renderPAHeader(pa){
   const badDebtBtn=submitted&&!pa.bad_debt&&payStatus!=='paid'
     ?`<button class="btn btn-sm" onclick="toggleBadDebt(${pa.id},true)" style="font-size:11px;border-color:var(--text3);color:var(--text2)" title="Mark as uncollectable — stops follow-ups">✕ Write off</button>`
     :(pa.bad_debt?`<button class="btn btn-sm" onclick="toggleBadDebt(${pa.id},false)" style="font-size:11px;border-color:var(--amber);color:var(--amber)" title="Re-open for collection">↩ Undo write-off</button>`:'');
+  // Timeline states
+  const isDraft=!submitted;
+  const isSent=submitted&&payStatus!=='paid';
+  const isPaid=payStatus==='paid';
   document.getElementById('pa-header').innerHTML=`
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
       <div>
         <div style="font-size:18px;font-weight:600">Pay App #${pa.app_number} <span class="badge ${submitted?'badge-green':'badge-amber'}" style="font-size:11px;vertical-align:middle;cursor:pointer" onclick="paTab(5)" title="Click to view preview">${pa.status||'draft'}</span>${payBadge}</div>
         <div style="font-size:12px;color:var(--text2)">${pa.period_label||'No period set'} · ${pa.project_name} · ${pa.app_number>1?'Carries forward from Pay App #'+(pa.app_number-1):'First application'}</div>
@@ -3261,6 +3329,13 @@ function renderPAHeader(pa){
         <button class="btn btn-primary btn-sm" onclick="paTab(5)">Preview &amp; Send</button>
         <button class="btn btn-sm" onclick="deletePayApp(${pa.id},${pa.project_id},'${(pa.period_label||'Pay App #'+pa.app_number).replace(/'/g,"\\'")}',${pa.app_number})" style="margin-left:auto;background:none;border:1px solid var(--red);color:var(--red);font-size:11px" title="Delete this pay application">🗑 Delete</button>
       </div>
+    </div>
+    <div class="pa-timeline">
+      <div class="pa-timeline-step ${isDraft?'active':'done'}"><span class="tl-dot">${isDraft?'✏️':'✓'}</span><span>Draft</span></div>
+      <div class="pa-timeline-line ${submitted?'done':''}"></div>
+      <div class="pa-timeline-step ${isSent?'active':(isPaid?'done':'')}"><span class="tl-dot">${isSent?'📤':(isPaid?'✓':'📤')}</span><span>Sent</span></div>
+      <div class="pa-timeline-line ${isPaid?'done':''}"></div>
+      <div class="pa-timeline-step ${isPaid?'active':''}"><span class="tl-dot">${isPaid?'💰':'💰'}</span><span>Paid</span></div>
     </div>`;
   // Payment status banner
   const bannerEl=document.getElementById('pa-payment-banner');
@@ -5875,16 +5950,28 @@ const WG_CARDS=[
     </div>
   </div>`},
 
-  {title:'Accept payments through invoices',body:'Your clients pay online directly from the invoice. Funds go straight to your bank. No more chasing checks.',
-   mockup:`<div class="wg-mockup" style="text-align:center;padding:24px 14px">
-    <div style="font-size:32px;margin-bottom:8px">💳</div>
-    <div style="font-size:14px;font-weight:700;color:#1a1a2e;margin-bottom:6px">Online Payments via Invoice</div>
-    <div style="font-size:12px;color:#64748b;max-width:300px;margin:0 auto;line-height:1.5">Your owner/client receives the invoice email, clicks "Pay Now", and pays by credit card or ACH. You get paid faster — no follow-up needed.</div>
-    <div style="margin-top:16px;display:flex;justify-content:center;gap:6px;flex-wrap:wrap">
-      <span style="background:#f1f5f9;padding:4px 10px;border-radius:4px;font-size:10px;color:#64748b">Visa</span>
-      <span style="background:#f1f5f9;padding:4px 10px;border-radius:4px;font-size:10px;color:#64748b">Mastercard</span>
-      <span style="background:#f1f5f9;padding:4px 10px;border-radius:4px;font-size:10px;color:#64748b">ACH / Bank</span>
+  {title:'Get paid directly through your invoices',body:'When you send a pay app, your client gets a "Pay Now" button. They pay by ACH or credit card — money goes straight to your bank. No checks to chase.',
+   mockup:`<div class="wg-mockup" style="padding:18px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+      <div>
+        <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px">What your client sees</div>
+        <div style="font-size:18px;font-weight:800;color:#059669;margin-top:4px">$148,027.50</div>
+        <div style="font-size:10px;color:#64748b">Current Payment Due</div>
+      </div>
+      <div style="background:#ecfdf5;padding:4px 10px;border-radius:20px;font-size:10px;font-weight:600;color:#059669;display:flex;align-items:center;gap:4px">🔒 Secure</div>
     </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <div style="flex:1;background:#f0fdf4;border:2px solid #059669;border-radius:8px;padding:10px;text-align:center;cursor:default">
+        <div style="font-size:13px;font-weight:700;color:#059669">🏦 ACH Bank</div>
+        <div style="font-size:10px;color:#64748b;margin-top:2px">Recommended</div>
+      </div>
+      <div style="flex:1;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;text-align:center;cursor:default">
+        <div style="font-size:13px;font-weight:600;color:#334155">💳 Card</div>
+        <div style="font-size:10px;color:#64748b;margin-top:2px">Visa, MC, Amex</div>
+      </div>
+    </div>
+    <div style="background:linear-gradient(135deg,#059669,#16a34a);color:#fff;padding:12px;border-radius:8px;text-align:center;font-weight:700;font-size:13px">Pay Now — $148,027.50</div>
+    <div style="text-align:center;margin-top:6px;font-size:10px;color:#94a3b8">🔒 256-bit encryption · Powered by Stripe</div>
   </div>`},
 
   {title:'AI billing assistant built in',body:'Aria answers questions about G702/G703 forms, lien waivers, change orders, retention — and helps you use every feature in the app.',
@@ -5927,7 +6014,7 @@ function startOnboardingTour(){
     <div class="wg-modal">
       <div class="wg-header">
         <h2>Welcome to ConstructInvoice AI</h2>
-        <p>Here is what you can do — in under 2 minutes</p>
+        <p>Create invoices, send them, and get paid — in under 2 minutes</p>
         <button class="wg-close" onclick="wgClose()">&times;</button>
       </div>
       <div class="wg-body">${cards}</div>
@@ -5952,7 +6039,7 @@ function wgGoTo(i){
   document.querySelectorAll('.wg-dot').forEach((d,j)=>d.classList.toggle('active',j===i));
   document.getElementById('wg-back').style.display=i>0?'':'none';
   const btn=document.getElementById('wg-next');
-  btn.textContent=i===WG_CARDS.length-1?'Get started!':'Next';
+  btn.textContent=i===WG_CARDS.length-1?'Start Building →':'Next';
 }
 function wgNext(){
   if(_wgStep>=WG_CARDS.length-1){wgClose();return;}
