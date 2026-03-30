@@ -194,11 +194,11 @@ app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
           to: [user.email],
           subject: 'Reset your password — Construction AI Billing',
           html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">
-            <h2 style="color:#185FA5">Reset your password</h2>
+            <h2 style="color:#10b981">Reset your password</h2>
             <p>Hi ${user.name},</p>
             <p>We received a request to reset your password for your Construction AI Billing account.</p>
             <p style="margin:24px 0">
-              <a href="${resetUrl}" style="background:#185FA5;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block">
+              <a href="${resetUrl}" style="background:#10b981;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block">
                 Reset Password
               </a>
             </p>
@@ -328,10 +328,10 @@ async function sendVerificationEmail(email, name, token) {
 
 function verifyEmailHtml(name, url) {
   return `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">
-    <h2 style="color:#185FA5">Welcome to Construction AI Billing</h2>
+    <h2 style="color:#10b981">Welcome to Construction AI Billing</h2>
     <p>Hi ${name},</p>
     <p>Please verify your email address to keep your account in good standing.</p>
-    <a href="${url}" style="display:inline-block;background:#185FA5;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;margin:16px 0">Verify my email →</a>
+    <a href="${url}" style="display:inline-block;background:#10b981;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;margin:16px 0">Verify my email →</a>
     <p style="color:#888;font-size:12px">This link expires in 48 hours. If you didn't sign up, you can ignore this email.</p>
   </div>`;
 }
@@ -449,14 +449,14 @@ app.get('/oauth/authorize', async (req, res) => {
   body{font-family:-apple-system,sans-serif;background:#f0f4f8;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
   .box{background:#fff;border-radius:12px;padding:36px 40px;max-width:400px;width:100%;box-shadow:0 4px 24px rgba(0,0,0,0.12);text-align:center}
   h1{font-size:20px;margin-bottom:8px;color:#1a1a1a}
-  .logo{font-size:14px;font-weight:600;color:#185FA5;margin-bottom:24px}
+  .logo{font-size:14px;font-weight:600;color:#10b981;margin-bottom:24px}
   p{font-size:14px;color:#555;margin-bottom:6px;text-align:left}
   .scope-list{background:#f8fafc;border-radius:8px;padding:14px 18px;text-align:left;font-size:13px;color:#333;margin:16px 0}
   .scope-list li{margin-bottom:4px}
   .client-name{font-weight:600;color:#1a1a1a}
   input{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;margin:6px 0 14px;box-sizing:border-box}
   .btn{width:100%;padding:11px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;margin-top:6px}
-  .btn-primary{background:#185FA5;color:#fff}
+  .btn-primary{background:#10b981;color:#fff}
   .btn-secondary{background:#f1f5f9;color:#555;margin-top:8px}
   .err{color:#dc2626;font-size:13px;margin-bottom:10px}
 </style>
@@ -1250,16 +1250,34 @@ function parseSOVFile(filePath) {
 
   const parentRows = allRows.filter(r => r.is_parent);
 
-  return { headers: ['Item #','Description','Scheduled Value'], sheetName, allRows, parentRows, iItem, iDesc, iAmt };
+  // ── Extract financial summary rows from Excel data ─────────────────────────
+  const summary = {};
+  for (let ri = startRow; ri < json.length; ri++) {
+    const row    = json[ri];
+    const desc   = String(row[iDesc]||'').trim().toLowerCase();
+    const rawAmt = String(row[iAmt] ||'').replace(/[$,\s]/g,'');
+    const amt    = parseFloat(rawAmt);
+    if (!desc || isNaN(amt)) continue;
+    if (/^subtotal$/.test(desc) && !summary.subtotal) summary.subtotal = Math.round(amt * 100) / 100;
+    else if (/^total(\s+(project\s*)?cost)?$/.test(desc)) summary.total = Math.round(amt * 100) / 100;
+    else if (/tax/.test(desc)) { summary.tax = Math.round(amt * 100) / 100; summary.tax_label = String(row[iDesc]||'').trim(); }
+    else if (/overhead/.test(desc)) summary.overhead = Math.round(amt * 100) / 100;
+    else if (/amount\s*paid/.test(desc)) summary.amount_paid = Math.round(amt * 100) / 100;
+    else if (/balance\s*due/.test(desc)) summary.balance_due = Math.round(amt * 100) / 100;
+  }
+
+  return { headers: ['Item #','Description','Scheduled Value'], sheetName, allRows, parentRows, summary, iItem, iDesc, iAmt };
 }
 
 // ── Node.js PDF/DOCX SOV parser (replaces Python parse_sov.py) ─────────────────
 // Parses contractor estimate PDFs and Word docs into line items.
 // Uses pdf-parse (PDF) and mammoth (DOCX) — pure JS, no Python needed.
 
-const SKIP_RE = /^(\*|•|·|–|—|-{2,})|^(subtotal|total|tax|overhead|company overhead|balance due|amount paid|terms|signature|page \d|note[:\s]|excludes|it is an honor|we thank|sincerely|dear |http|www\.)/i;
+const SKIP_RE = /^(\*|•|·|–|—|-{2,})|^(terms|signature|page \d|note[:\s]|excludes|it is an honor|we thank|sincerely|dear |http|www\.)/i;
 // Skip metadata lines: license numbers, addresses, dates — not work items
 const SKIP_META_RE = /\b(lic(ense)?(\s*#|\s+no\.?)?|p\.?o\.?\s*box|phone|fax|e[\-]?mail|zip|contractor'?s)\b|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2},?\s*\d{4}/i;
+// Match financial summary lines (previously filtered out by SKIP_RE)
+const SUMMARY_RE = /^(subtotal|total|tax|state tax|federal tax|overhead|company overhead|balance due|amount paid)/i;
 
 function extractAmounts(text) {
   // First try $X,XXX.XX format (explicit dollar sign)
@@ -1286,7 +1304,7 @@ function cleanDesc(s) {
 function rowsFromLines(lines) {
   // Pre-process: many contractor PDFs put description on one line, amount on the next.
   // Merge "line with no amount" + "next line that is just a $amount" into a single line.
-  // IMPORTANT: only merge onto lines that would NOT be skipped by SKIP_RE/SKIP_META_RE,
+  // IMPORTANT: only merge onto lines that would NOT be skipped by SKIP_RE/SKIP_META_RE/SUMMARY_RE,
   // otherwise e.g. "$12,331" merges onto "TOTAL" and the Fee row is lost.
   const merged = [];
   for (let i = 0; i < lines.length; i++) {
@@ -1295,7 +1313,7 @@ function rowsFromLines(lines) {
     const isJustDollarAmt = /^\$[\d,]+(?:\.\d{1,2})?$/.test(line);
     if (isJustDollarAmt && merged.length > 0) {
       const prev = merged[merged.length - 1];
-      const prevWouldBeSkipped = SKIP_RE.test(prev) || SKIP_META_RE.test(prev);
+      const prevWouldBeSkipped = SKIP_RE.test(prev) || SKIP_META_RE.test(prev) || SUMMARY_RE.test(prev);
       if (!prevWouldBeSkipped && !extractAmounts(prev).length) {
         merged[merged.length - 1] = prev + ' ' + line;
         continue;
@@ -1305,11 +1323,32 @@ function rowsFromLines(lines) {
   }
 
   const rows = [];
+  const summary = {};
   const seen = new Set();
   let counter = 1000;
   for (const raw of merged) {
     const line = raw.trim();
     if (line.length < 5) continue;
+
+    // Check if this is a financial summary line BEFORE checking SKIP_RE
+    if (SUMMARY_RE.test(line)) {
+      const amounts = extractAmounts(line);
+      if (amounts.length > 0) {
+        const label = line.replace(/\s*\$[\d,]+(?:\.\d{1,2})?.*$/, '').trim().toLowerCase();
+        const value = Math.round(amounts[amounts.length - 1] * 100) / 100;
+        if (/^subtotal$/.test(label)) summary.subtotal = value;
+        else if (/^total$/.test(label)) summary.total = value;
+        else if (/tax/.test(label)) {
+          summary.tax = value;
+          summary.tax_label = line.replace(/\s*\$[\d,]+(?:\.\d{1,2})?.*$/, '').trim();
+        }
+        else if (/overhead/.test(label)) summary.overhead = value;
+        else if (/amount\s*paid/.test(label)) summary.amount_paid = value;
+        else if (/balance\s*due/.test(label)) summary.balance_due = value;
+      }
+      continue;
+    }
+
     if (SKIP_RE.test(line)) continue;
     if (SKIP_META_RE.test(line)) continue;
     const amounts = extractAmounts(line);
@@ -1332,7 +1371,7 @@ function rowsFromLines(lines) {
     rows.push({ item_id: String(counter), description: desc, scheduled_value: Math.round(total * 100) / 100 });
     counter += 1000;
   }
-  return rows;
+  return { rows, summary };
 }
 
 async function parseSOVFromText(filePath, ext) {
@@ -1370,12 +1409,12 @@ async function parseSOVFromText(filePath, ext) {
         tableCells.push(`${desc} $${amt}`);
       }
     }
-    const tableRows = rowsFromLines(tableCells);
-    if (tableRows.length > 0) return tableRows;
+    const tableResult = rowsFromLines(tableCells);
+    if (tableResult.rows.length > 0) return tableResult;
     // Fallback: plain text lines
     return rowsFromLines(lines);
   }
-  return [];
+  return { rows: [], summary: {} };
 }
 
 app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
@@ -1412,28 +1451,36 @@ app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
         cleanup();
         return res.status(422).json({ error: 'No line items with dollar amounts could be extracted from this PDF. If it is a scanned/image PDF, try uploading a Word (.docx) or Excel (.xlsx) version instead.' });
       }
+      const computed_total = Math.round(rows.reduce((s, r) => s + (parseFloat(r.scheduled_value) || 0), 0) * 100) / 100;
       result = {
         rows, all_rows: rows,
         row_count: rows.length, total_rows: rows.length,
         filename: req.file.originalname,
-        sheet_used: 'PDF'
+        sheet_used: 'PDF',
+        summary: pyResult.summary || {},
+        computed_total
       };
     } else if (ext === '.docx' || ext === '.doc') {
       // Word docs: use Node.js mammoth parser
-      const rows = await parseSOVFromText(req.file.path, ext);
+      const parseResult = await parseSOVFromText(req.file.path, ext);
+      const rows = parseResult.rows || [];
       if (!rows || rows.length === 0) {
         cleanup();
         return res.status(422).json({ error: 'No line items with dollar amounts could be extracted from this file. Please try uploading an Excel (.xlsx) version instead.' });
       }
+      const computed_total = Math.round(rows.reduce((s, r) => s + (parseFloat(r.scheduled_value) || 0), 0) * 100) / 100;
       result = {
         rows, all_rows: rows,
         row_count: rows.length, total_rows: rows.length,
         filename: req.file.originalname,
-        sheet_used: ext.replace('.','').toUpperCase()
+        sheet_used: ext.replace('.','').toUpperCase(),
+        summary: parseResult.summary || {},
+        computed_total
       };
     } else {
       // Existing Node/XLSX parser for .xlsx/.xls/.csv
       const parsed = parseSOVFile(req.file.path);
+      const computed_total = Math.round(parsed.allRows.reduce((s, r) => s + (parseFloat(r.scheduled_value) || 0), 0) * 100) / 100;
       result = {
         headers:    parsed.headers,
         detected:   { item: parsed.iItem, desc: parsed.iDesc, amt: parsed.iAmt },
@@ -1442,7 +1489,9 @@ app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
         row_count:  parsed.allRows.length,
         total_rows: parsed.allRows.length,
         filename:   req.file.originalname,
-        sheet_used: parsed.sheetName
+        sheet_used: parsed.sheetName,
+        summary:    parsed.summary || {},
+        computed_total
       };
     }
 
@@ -1528,14 +1577,14 @@ body{font-family:'Times New Roman',Times,serif;font-size:9pt;color:#000;backgrou
 .aia-cell-label{flex:1}
 .aia-cell-val{font-weight:bold;white-space:nowrap;margin-left:8px}
 .aia-cell-H{background:#fffbe6}
-.aia-cell-H .aia-cell-val{font-size:13pt;color:#185FA5}
+.aia-cell-H .aia-cell-val{font-size:13pt;color:#10b981}
 /* Distribution */
 .aia-distribution{margin-bottom:10px;font-size:8.5pt}
 .aia-dist-title{font-weight:bold;margin-bottom:5px}
 .aia-dist-grid{display:flex;gap:18px}
 .aia-dist-item{display:flex;align-items:center;gap:5px}
-.aia-checkbox{width:13px;height:13px;border:1.5px solid #185FA5;border-radius:2px;flex-shrink:0}
-.aia-checkbox.checked{background:#185FA5}
+.aia-checkbox{width:13px;height:13px;border:1.5px solid #10b981;border-radius:2px;flex-shrink:0}
+.aia-checkbox.checked{background:#10b981}
 /* Signature boxes */
 .aia-sig-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
 .aia-sig-box{border:1px solid #ccc;padding:10px;border-radius:4px}
@@ -1555,7 +1604,7 @@ td{border:1px solid #ddd;padding:2px 5px}
 .print-branding{text-align:center;margin-top:20px;padding-top:10px;border-top:1px solid #e0e0e0}
 .brand-name{font-size:11pt;letter-spacing:0.3px;margin-bottom:3px}
 .brand-tagline{font-size:8pt;color:#777;margin-bottom:3px;font-style:italic}
-.brand-link{font-size:8pt;color:#185FA5;text-decoration:none}
+.brand-link{font-size:8pt;color:#10b981;text-decoration:none}
 </style></head>
 <body>
 <!-- G702 PAGE -->
@@ -2166,8 +2215,8 @@ app.post('/api/support/request', async (req, res) => {
             <h2>Support Request</h2>
             <p><b>From:</b> ${name||'Unknown'} &lt;${email}&gt;</p>
             <p><b>Issue:</b></p>
-            <blockquote style="border-left:3px solid #185FA5;padding-left:12px;color:#334155">${issue}</blockquote>
-            <p style="margin-top:24px"><a href="${process.env.APP_URL||'https://constructinv.varshyl.com'}/?admin=1" style="background:#185FA5;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none">Open Admin Dashboard</a></p>
+            <blockquote style="border-left:3px solid #10b981;padding-left:12px;color:#334155">${issue}</blockquote>
+            <p style="margin-top:24px"><a href="${process.env.APP_URL||'https://constructinv.varshyl.com'}/?admin=1" style="background:#10b981;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none">Open Admin Dashboard</a></p>
           </div>`
         })
       }).catch(e => console.error('[Support email]', e.message));
@@ -2346,10 +2395,10 @@ async function sendTeamInviteEmail(toEmail, toName, inviter, token) {
     return;
   }
   const html = `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">
-    <h2 style="color:#185FA5">You've been invited to Construction AI Billing</h2>
+    <h2 style="color:#10b981">You've been invited to Construction AI Billing</h2>
     <p>Hi ${toName},</p>
     <p>${inviter.name} (${inviter.email}) has added you to their team on Construction AI Billing.</p>
-    <a href="${appUrl}/api/auth/accept-invite/${token}" style="display:inline-block;background:#185FA5;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;margin:16px 0">Accept Invitation →</a>
+    <a href="${appUrl}/api/auth/accept-invite/${token}" style="display:inline-block;background:#10b981;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;margin:16px 0">Accept Invitation →</a>
     <p style="color:#888;font-size:12px">If you didn't expect this invitation, you can ignore this email.</p>
   </div>`;
   const isResend = !!process.env.RESEND_API_KEY;
@@ -2733,7 +2782,7 @@ function renderLienWaiverContent(doc, { doc_type, project, through_date, amount,
   const loc = project.location || [project.city, project.state].filter(Boolean).join(', ') || projectName;
 
   // ── HEADER BAND ─────────────────────────────────────────────────────────
-  const BLUE = '#0C3B6B';
+  const BLUE = '#064e3b';
   const bandTop = doc.y;
   const bandH = 66;
   doc.rect(L, bandTop, W, bandH).fill(BLUE);
@@ -3250,8 +3299,8 @@ app.get('/api/revenue/report/pdf', auth, async (req, res) => {
       const h = Math.round((monthlyAmounts[i]/maxAmt)*80);
       const lbl = monthlyAmounts[i]>0 ? `$${Math.round(monthlyAmounts[i]/1000)}k` : '';
       return `<div style="display:flex;flex-direction:column;align-items:center;flex:1;gap:3px">
-        <div style="font-size:9px;color:#185FA5;font-weight:600">${lbl}</div>
-        <div style="width:100%;height:${h}px;background:linear-gradient(to top,#185FA5,#4a9be0);border-radius:3px 3px 0 0;min-height:${monthlyAmounts[i]>0?4:0}px"></div>
+        <div style="font-size:9px;color:#10b981;font-weight:600">${lbl}</div>
+        <div style="width:100%;height:${h}px;background:linear-gradient(to top,#10b981,#6ee7b7);border-radius:3px 3px 0 0;min-height:${monthlyAmounts[i]>0?4:0}px"></div>
         <div style="font-size:9px;color:#666">${m}</div>
       </div>`;
     }).join('');
@@ -3273,17 +3322,17 @@ app.get('/api/revenue/report/pdf', auth, async (req, res) => {
     <style>
       *{margin:0;padding:0;box-sizing:border-box}
       body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:11px;color:#1a1a2e;padding:32px 40px}
-      .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:18px;border-bottom:2px solid #185FA5}
-      .co-name{font-size:20px;font-weight:700;color:#185FA5}
+      .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:18px;border-bottom:2px solid #10b981}
+      .co-name{font-size:20px;font-weight:700;color:#10b981}
       .report-title{font-size:14px;color:#444;margin-top:3px}
       .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
       .kpi{background:#f0f6ff;border-radius:8px;padding:14px 16px;border:1px solid #c7dff7}
       .kpi-label{font-size:9px;color:#666;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px}
-      .kpi-val{font-size:18px;font-weight:700;color:#185FA5}
+      .kpi-val{font-size:18px;font-weight:700;color:#10b981}
       .section-title{font-size:12px;font-weight:700;color:#1a1a2e;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #e2e8f0;text-transform:uppercase;letter-spacing:0.05em}
       .chart-wrap{display:flex;align-items:flex-end;gap:6px;height:100px;margin-bottom:24px;padding:0 4px}
       table{width:100%;border-collapse:collapse;font-size:10px}
-      th{background:#185FA5;color:#fff;padding:7px 10px;text-align:left;font-weight:600;font-size:9px;text-transform:uppercase;letter-spacing:0.04em}
+      th{background:#10b981;color:#fff;padding:7px 10px;text-align:left;font-weight:600;font-size:9px;text-transform:uppercase;letter-spacing:0.04em}
       td{padding:7px 10px;border-bottom:1px solid #f1f5f9}
       tr:nth-child(even) td{background:#f8fafc}
       .footer{margin-top:28px;padding-top:12px;border-top:1px solid #e2e8f0;text-align:center;font-size:9px;color:#999}
@@ -3399,7 +3448,7 @@ app.get('/invoice/:token', async (req, res) => {
   <!-- Header -->
   <div style="background:#fff;border:1px solid #e2e8f0;border-top:none;padding:28px 32px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap">
     <div>
-      ${logoUrl ? `<img src="${logoUrl}" style="max-height:60px;max-width:180px;object-fit:contain;margin-bottom:12px;display:block"/>` : `<div style="font-size:20px;font-weight:800;color:#0C3B6B;margin-bottom:8px">${pa.company_name||pa.contractor||'Contractor'}</div>`}
+      ${logoUrl ? `<img src="${logoUrl}" style="max-height:60px;max-width:180px;object-fit:contain;margin-bottom:12px;display:block"/>` : `<div style="font-size:20px;font-weight:800;color:#064e3b;margin-bottom:8px">${pa.company_name||pa.contractor||'Contractor'}</div>`}
       <div style="font-size:13px;color:#64748b">${pa.co_contact||pa.contact_name||''}</div>
       <div style="font-size:13px;color:#64748b">${pa.co_email||pa.contact_email||''}</div>
     </div>
@@ -3418,13 +3467,13 @@ app.get('/invoice/:token', async (req, res) => {
   <!-- Pay Now button -->
   <div class="no-print" style="background:#fff;border:1px solid #e2e8f0;border-top:none;padding:20px 32px;text-align:center;border-bottom:none">
     <div style="font-size:13px;color:#64748b;margin-bottom:12px">To pay, please remit <strong>${fmt(totalDue)}</strong> via check or wire transfer per your contract terms.</div>
-    <a href="mailto:${pa.co_email||pa.contact_email||''}?subject=Payment%20for%20${encodeURIComponent(pa.project_name)}%20Pay%20App%20%23${pa.app_number}&body=Please%20find%20payment%20confirmation%20for%20Pay%20Application%20%23${pa.app_number}." style="display:inline-block;background:#0C3B6B;color:#fff;padding:13px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;margin-right:12px">📧 Confirm Payment</a>
+    <a href="mailto:${pa.co_email||pa.contact_email||''}?subject=Payment%20for%20${encodeURIComponent(pa.project_name)}%20Pay%20App%20%23${pa.app_number}&body=Please%20find%20payment%20confirmation%20for%20Pay%20Application%20%23${pa.app_number}." style="display:inline-block;background:#064e3b;color:#fff;padding:13px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;margin-right:12px">📧 Confirm Payment</a>
     <button onclick="window.print()" style="display:inline-block;background:#f1f5f9;color:#1e293b;border:1px solid #e2e8f0;padding:13px 24px;border-radius:8px;font-weight:600;font-size:14px;cursor:pointer">🖨 Print Invoice</button>
   </div>
   <!-- SOV table -->
   <div style="background:#fff;border:1px solid #e2e8f0;overflow:hidden;margin-top:0">
     <div style="padding:14px 32px;background:#f8fafc;border-bottom:1px solid #e2e8f0">
-      <div style="font-size:13px;font-weight:700;color:#0C3B6B">Schedule of Values — Pay Application #${pa.app_number}</div>
+      <div style="font-size:13px;font-weight:700;color:#064e3b">Schedule of Values — Pay Application #${pa.app_number}</div>
     </div>
     <div style="overflow-x:auto">
     <table style="width:100%;border-collapse:collapse">
@@ -3441,7 +3490,7 @@ app.get('/invoice/:token', async (req, res) => {
       </thead>
       <tbody>${linesHTML}</tbody>
       <tfoot>
-        <tr style="background:#0C3B6B">
+        <tr style="background:#064e3b">
           <td colspan="5" style="padding:12px 32px;color:#fff;font-weight:700;font-size:14px">TOTAL AMOUNT DUE THIS PERIOD</td>
           <td style="padding:12px 12px;color:#fff;font-weight:800;font-size:16px;text-align:right">${fmt(totalDue)}</td>
           <td style="padding:12px 12px;color:rgba(255,255,255,0.7);font-size:13px;text-align:right">${fmt(totalRet)}</td>
@@ -3516,10 +3565,10 @@ setInterval(async () => {
       </tr>`).join('');
 
     const html = `<div style="font-family:sans-serif;max-width:900px;margin:0 auto;padding:24px">
-      <h2 style="color:#185FA5">Weekly Feedback Digest — Construction AI Billing</h2>
+      <h2 style="color:#10b981">Weekly Feedback Digest — Construction AI Billing</h2>
       <p style="color:#555">${r.rows.length} new feedback item${r.rows.length!==1?'s':''} from your users this week.</p>
       <table style="border-collapse:collapse;width:100%;font-size:13px;margin-top:16px">
-        <thead><tr style="background:#185FA5;color:#fff">
+        <thead><tr style="background:#10b981;color:#fff">
           <th style="padding:8px;border:1px solid #ddd;text-align:left">Time</th>
           <th style="padding:8px;border:1px solid #ddd;text-align:left">User</th>
           <th style="padding:8px;border:1px solid #ddd;text-align:left">Category</th>
@@ -3529,7 +3578,7 @@ setInterval(async () => {
         <tbody>${items}</tbody>
       </table>
       <p style="color:#888;font-size:11px;margin-top:20px">
-        View all feedback live at <a href="https://constructinv.varshyl.com" style="color:#185FA5">constructinv.varshyl.com</a> → Admin → Feedback inbox.<br>
+        View all feedback live at <a href="https://constructinv.varshyl.com" style="color:#10b981">constructinv.varshyl.com</a> → Admin → Feedback inbox.<br>
         You only receive this email when there are new items. No activity = no email.
       </p>
     </div>`;
@@ -3632,7 +3681,7 @@ function buildReminderEmail({
       ${upcomingInvoices.map(u => `
         <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9">
           <div style="font-size:13px;color:#1e293b">${u.project_name}</div>
-          <div style="font-size:13px;font-weight:600;color:#0C3B6B">${fmt(u.amount_due)} — ${fmtDate(u.due_date)}</div>
+          <div style="font-size:13px;font-weight:600;color:#064e3b">${fmt(u.amount_due)} — ${fmtDate(u.due_date)}</div>
         </div>`).join('')}
     </div>` : '';
 
@@ -3647,7 +3696,7 @@ function buildReminderEmail({
   </div>
 
   <!-- Header -->
-  <div style="background:#0C3B6B;padding:20px 32px;display:flex;align-items:center;justify-content:space-between">
+  <div style="background:#064e3b;padding:20px 32px;display:flex;align-items:center;justify-content:space-between">
     <div>
       <div style="color:#fff;font-size:16px;font-weight:700">${contractorName || 'Construction AI Billing'}</div>
       <div style="color:rgba(255,255,255,0.65);font-size:12px">Pay Application Notice</div>
@@ -3705,7 +3754,7 @@ function buildReminderEmail({
 
   <!-- Footer -->
   <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:16px 32px;text-align:center">
-    <div style="font-size:12px;color:#64748b">Questions? Reply to this email or contact <a href="mailto:${contractorEmail||''}" style="color:#185FA5">${contractorEmail||contractorName||'the billing team'}</a></div>
+    <div style="font-size:12px;color:#64748b">Questions? Reply to this email or contact <a href="mailto:${contractorEmail||''}" style="color:#10b981">${contractorEmail||contractorName||'the billing team'}</a></div>
     <div style="font-size:10px;color:#94a3b8;margin-top:6px">
       Sent by Construction AI Billing on behalf of ${contractorName||'your contractor'} ·
       <a href="${process.env.APP_URL||'https://constructinv.varshyl.com'}/settings" style="color:#94a3b8">Manage reminders</a>

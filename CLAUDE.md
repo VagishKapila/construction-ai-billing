@@ -153,6 +153,27 @@ node qa_test.js   # must be 57/57 passes
 
 ---
 
+## Integrated Skills (always available)
+
+The `.claude/skills/` directory contains permanently installed skills that enhance Claude's capabilities:
+
+### UI/UX
+- **ui-ux-pro-max** — Design intelligence: 57 UI styles, 95 color palettes, 56 font pairings, 24 chart types, 98 UX guidelines. Search with: `python3 .claude/skills/ui-ux-pro-max/scripts/search.py "<query>" --domain <domain>`
+
+### Engineering (from Everything Claude Code)
+- **ecc-frontend-patterns** — Frontend architecture, component patterns, state management
+- **ecc-backend-patterns** — Express.js, middleware, error handling, API patterns
+- **ecc-api-design** — RESTful API design, versioning, error responses
+- **ecc-coding-standards** — Code quality, naming, formatting, documentation
+- **ecc-security-review** — Security audit checklist, vulnerability scanning
+- **ecc-design-system** — Design tokens, component library patterns
+- **ecc-postgres-patterns** — PostgreSQL queries, indexing, migrations
+- **ecc-tdd-workflow** — Test-driven development workflow
+
+**Usage:** Claude reads the relevant SKILL.md files before making changes. No manual activation needed.
+
+---
+
 ## Other Project Warning
 
 The user also has a **Sleep Eyes** project in a **separate Cowork tab**.
