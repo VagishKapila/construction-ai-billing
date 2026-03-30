@@ -2581,6 +2581,18 @@ app.post('/api/settings', auth, async (req,res) => {
   res.json(r.rows[0]);
 });
 
+// Save nudge preferences (separate endpoint to avoid overwriting all settings)
+app.post('/api/settings/nudges', auth, async (req, res) => {
+  const { nudge_30day, nudge_60day, nudge_5payapps, nudge_dismiss_days } = req.body;
+  try {
+    await pool.query(
+      `UPDATE company_settings SET nudge_30day=$1, nudge_60day=$2, nudge_5payapps=$3, nudge_dismiss_days=$4 WHERE user_id=$5`,
+      [nudge_30day !== false, nudge_60day !== false, nudge_5payapps !== false, parseInt(nudge_dismiss_days) || 7, req.user.id]
+    );
+    res.json({ ok: true });
+  } catch(e) { console.error('[Nudge Settings]', e.message); res.status(500).json({ error: 'Failed to save' }); }
+});
+
 app.post('/api/settings/logo', auth, upload.single('file'), async (req,res) => {
   if(!req.file) return res.status(400).json({error:'No file'});
   if (rejectFile(req, res, MIME_IMAGE, 'logo')) return;
@@ -3119,18 +3131,43 @@ KEY FEATURES & HOW-TO:
    - Default payment terms and retainage %
    - Set up automated email reminders (7 days before, day-of, 7 days overdue)
 
-9. REVENUE / REPORTS:
+9. REVENUE:
    - Click "Revenue" in the sidebar
    - See total billed, retention held, and net received across all projects
    - Filter by month, quarter, or year
+   - Export to CSV, QuickBooks IIF, or Sage format
 
-10. SOV UPLOAD TIPS:
+10. REPORTS (NEW):
+    - Click "Reports" in the sidebar
+    - Filter by project, date range, and status (draft/submitted/paid)
+    - See monthly billing trend chart (contract billing + other invoices side by side)
+    - Two tables: pay apps and other invoices, both filterable
+    - Export pay apps or other invoices to CSV
+    - Each project also has a mini billing summary at the bottom of the Pay Apps tab
+
+11. OTHER INVOICES (NEW — non-contract):
+    - Inside any project, scroll to "Other invoices" section below pay apps
+    - Click "+ New invoice" to create permits, materials, equipment, labor, inspection, insurance, bond, or other invoices
+    - These are NOT part of the G702/G703 contract total — tracked separately
+    - Attach receipts or documents to each invoice
+    - Download each invoice as a professional PDF
+    - Vendor auto-fills from your company settings
+    - Due date auto-fills to 30 days from today
+
+12. PAYMENTS (Stripe Connect):
+    - Go to Settings → Accept Payments via Stripe
+    - Connect your Stripe account to accept ACH bank transfers (recommended) from property owners
+    - Credit card is off by default — enable it in Settings if you want (higher dispute risk)
+    - When you send a pay app email, it includes a "Pay Now" link
+    - The property owner clicks the link and pays via ACH directly — funds go to your bank
+
+13. SOV UPLOAD TIPS:
     - The parser auto-detects amount and description columns
     - "By Others" line items are treated as $0 (correct behavior)
     - Grand Total rows are automatically excluded
     - No template required — works with messy contractor spreadsheets
 
-11. TEAM MEMBERS:
+14. TEAM MEMBERS:
     - Settings > Team members > Invite by email
     - Roles: Field (content only), Project Manager, Accountant, Executive, Admin
 
@@ -4267,6 +4304,158 @@ app.get('/api/revenue/summary', auth, async (req, res) => {
     console.error('[Revenue] ERROR:', e.message, '\n', e.stack);
     res.status(500).json({ error: 'Internal server error', detail: e.message });
   }
+});
+
+// ── MODULE 5: REPORTS API ──────────────────────────────────────────────────
+
+// Reports: filtered pay apps with computed amounts
+app.get('/api/reports/pay-apps', auth, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const { project_id, status, date_from, date_to, sort_by, sort_dir } = req.query;
+    let where = 'p.user_id=$1 AND pa.deleted_at IS NULL';
+    const params = [uid];
+    let pIdx = 2;
+    if (project_id) { where += ` AND pa.project_id=$${pIdx++}`; params.push(project_id); }
+    if (status) {
+      if (status === 'paid') { where += ' AND pa.payment_received=TRUE'; }
+      else if (status === 'submitted') { where += " AND pa.status='submitted' AND (pa.payment_received IS NULL OR pa.payment_received=FALSE)"; }
+      else if (status === 'draft') { where += " AND pa.status!='submitted'"; }
+    }
+    if (date_from) { where += ` AND COALESCE(pa.period_end, pa.created_at::date) >= $${pIdx++}`; params.push(date_from); }
+    if (date_to) { where += ` AND COALESCE(pa.period_end, pa.created_at::date) <= $${pIdx++}`; params.push(date_to); }
+
+    const allowedSort = { date: 'COALESCE(pa.period_end, pa.created_at::date)', project: 'p.name', amount: 'gross_this', app_number: 'pa.app_number' };
+    const orderCol = allowedSort[sort_by] || 'COALESCE(pa.period_end, pa.created_at::date)';
+    const orderDir = sort_dir === 'asc' ? 'ASC' : 'DESC';
+
+    const r = await pool.query(`
+      SELECT pa.id, pa.project_id, pa.app_number, pa.period_label, pa.period_start, pa.period_end,
+             pa.status, pa.payment_received, pa.payment_status, pa.submitted_at, pa.created_at,
+             p.name AS project_name, p.number AS project_number, p.job_number, p.address,
+             p.original_contract, p.owner AS project_owner,
+             COALESCE((SELECT SUM(sl.scheduled_value * pal.this_pct / 100)
+               FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id WHERE pal.pay_app_id=pa.id), 0) AS gross_this,
+             COALESCE((SELECT SUM(sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100)
+               FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id WHERE pal.pay_app_id=pa.id), 0) AS retention_held,
+             COALESCE((SELECT SUM(
+               sl.scheduled_value * pal.this_pct / 100
+               - sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100
+               + sl.scheduled_value * pal.prev_pct / 100 * pal.retainage_pct / 100)
+               FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id WHERE pal.pay_app_id=pa.id), 0) AS amount_due
+      FROM pay_apps pa JOIN projects p ON p.id=pa.project_id
+      WHERE ${where}
+      ORDER BY ${orderCol} ${orderDir}
+    `, params);
+
+    // Summary KPIs
+    const submitted = r.rows.filter(r => r.status === 'submitted' || r.payment_received);
+    const totalBilled = submitted.reduce((s, r) => s + parseFloat(r.gross_this || 0), 0);
+    const totalOutstanding = submitted.filter(r => !r.payment_received).reduce((s, r) => s + parseFloat(r.amount_due || 0), 0);
+    const totalPaid = submitted.filter(r => r.payment_received).reduce((s, r) => s + parseFloat(r.amount_due || 0), 0);
+    const totalRetention = submitted.reduce((s, r) => s + parseFloat(r.retention_held || 0), 0);
+
+    // Monthly chart data (from filtered results)
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const chart = months.map((label, i) => ({
+      label,
+      billed: submitted.filter(r => {
+        const d = new Date(r.period_end || r.created_at);
+        return d.getMonth() === i;
+      }).reduce((s, r) => s + parseFloat(r.amount_due || 0), 0)
+    }));
+
+    res.json({ rows: r.rows, summary: { totalBilled, totalOutstanding, totalPaid, totalRetention, count: r.rows.length }, chart });
+  } catch(e) { console.error('[Reports pay-apps]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// Reports: filtered other invoices
+app.get('/api/reports/other-invoices', auth, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const { project_id, category, status, date_from, date_to, sort_by, sort_dir } = req.query;
+    let where = 'oi.user_id=$1 AND oi.deleted_at IS NULL';
+    const params = [uid];
+    let pIdx = 2;
+    if (project_id) { where += ` AND oi.project_id=$${pIdx++}`; params.push(project_id); }
+    if (category) { where += ` AND oi.category=$${pIdx++}`; params.push(category); }
+    if (status) { where += ` AND oi.status=$${pIdx++}`; params.push(status); }
+    if (date_from) { where += ` AND oi.invoice_date >= $${pIdx++}`; params.push(date_from); }
+    if (date_to) { where += ` AND oi.invoice_date <= $${pIdx++}`; params.push(date_to); }
+
+    const allowedSort = { date: 'oi.invoice_date', project: 'p.name', amount: 'oi.amount', vendor: 'oi.vendor', category: 'oi.category' };
+    const orderCol = allowedSort[sort_by] || 'oi.invoice_date';
+    const orderDir = sort_dir === 'asc' ? 'ASC' : 'DESC';
+
+    const r = await pool.query(`
+      SELECT oi.*, p.name AS project_name, p.number AS project_number, p.job_number, p.address
+      FROM other_invoices oi JOIN projects p ON p.id=oi.project_id
+      WHERE ${where}
+      ORDER BY ${orderCol} ${orderDir}
+    `, params);
+
+    const totalAmount = r.rows.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+    const byCategory = {};
+    r.rows.forEach(inv => {
+      const c = inv.category || 'other';
+      byCategory[c] = (byCategory[c] || 0) + parseFloat(inv.amount || 0);
+    });
+
+    res.json({ rows: r.rows, summary: { totalAmount, count: r.rows.length, byCategory } });
+  } catch(e) { console.error('[Reports other-invoices]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// Reports: CSV export
+app.get('/api/reports/export/csv', auth, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const { type, project_id, date_from, date_to } = req.query;
+    let csvRows = [];
+    if (type === 'other-invoices') {
+      let where = 'oi.user_id=$1 AND oi.deleted_at IS NULL';
+      const params = [uid]; let pIdx = 2;
+      if (project_id) { where += ` AND oi.project_id=$${pIdx++}`; params.push(project_id); }
+      if (date_from) { where += ` AND oi.invoice_date >= $${pIdx++}`; params.push(date_from); }
+      if (date_to) { where += ` AND oi.invoice_date <= $${pIdx++}`; params.push(date_to); }
+      const r = await pool.query(`SELECT oi.*, p.name AS project_name FROM other_invoices oi JOIN projects p ON p.id=oi.project_id WHERE ${where} ORDER BY oi.invoice_date DESC`, params);
+      csvRows.push(['Invoice #','Category','Description','Vendor','Amount','Invoice Date','Due Date','Status','Project','Notes']);
+      r.rows.forEach(inv => {
+        csvRows.push([inv.invoice_number||'',inv.category||'',inv.description||'',inv.vendor||'',inv.amount||0,
+          inv.invoice_date?new Date(inv.invoice_date).toLocaleDateString():'',
+          inv.due_date?new Date(inv.due_date).toLocaleDateString():'',
+          inv.status||'',inv.project_name||'',inv.notes||'']);
+      });
+    } else {
+      // Pay apps export
+      let where = 'p.user_id=$1 AND pa.deleted_at IS NULL';
+      const params = [uid]; let pIdx = 2;
+      if (project_id) { where += ` AND pa.project_id=$${pIdx++}`; params.push(project_id); }
+      if (date_from) { where += ` AND COALESCE(pa.period_end, pa.created_at::date) >= $${pIdx++}`; params.push(date_from); }
+      if (date_to) { where += ` AND COALESCE(pa.period_end, pa.created_at::date) <= $${pIdx++}`; params.push(date_to); }
+      const r = await pool.query(`
+        SELECT pa.app_number, pa.period_label, pa.period_end, pa.status, pa.payment_received,
+               p.name AS project_name, p.job_number,
+               COALESCE((SELECT SUM(sl.scheduled_value * pal.this_pct / 100)
+                 FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id WHERE pal.pay_app_id=pa.id), 0) AS gross_billed,
+               COALESCE((SELECT SUM(sl.scheduled_value * pal.this_pct / 100
+                 - sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100
+                 + sl.scheduled_value * pal.prev_pct / 100 * pal.retainage_pct / 100)
+                 FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id WHERE pal.pay_app_id=pa.id), 0) AS net_due
+        FROM pay_apps pa JOIN projects p ON p.id=pa.project_id
+        WHERE ${where} ORDER BY COALESCE(pa.period_end, pa.created_at::date) DESC
+      `, params);
+      csvRows.push(['App #','Period','Period End','Status','Payment Received','Project','Job #','Gross Billed','Net Due']);
+      r.rows.forEach(pa => {
+        csvRows.push([pa.app_number, pa.period_label||'', pa.period_end?new Date(pa.period_end).toLocaleDateString():'',
+          pa.status||'', pa.payment_received?'Yes':'No', pa.project_name||'', pa.job_number||'',
+          parseFloat(pa.gross_billed||0).toFixed(2), parseFloat(pa.net_due||0).toFixed(2)]);
+      });
+    }
+    const csv = csvRows.map(row => row.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="report_${type||'pay-apps'}_${new Date().toISOString().slice(0,10)}.csv"`);
+    res.send(csv);
+  } catch(e) { console.error('[Reports CSV]', e.message); res.status(500).json({ error: 'Export failed' }); }
 });
 
 // ── PAYMENT RECEIVED TOGGLE ────────────────────────────────────────────────

@@ -1079,6 +1079,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
       <div class="ni" id="nav-new-proj" onclick="showNewProject()" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')showNewProject()">+ New project</div>
       <div class="ni" id="nav-revenue" onclick="showRevenue()" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')showRevenue()">📊 Revenue</div>
       <div class="ni" id="nav-payments" onclick="showPayments()" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')showPayments()">💳 Payments</div>
+      <div class="ni" id="nav-reports" onclick="showReports()" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')showReports()">📋 Reports</div>
       <div class="ni hidden" id="nav-admin" onclick="showAdmin()" role="button" tabindex="0" style="color:var(--amber)" onkeydown="if(event.key==='Enter'||event.key===' ')showAdmin()">⚡ Admin</div>
       <div id="sidebar-projects" role="list"></div>
     </nav>
@@ -1202,6 +1203,34 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
           </div>
         </div>
         <div id="settings-upgrade-card"></div>
+        <div class="card">
+          <div class="ct">Upgrade nudges</div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:12px">Control when you see upgrade reminders during your trial. These are gentle prompts, never aggressive.</p>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="set-nudge-30" onchange="saveNudgeSettings()"/>
+              <span>After 30 days — "Enjoying ConstructInvoice AI?"</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="set-nudge-60" onchange="saveNudgeSettings()"/>
+              <span>After 60 days — "Your trial ends in 30 days"</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="set-nudge-5pa" onchange="saveNudgeSettings()"/>
+              <span>After 5th pay app — "You've been productive!"</span>
+            </label>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+              <span style="font-size:12px;color:var(--text2)">Snooze duration when dismissed:</span>
+              <select id="set-nudge-snooze" onchange="saveNudgeSettings()" style="font-size:12px;padding:4px 8px;border:1px solid var(--border2);border-radius:var(--radius)">
+                <option value="3">3 days</option>
+                <option value="7">7 days</option>
+                <option value="14">14 days</option>
+                <option value="30">30 days</option>
+              </select>
+            </div>
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-top:8px">Note: Trial expiry warnings (last 7 days / expired) always show regardless of these settings.</div>
+        </div>
         <div class="card">
           <div class="ct">Help &amp; guided tour</div>
           <p style="font-size:12px;color:var(--text2);margin-bottom:12px">New to ConstructInvoice AI? Take a quick guided tour to learn the key features.</p>
@@ -1694,6 +1723,84 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
         <div class="br"><button class="btn" onclick="showDash()">← Back to dashboard</button></div>
       </div>
 
+      <!-- MODULE 5: REPORTS PAGE -->
+      <div class="pg" id="pg-reports">
+        <div class="ptitle">📋 Reports</div>
+        <div class="psub">Filter, sort, and export all your billing data across projects</div>
+
+        <!-- Filters row -->
+        <div class="card" style="margin-bottom:16px">
+          <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+            <div class="field" style="flex:1;min-width:140px">
+              <label style="font-size:11px;color:var(--text2)">Project</label>
+              <select id="rpt-project" onchange="loadReports()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border2);border-radius:var(--radius);width:100%">
+                <option value="">All projects</option>
+              </select>
+            </div>
+            <div class="field" style="flex:0 0 120px">
+              <label style="font-size:11px;color:var(--text2)">From</label>
+              <input type="date" id="rpt-from" onchange="loadReports()" style="font-size:13px;padding:6px 8px;border:1px solid var(--border2);border-radius:var(--radius);width:100%"/>
+            </div>
+            <div class="field" style="flex:0 0 120px">
+              <label style="font-size:11px;color:var(--text2)">To</label>
+              <input type="date" id="rpt-to" onchange="loadReports()" style="font-size:13px;padding:6px 8px;border:1px solid var(--border2);border-radius:var(--radius);width:100%"/>
+            </div>
+            <div class="field" style="flex:0 0 110px">
+              <label style="font-size:11px;color:var(--text2)">Status</label>
+              <select id="rpt-status" onchange="loadReports()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border2);border-radius:var(--radius);width:100%">
+                <option value="">All</option>
+                <option value="draft">Draft</option>
+                <option value="submitted">Submitted</option>
+                <option value="paid">Paid</option>
+              </select>
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:2px">
+              <button class="btn btn-sm" onclick="exportReportCSV('pay-apps')" title="Export pay apps CSV">📥 Pay Apps CSV</button>
+              <button class="btn btn-sm" onclick="exportReportCSV('other-invoices')" title="Export other invoices CSV">📥 Other CSV</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Summary KPIs -->
+        <div class="mg" style="margin-bottom:16px">
+          <div class="mc"><div class="ml">TOTAL BILLED</div><div class="mv blue" id="rpt-total-billed">$0</div></div>
+          <div class="mc"><div class="ml">OUTSTANDING</div><div class="mv amber" id="rpt-outstanding">$0</div></div>
+          <div class="mc"><div class="ml">PAID</div><div class="mv" style="color:#059669" id="rpt-paid">$0</div></div>
+          <div class="mc"><div class="ml">RETAINAGE</div><div class="mv" id="rpt-retention">$0</div></div>
+          <div class="mc"><div class="ml">OTHER INV</div><div class="mv" id="rpt-other-total">$0</div></div>
+        </div>
+
+        <!-- Billing trend chart -->
+        <div class="card" style="margin-bottom:16px">
+          <div class="ct" style="margin-bottom:8px">Monthly billing trend</div>
+          <canvas id="rpt-chart" height="180"></canvas>
+        </div>
+
+        <!-- Pay Apps table -->
+        <div class="card" style="margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div class="ct" style="margin:0">Pay applications</div>
+            <span id="rpt-pa-count" style="font-size:11px;color:var(--text2)"></span>
+          </div>
+          <div id="rpt-pa-table" style="overflow-x:auto">
+            <div style="padding:20px;text-align:center;color:var(--text3)">Loading...</div>
+          </div>
+        </div>
+
+        <!-- Other Invoices table -->
+        <div class="card" style="margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div class="ct" style="margin:0">Other invoices (non-contract)</div>
+            <span id="rpt-oi-count" style="font-size:11px;color:var(--text2)"></span>
+          </div>
+          <div id="rpt-oi-table" style="overflow-x:auto">
+            <div style="padding:20px;text-align:center;color:var(--text3)">Loading...</div>
+          </div>
+        </div>
+
+        <div class="br"><button class="btn" onclick="showDash()">← Back to dashboard</button></div>
+      </div>
+
       <!-- ADMIN DASHBOARD -->
       <div class="pg" id="pg-admin">
         <div class="ptitle">⚡ Admin Dashboard</div>
@@ -1842,6 +1949,14 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               <button class="btn btn-primary btn-sm" onclick="openOtherInvoiceModal()">+ New invoice</button>
             </div>
             <div id="other-invoices-list"><div style="color:var(--text3);font-size:12px;text-align:center;padding:16px">No other invoices yet</div></div>
+          </div>
+          <!-- Per-project mini-report -->
+          <div class="card" id="proj-mini-report" style="display:none">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <div class="ct" style="margin:0">Project billing summary</div>
+              <button class="btn btn-sm" onclick="showReports();document.getElementById('rpt-project').value=currentProjectId;loadReports()">View full report →</button>
+            </div>
+            <div id="proj-report-body" style="font-size:12px"></div>
           </div>
         </div>
         <!-- Contract & Docs tab -->
@@ -2713,11 +2828,11 @@ function showPage(id){
   document.getElementById('pg-'+id).classList.add('on');
   // ADA: update aria-current on sidebar nav items
   document.querySelectorAll('.ni[aria-current]').forEach(n=>n.removeAttribute('aria-current'));
-  const navMap={dash:'nav-dash',revenue:'nav-revenue',payments:'nav-payments',settings:null,project:null};
+  const navMap={dash:'nav-dash',revenue:'nav-revenue',payments:'nav-payments',reports:'nav-reports',settings:null,project:null};
   if(navMap[id]) { const el=document.getElementById(navMap[id]); if(el) el.setAttribute('aria-current','page'); }
   // Hash-based routing: push a history entry so back button navigates within the SPA
   if(!window._spaRestoring) {
-    const hashable=['dash','revenue','payments','settings'];
+    const hashable=['dash','revenue','payments','reports','settings'];
     if(hashable.includes(id)) history.pushState({spaPage:id},'','#'+id);
   }
 }
@@ -2725,6 +2840,7 @@ function showPage(id){
 function _navigateToPage(page){
   if(page==='revenue') showRevenue();
   else if(page==='payments') showPayments();
+  else if(page==='reports') showReports();
   else if(page==='settings') showSettings();
   else showDash();
 }
@@ -3146,6 +3262,7 @@ async function loadProject(id, opts={}){
     loadContractIntel(id).catch(()=>{});
     loadLienDocs(id).catch(()=>{});
     loadOtherInvoices(id).catch(()=>{});
+    loadProjectMiniReport(id).catch(()=>{});
     loadTrashDrawer(id).catch(()=>{});
   }catch(e){console.error(e);}
 }
@@ -4356,6 +4473,15 @@ async function loadSettings() {
     // Credit card setting
     const ccEl = document.getElementById('settings-cc-enabled');
     if (ccEl) ccEl.checked = companySettings.credit_card_enabled === true;
+    // Nudge settings
+    const n30 = document.getElementById('set-nudge-30');
+    const n60 = document.getElementById('set-nudge-60');
+    const n5pa = document.getElementById('set-nudge-5pa');
+    const nSnooze = document.getElementById('set-nudge-snooze');
+    if (n30) n30.checked = companySettings.nudge_30day !== false;
+    if (n60) n60.checked = companySettings.nudge_60day !== false;
+    if (n5pa) n5pa.checked = companySettings.nudge_5payapps !== false;
+    if (nSnooze) nSnooze.value = companySettings.nudge_dismiss_days || 7;
   } catch(e) { console.log('No settings yet'); }
 }
 
@@ -5802,6 +5928,45 @@ async function deleteOtherInvoice(id, desc) {
   } catch(e) { alert('Failed to delete: ' + e.message); }
 }
 
+async function loadProjectMiniReport(projectId) {
+  const card = document.getElementById('proj-mini-report');
+  const body = document.getElementById('proj-report-body');
+  if (!card || !body) return;
+  try {
+    const [paData, oiData] = await Promise.all([
+      api('GET', '/reports/pay-apps?project_id=' + projectId),
+      api('GET', '/reports/other-invoices?project_id=' + projectId)
+    ]);
+    const pa = paData.summary;
+    const oi = oiData.summary;
+    if (pa.count === 0 && oi.count === 0) { card.style.display = 'none'; return; }
+    card.style.display = '';
+    // Build category breakdown for other invoices
+    let catHtml = '';
+    if (oi.byCategory && Object.keys(oi.byCategory).length > 0) {
+      const catLabels = { permit: 'Permits', materials: 'Materials', equipment: 'Equipment', labor: 'Labor', inspection: 'Inspections', insurance: 'Insurance', bond: 'Bonds', other: 'Other' };
+      catHtml = Object.entries(oi.byCategory).map(([c, amt]) =>
+        `<span style="display:inline-block;margin-right:12px">${catLabels[c] || c}: <strong>${fmt(amt)}</strong></span>`
+      ).join('');
+    }
+    body.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div style="padding:12px;background:var(--bg3);border-radius:var(--radius)">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Contract billing</div>
+          <div style="font-size:16px;font-weight:700;color:var(--primary)">${fmt(pa.totalBilled)}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:4px">${pa.count} pay app${pa.count !== 1 ? 's' : ''} · ${fmt(pa.totalPaid)} paid · ${fmt(pa.totalOutstanding)} outstanding</div>
+        </div>
+        <div style="padding:12px;background:var(--bg3);border-radius:var(--radius)">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Other invoices (non-contract)</div>
+          <div style="font-size:16px;font-weight:700;color:#d97706">${fmt(oi.totalAmount)}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:4px">${oi.count} invoice${oi.count !== 1 ? 's' : ''}${catHtml ? ' · ' + catHtml : ''}</div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text2)">Retainage held: ${fmt(pa.totalRetention)}</div>
+    `;
+  } catch(e) { card.style.display = 'none'; }
+}
+
 function downloadOtherInvPDF(id) {
   const token = localStorage.getItem('caib_token');
   window.open('/api/other-invoices/' + id + '/pdf?token=' + token, '_blank');
@@ -5959,14 +6124,15 @@ async function removeTeamMember(id) {
 
 // ── PRO UPGRADE NUDGES (Module 6) ───────────────────────────────────────────
 const NUDGE_DISMISS_KEY = 'caib_nudge_dismissed';
-const NUDGE_DISMISS_DAYS = 7;
+const NUDGE_DISMISS_DAYS = 7; // default — user can customize in Settings
 
 function getNudgeDismissed() {
   try {
     const raw = localStorage.getItem(NUDGE_DISMISS_KEY);
     if (!raw) return false;
     const ts = parseInt(raw);
-    if (Date.now() - ts < NUDGE_DISMISS_DAYS * 86400000) return true;
+    const dismissDays = (companySettings && companySettings.nudge_dismiss_days) || 7;
+    if (Date.now() - ts < dismissDays * 86400000) return true;
     localStorage.removeItem(NUDGE_DISMISS_KEY);
     return false;
   } catch(_) { return false; }
@@ -5994,7 +6160,14 @@ function checkAndShowNudge(payAppCount) {
 
   let icon = '', title = '', msg = '';
 
+  // User nudge preferences (defaults all on)
+  const ns = companySettings || {};
+  const show30 = ns.nudge_30day !== false;
+  const show60 = ns.nudge_60day !== false;
+  const show5pa = ns.nudge_5payapps !== false;
+
   // Priority: trial expiring soon > 5th pay app > 60 days > 30 days
+  // Trial expiry warnings always show regardless of settings
   if (daysLeft <= 7 && daysLeft > 0) {
     icon = '⏰';
     title = `Your trial ends in ${daysLeft} day${daysLeft===1?'':'s'}`;
@@ -6003,15 +6176,15 @@ function checkAndShowNudge(payAppCount) {
     icon = '🔒';
     title = 'Your trial has ended';
     msg = 'Upgrade to Pro ($40/month) to continue billing. Can\'t afford it? Email vaakapila@gmail.com — we\'ll work something out.';
-  } else if (payAppCount >= 5 && daysSinceStart >= 7) {
+  } else if (show5pa && payAppCount >= 5 && daysSinceStart >= 7) {
     icon = '🎉';
     title = `You've created ${payAppCount} pay applications!`;
     msg = 'Pro users get advanced reporting, priority AI support, and help keep this free for contractors who need it.';
-  } else if (daysSinceStart >= 60) {
+  } else if (show60 && daysSinceStart >= 60) {
     icon = '💪';
     title = 'Your trial ends in ' + daysLeft + ' days';
     msg = 'Want to lock in Pro now? $40/month — cancel anytime. Your support helps other contractors use this for free.';
-  } else if (daysSinceStart >= 30) {
+  } else if (show30 && daysSinceStart >= 30) {
     icon = '👋';
     title = 'Enjoying ConstructInvoice AI?';
     msg = 'Going Pro helps us keep this free for contractors who need it most, and helps us cover hosting costs.';
@@ -6032,6 +6205,168 @@ function checkAndShowNudge(payAppCount) {
         <button class="nudge-btn-later" onclick="dismissNudge()">Not now</button>
       </div>
     </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MODULE 5: REPORTS
+// ═══════════════════════════════════════════════════════════════════
+let rptChart = null;
+
+function showReports() {
+  closeSidebar(); showPage('reports');
+  // Populate project filter
+  const sel = document.getElementById('rpt-project');
+  if (sel && projects && sel.options.length <= 1) {
+    projects.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id; opt.textContent = p.name + (p.job_number ? ' (' + p.job_number + ')' : '');
+      sel.appendChild(opt);
+    });
+  }
+  loadReports();
+}
+
+async function loadReports() {
+  const projectId = document.getElementById('rpt-project').value;
+  const dateFrom = document.getElementById('rpt-from').value;
+  const dateTo = document.getElementById('rpt-to').value;
+  const status = document.getElementById('rpt-status').value;
+  const qs = new URLSearchParams();
+  if (projectId) qs.set('project_id', projectId);
+  if (dateFrom) qs.set('date_from', dateFrom);
+  if (dateTo) qs.set('date_to', dateTo);
+  if (status) qs.set('status', status);
+
+  try {
+    const [paData, oiData] = await Promise.all([
+      api('GET', '/reports/pay-apps?' + qs.toString()),
+      api('GET', '/reports/other-invoices?' + qs.toString())
+    ]);
+
+    // KPIs
+    document.getElementById('rpt-total-billed').textContent = fmt(paData.summary.totalBilled);
+    document.getElementById('rpt-outstanding').textContent = fmt(paData.summary.totalOutstanding);
+    document.getElementById('rpt-paid').textContent = fmt(paData.summary.totalPaid);
+    document.getElementById('rpt-retention').textContent = fmt(paData.summary.totalRetention);
+    document.getElementById('rpt-other-total').textContent = fmt(oiData.summary.totalAmount);
+    document.getElementById('rpt-pa-count').textContent = paData.summary.count + ' pay app' + (paData.summary.count !== 1 ? 's' : '');
+    document.getElementById('rpt-oi-count').textContent = oiData.summary.count + ' invoice' + (oiData.summary.count !== 1 ? 's' : '');
+
+    // Chart
+    renderReportChart(paData.chart, oiData);
+
+    // Pay apps table
+    renderReportPATable(paData.rows);
+
+    // Other invoices table
+    renderReportOITable(oiData.rows);
+  } catch(e) {
+    console.error('Reports:', e);
+  }
+}
+
+function renderReportChart(chartData, oiData) {
+  const ctx = document.getElementById('rpt-chart');
+  if (!ctx) return;
+  if (rptChart) rptChart.destroy();
+  // Other invoices by month
+  const oiByMonth = new Array(12).fill(0);
+  (oiData.rows || []).forEach(inv => {
+    if (inv.invoice_date) { const m = new Date(inv.invoice_date).getMonth(); oiByMonth[m] += parseFloat(inv.amount || 0); }
+  });
+  rptChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: chartData.map(c => c.label),
+      datasets: [
+        { label: 'Contract billing', data: chartData.map(c => c.billed), backgroundColor: 'rgba(37,99,235,0.7)', borderRadius: 4 },
+        { label: 'Other invoices', data: oiByMonth, backgroundColor: 'rgba(245,158,11,0.6)', borderRadius: 4 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'top', labels: { font: { size: 11 } } } },
+      scales: {
+        y: { beginAtZero: true, ticks: { callback: v => '$' + (v >= 1000 ? (v/1000).toFixed(0) + 'k' : v) } },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+}
+
+function renderReportPATable(rows) {
+  const el = document.getElementById('rpt-pa-table');
+  if (!rows.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:13px">No pay apps match your filters</div>'; return; }
+  let html = `<table class="report-table" style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="background:var(--bg3);border-bottom:1px solid var(--border2)">
+      <th style="padding:8px 10px;text-align:left">Project</th>
+      <th style="padding:8px 6px;text-align:center">PA #</th>
+      <th style="padding:8px 6px;text-align:left">Period</th>
+      <th style="padding:8px 6px;text-align:right">Gross billed</th>
+      <th style="padding:8px 6px;text-align:right">Net due</th>
+      <th style="padding:8px 6px;text-align:right">Retainage</th>
+      <th style="padding:8px 6px;text-align:center">Status</th>
+    </tr></thead><tbody>`;
+  rows.forEach(pa => {
+    const statusLabel = pa.payment_received ? '<span class="badge badge-green" style="font-size:10px">paid</span>'
+      : pa.status === 'submitted' ? '<span class="badge" style="font-size:10px;background:#dbeafe;color:#1d4ed8">submitted</span>'
+      : '<span class="badge badge-amber" style="font-size:10px">draft</span>';
+    const periodEnd = pa.period_end ? new Date(pa.period_end).toLocaleDateString() : '';
+    html += `<tr style="border-bottom:1px solid var(--bg3);cursor:pointer" onclick="loadProject(${pa.project_id})">
+      <td style="padding:8px 10px"><strong>${pa.project_name}</strong>${pa.job_number ? '<br/><span style="font-size:10px;color:var(--text3)">' + pa.job_number + '</span>' : ''}</td>
+      <td style="padding:8px 6px;text-align:center">${pa.app_number}</td>
+      <td style="padding:8px 6px">${pa.period_label || periodEnd}</td>
+      <td style="padding:8px 6px;text-align:right;font-weight:600">${fmt(pa.gross_this)}</td>
+      <td style="padding:8px 6px;text-align:right">${fmt(pa.amount_due)}</td>
+      <td style="padding:8px 6px;text-align:right;color:var(--text2)">${fmt(pa.retention_held)}</td>
+      <td style="padding:8px 6px;text-align:center">${statusLabel}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+function renderReportOITable(rows) {
+  const el = document.getElementById('rpt-oi-table');
+  if (!rows.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:13px">No other invoices match your filters</div>'; return; }
+  const catLabels = { permit: '📋 Permit', materials: '🧱 Materials', equipment: '🏗️ Equipment', labor: '👷 Labor', inspection: '🔍 Inspection', insurance: '🛡️ Insurance', bond: '📄 Bond', other: '📎 Other' };
+  let html = `<table class="report-table" style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="background:var(--bg3);border-bottom:1px solid var(--border2)">
+      <th style="padding:8px 10px;text-align:left">Project</th>
+      <th style="padding:8px 6px;text-align:left">Invoice #</th>
+      <th style="padding:8px 6px;text-align:left">Category</th>
+      <th style="padding:8px 6px;text-align:left">Description</th>
+      <th style="padding:8px 6px;text-align:left">Vendor</th>
+      <th style="padding:8px 6px;text-align:right">Amount</th>
+      <th style="padding:8px 6px;text-align:center">Date</th>
+    </tr></thead><tbody>`;
+  rows.forEach(inv => {
+    const cat = catLabels[inv.category] || '📎 Other';
+    html += `<tr style="border-bottom:1px solid var(--bg3);cursor:pointer" onclick="loadProject(${inv.project_id})">
+      <td style="padding:8px 10px"><strong>${inv.project_name}</strong></td>
+      <td style="padding:8px 6px">${inv.invoice_number || '-'}</td>
+      <td style="padding:8px 6px;font-size:11px">${cat}</td>
+      <td style="padding:8px 6px">${inv.description || ''}</td>
+      <td style="padding:8px 6px;color:var(--text2)">${inv.vendor || ''}</td>
+      <td style="padding:8px 6px;text-align:right;font-weight:600">${fmt(inv.amount)}</td>
+      <td style="padding:8px 6px;text-align:center">${inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString() : ''}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+function exportReportCSV(type) {
+  const token = localStorage.getItem('caib_token');
+  const qs = new URLSearchParams();
+  qs.set('type', type);
+  const projectId = document.getElementById('rpt-project').value;
+  const dateFrom = document.getElementById('rpt-from').value;
+  const dateTo = document.getElementById('rpt-to').value;
+  if (projectId) qs.set('project_id', projectId);
+  if (dateFrom) qs.set('date_from', dateFrom);
+  if (dateTo) qs.set('date_to', dateTo);
+  window.open('/api/reports/export/csv?' + qs.toString() + '&token=' + token, '_blank');
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -6183,6 +6518,24 @@ async function saveCreditCardSetting(enabled) {
     // Revert checkbox
     const el = document.getElementById('settings-cc-enabled');
     if (el) el.checked = !enabled;
+  }
+}
+
+// Save nudge settings
+async function saveNudgeSettings() {
+  try {
+    const nudge_30day = document.getElementById('set-nudge-30').checked;
+    const nudge_60day = document.getElementById('set-nudge-60').checked;
+    const nudge_5payapps = document.getElementById('set-nudge-5pa').checked;
+    const nudge_dismiss_days = parseInt(document.getElementById('set-nudge-snooze').value) || 7;
+    await api('POST', '/settings/nudges', { nudge_30day, nudge_60day, nudge_5payapps, nudge_dismiss_days });
+    companySettings.nudge_30day = nudge_30day;
+    companySettings.nudge_60day = nudge_60day;
+    companySettings.nudge_5payapps = nudge_5payapps;
+    companySettings.nudge_dismiss_days = nudge_dismiss_days;
+    showToast('Nudge settings saved');
+  } catch(e) {
+    showToast('Failed to save nudge settings', true);
   }
 }
 

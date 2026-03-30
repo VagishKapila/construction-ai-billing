@@ -217,6 +217,10 @@ async function initDB() {
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_email VARCHAR(300);
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_phone VARCHAR(50);
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS credit_card_enabled BOOLEAN DEFAULT FALSE;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS nudge_30day BOOLEAN DEFAULT TRUE;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS nudge_60day BOOLEAN DEFAULT TRUE;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS nudge_5payapps BOOLEAN DEFAULT TRUE;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS nudge_dismiss_days INTEGER DEFAULT 7;
 
     -- Contract document upload (optional signed contract attached to project)
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS contract_filename VARCHAR(300);
