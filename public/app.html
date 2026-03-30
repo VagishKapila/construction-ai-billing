@@ -2545,6 +2545,7 @@ function setAuth(data){
   }
   // Check trial/subscription status
   checkTrialStatus();
+  handleSubscriptionReturn();
   showDash();
   ['np-contract','ep-contract','arch-cert-amt'].forEach(id=>setupCommaInput(document.getElementById(id)));
   // Check if onboarding tour should be shown (first-time users)
@@ -2595,9 +2596,51 @@ async function checkTrialStatus(){
 }
 function dismissTrialBanner(){_trialDismissed=true;document.getElementById('trial-banner').classList.add('hidden');}
 function dismissTrialExpired(){_trialExpiredDismissed=true;document.getElementById('trial-expired-overlay').classList.add('hidden');}
-function showUpgradeModal(){
-  // For now, show a message directing to email. When Stripe is integrated, this opens Stripe Checkout.
-  alert('To upgrade to Pro ($40/month), please email vaakapila@gmail.com. We will get you set up! Stripe payment integration coming soon.');
+async function showUpgradeModal(){
+  // Create a Stripe Checkout session and redirect to it
+  try{
+    const btn=event?.target;
+    if(btn){btn.disabled=true;btn.textContent='Redirecting to checkout...';}
+    const res=await api('POST','/subscription/checkout');
+    if(res.checkout_url){
+      window.location.href=res.checkout_url;
+    }else{
+      throw new Error('No checkout URL returned');
+    }
+  }catch(e){
+    console.error('Upgrade checkout error:',e.message);
+    if(e.message.includes('not configured')||e.message.includes('setup first')){
+      alert('Subscription payments are being set up. Please email vaakapila@gmail.com to upgrade, or try again later.');
+    }else{
+      alert('Could not start checkout: '+(e.message||'Unknown error')+'. Please email vaakapila@gmail.com for help.');
+    }
+    if(event?.target){event.target.disabled=false;event.target.textContent='Upgrade to Pro — $40/month';}
+  }
+}
+async function manageSubscription(){
+  try{
+    const res=await api('POST','/subscription/portal');
+    if(res.portal_url) window.location.href=res.portal_url;
+    else alert('Could not open subscription portal. Please email vaakapila@gmail.com.');
+  }catch(e){
+    console.error('Portal error:',e.message);
+    alert('Could not open subscription portal: '+(e.message||'Unknown error'));
+  }
+}
+function handleSubscriptionReturn(){
+  const params=new URLSearchParams(window.location.search);
+  if(params.get('subscription')==='success'){
+    showToast('Welcome to Pro! Your subscription is now active.','success');
+    // Clean URL
+    const url=new URL(window.location);url.searchParams.delete('subscription');url.searchParams.delete('session_id');
+    history.replaceState(null,'',url.pathname+url.hash);
+    // Refresh subscription status
+    setTimeout(()=>checkTrialStatus(),1500);
+  }else if(params.get('subscription')==='cancelled'){
+    showToast('Checkout cancelled. You can upgrade anytime from Settings.','info');
+    const url=new URL(window.location);url.searchParams.delete('subscription');
+    history.replaceState(null,'',url.pathname+url.hash);
+  }
 }
 async function resendVerification(){
   try{
@@ -5699,7 +5742,7 @@ function checkAndShowNudge(payAppCount) {
         <div class="nudge-msg">${msg}</div>
       </div>
       <div class="nudge-actions">
-        <button class="nudge-btn-pro" onclick="window.open('/app.html#settings','_self')">Upgrade to Pro</button>
+        <button class="nudge-btn-pro" onclick="showUpgradeModal()">Upgrade to Pro</button>
         <button class="nudge-btn-later" onclick="dismissNudge()">Not now</button>
       </div>
     </div>`;
@@ -5861,12 +5904,12 @@ function renderSettingsUpgradeCard() {
   if (!container || !currentUser) return;
   const status = currentUser.subscription_status || 'trial';
   if (['active','free_override'].includes(status)) {
-    container.innerHTML = `<div class="card" style="border:2px solid #059669">
+    container.innerHTML = `<div class="card" style="border:1px solid #059669">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-        <span style="font-size:20px">✅</span>
         <div class="ct" style="margin:0;color:#059669">Pro Plan Active</div>
       </div>
-      <p style="font-size:12px;color:var(--text2)">Thank you for supporting ConstructInvoice AI! Your Pro plan is active.</p>
+      <p style="font-size:12px;color:var(--text2);margin-bottom:12px">Thank you for supporting ConstructInvoice AI! Your Pro plan is active.</p>
+      ${status==='active'?'<button class="btn btn-sm" onclick="manageSubscription()" style="font-size:12px">Manage Subscription</button>':''}
     </div>`;
     return;
   }
@@ -5892,7 +5935,7 @@ function renderSettingsUpgradeCard() {
           </ul>
         </div>
       </div>
-      <button class="nudge-btn-pro" style="width:100%;padding:12px;font-size:14px">Upgrade to Pro — $40/month</button>
+      <button class="nudge-btn-pro" onclick="showUpgradeModal()" style="width:100%;padding:12px;font-size:14px">Upgrade to Pro — $40/month</button>
       <p style="font-size:11px;color:#64748b;text-align:center;margin-top:8px">Can't afford it? Email vaakapila@gmail.com — we'll work something out.</p>
     </div>`;
 }
