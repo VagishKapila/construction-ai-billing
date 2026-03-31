@@ -3508,29 +3508,27 @@ app.post('/api/admin/test/complete-onboarding', adminAuth, async (req, res) => {
     const userName = user.rows[0]?.name || 'Test User';
     const companyName = company.rows[0]?.company_name || 'Test Construction Co';
     // Step 1: Update account with required business info
-    await stripe.accounts.update(accountId, {
-      business_profile: {
-        mcc: '1520', // General contractor MCC code
-        url: 'https://example.com',
-        name: companyName,
-      },
-      company: {
-        name: companyName,
-        tax_id: '000000000', // Test EIN
-        address: {
-          line1: '123 Test Street',
-          city: 'San Francisco',
-          state: 'CA',
-          postal_code: '94105',
-          country: 'US',
-        },
-        phone: '5555550100',
-      },
-      tos_acceptance: {
-        date: Math.floor(Date.now() / 1000),
-        ip: '127.0.0.1',
-      },
-    });
+    // Try with URL first, fall back without if Stripe rejects it
+    const bizProfile = {
+      mcc: '1520', // General contractor MCC code
+      product_description: 'General contracting and construction services',
+      name: companyName,
+    };
+    const companyData = {
+      name: companyName,
+      tax_id: '000000000', // Test EIN
+      address: { line1: '123 Test Street', city: 'San Francisco', state: 'CA', postal_code: '94105', country: 'US' },
+      phone: '5555550100',
+    };
+    const tosData = { date: Math.floor(Date.now() / 1000), ip: '127.0.0.1', service_agreement: 'full' };
+    try {
+      bizProfile.url = 'https://www.example-construction.com';
+      await stripe.accounts.update(accountId, { business_profile: bizProfile, company: companyData, tos_acceptance: tosData });
+    } catch(urlErr) {
+      // Some Express account configs reject URL — retry without it
+      delete bizProfile.url;
+      await stripe.accounts.update(accountId, { business_profile: bizProfile, company: companyData, tos_acceptance: tosData });
+    }
     // Step 2: Add a representative/person (required for company accounts)
     const nameParts = userName.split(' ');
     const firstName = nameParts[0] || 'Test';
