@@ -3518,12 +3518,13 @@ app.post('/api/admin/test/complete-onboarding', adminAuth, async (req, res) => {
       }
       await pool.query('DELETE FROM connected_accounts WHERE user_id=$1', [user_id]);
     }
-    // Step 1: Create Custom connected account with ALL required info upfront
+    // Step 1: Create Custom connected account as INDIVIDUAL (simpler requirements than company)
+    // Individual accounts don't need company.phone, and work identically for payment routing
     const account = await stripe.accounts.create({
       type: 'custom',
       country: 'US',
       email: userEmail,
-      business_type: 'company',
+      business_type: 'individual',
       capabilities: {
         card_payments: { requested: true },
         transfers: { requested: true },
@@ -3535,13 +3536,15 @@ app.post('/api/admin/test/complete-onboarding', adminAuth, async (req, res) => {
         product_description: 'General contracting and construction services',
         url: 'https://www.example-construction.com',
       },
-      company: {
-        name: companyName,
-        tax_id: '000000000',
+      individual: {
+        first_name: firstName,
+        last_name: lastName,
+        email: userEmail,
+        phone: '+14155552671',
+        dob: { day: 1, month: 1, year: 1990 },
         address: { line1: '123 Test Street', city: 'San Francisco', state: 'CA', postal_code: '94105', country: 'US' },
-        phone: '+10000000000',
-        owners_provided: true,
-        executives_provided: true,
+        ssn_last_4: '0000',
+        id_number: '000000000', // Test SSN
       },
       tos_acceptance: {
         date: Math.floor(Date.now() / 1000),
@@ -3551,17 +3554,8 @@ app.post('/api/admin/test/complete-onboarding', adminAuth, async (req, res) => {
       metadata: { user_id: String(user_id), platform: 'constructinvoice', test: 'true' },
     });
     const accountId = account.id;
-    // Step 2: Add representative person
-    const person = await stripe.accounts.createPerson(accountId, {
-      first_name: firstName,
-      last_name: lastName,
-      email: userEmail,
-      phone: '+15555550100',
-      dob: { day: 1, month: 1, year: 1990 },
-      address: { line1: '123 Test Street', city: 'San Francisco', state: 'CA', postal_code: '94105', country: 'US' },
-      ssn_last_4: '0000',
-      relationship: { representative: true, executive: true, owner: true, percent_ownership: 100, title: 'Owner' },
-    });
+    // Step 2: No separate person needed — individual account uses the `individual` block
+    const person = { id: 'individual_account' };
     // Step 3: Add test bank account for payouts
     await stripe.accounts.createExternalAccount(accountId, {
       external_account: {
