@@ -3181,6 +3181,380 @@ app.get('/api/admin/stripe/verify-setup', adminAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ══════════════════════════════════════════════════════════════════════════════
+// ── Admin: End-to-End Stripe Test Harness ────────────────────────────────────
+// Creates test GC accounts, projects, pay apps, and verifies money flow.
+// ALL endpoints are admin-only. Used in TEST mode only.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Create a test GC user + Stripe Express connected account + onboarding link
+app.post('/api/admin/test/create-test-gc', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  const isTest = process.env.STRIPE_SECRET_KEY?.startsWith('sk_test');
+  if (!isTest) return res.status(403).json({ error: 'Test endpoints only work in Stripe TEST mode' });
+  try {
+    const { name, email, company_name } = req.body;
+    if (!name || !email) return res.status(400).json({ error: 'name and email required' });
+    // 1. Create user in our DB (or find existing)
+    let userId;
+    const existing = await pool.query('SELECT id FROM users WHERE email=$1', [email]);
+    if (existing.rows[0]) {
+      userId = existing.rows[0].id;
+    } else {
+      const hash = await bcrypt.hash('TestPass123!', 10);
+      const r = await pool.query(
+        `INSERT INTO users(name,email,password_hash,email_verified,trial_start_date,trial_end_date,subscription_status,plan_type)
+         VALUES($1,$2,$3,TRUE,NOW(),NOW()+INTERVAL '90 days','trial','free_trial') RETURNING id`,
+        [name, email, hash]
+      );
+      userId = r.rows[0].id;
+    }
+    // 2. Save company settings
+    if (company_name) {
+      await pool.query(
+        `INSERT INTO company_settings(user_id, company_name) VALUES($1,$2)
+         ON CONFLICT(user_id) DO UPDATE SET company_name=$2`,
+        [userId, company_name]
+      );
+    }
+    // 3. Create Stripe Express connected account
+    const existingAcct = await pool.query('SELECT * FROM connected_accounts WHERE user_id=$1', [userId]);
+    let accountId;
+    if (existingAcct.rows[0]) {
+      accountId = existingAcct.rows[0].stripe_account_id;
+    } else {
+      const account = await stripe.accounts.create({
+        type: 'express',
+        country: 'US',
+        email: email,
+        business_type: 'company',
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+          us_bank_account_ach_payments: { requested: true },
+        },
+        metadata: { user_id: String(userId), platform: 'constructinvoice', test: 'true' },
+      });
+      accountId = account.id;
+      await pool.query(
+        'INSERT INTO connected_accounts(user_id, stripe_account_id) VALUES($1,$2) ON CONFLICT(user_id) DO UPDATE SET stripe_account_id=$2',
+        [userId, accountId]
+      );
+      await pool.query('UPDATE users SET stripe_connect_id=$1 WHERE id=$2', [accountId, userId]);
+    }
+    // 4. Generate onboarding link
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const link = await stripe.accountLinks.create({
+      account: accountId,
+      refresh_url: `${baseUrl}/app.html#payments_setup=refresh`,
+      return_url: `${baseUrl}/app.html#payments_setup=complete`,
+      type: 'account_onboarding',
+    });
+    // 5. Check current account status
+    const acct = await stripe.accounts.retrieve(accountId);
+    res.json({
+      message: 'Test GC created',
+      user_id: userId,
+      email: email,
+      password: 'TestPass123!',
+      stripe_account_id: accountId,
+      charges_enabled: acct.charges_enabled,
+      payouts_enabled: acct.payouts_enabled,
+      onboarding_url: link.url,
+      note: 'Open onboarding_url in browser. In test mode, click "Use test data" to auto-fill all fields.'
+    });
+  } catch(e) {
+    console.error('[Test Create GC]', e.message);
+    if (e.code === '23505') return res.status(400).json({ error: 'Email already exists — use a different email or the existing user' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Create a test project + SOV + pay app for a test GC user, and generate payment link
+app.post('/api/admin/test/create-test-payapp', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  try {
+    const { user_id, project_name, contract_amount, owner_name, owner_email } = req.body;
+    if (!user_id) return res.status(400).json({ error: 'user_id required' });
+    const pName = project_name || 'Test Renovation Project';
+    const amount = contract_amount || 85000;
+    const oName = owner_name || 'John Smith (Test Owner)';
+    const oEmail = owner_email || 'testowner@example.com';
+    // 1. Create project
+    const proj = await pool.query(
+      `INSERT INTO projects(user_id,name,number,owner,owner_email,contractor,original_contract,default_retainage,payment_terms)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [user_id, pName, 'TEST-' + Date.now().toString(36).toUpperCase(), oName, oEmail, 'Test GC Company', amount, 10, 'Net 30']
+    );
+    const projectId = proj.rows[0].id;
+    // 2. Create SOV lines (realistic construction items)
+    const sovItems = [
+      { item_id: '1', description: 'General Conditions', scheduled_value: Math.round(amount * 0.08) },
+      { item_id: '2', description: 'Site Preparation', scheduled_value: Math.round(amount * 0.05) },
+      { item_id: '3', description: 'Concrete & Foundation', scheduled_value: Math.round(amount * 0.15) },
+      { item_id: '4', description: 'Framing & Structural', scheduled_value: Math.round(amount * 0.20) },
+      { item_id: '5', description: 'Electrical', scheduled_value: Math.round(amount * 0.12) },
+      { item_id: '6', description: 'Plumbing', scheduled_value: Math.round(amount * 0.10) },
+      { item_id: '7', description: 'HVAC', scheduled_value: Math.round(amount * 0.10) },
+      { item_id: '8', description: 'Finishes & Paint', scheduled_value: Math.round(amount * 0.08) },
+      { item_id: '9', description: 'Landscaping', scheduled_value: Math.round(amount * 0.05) },
+      { item_id: '10', description: 'Project Management Fee', scheduled_value: amount - Math.round(amount * 0.93) },
+    ];
+    const sovTotal = sovItems.reduce((s, l) => s + l.scheduled_value, 0);
+    for (const [i, line] of sovItems.entries()) {
+      await pool.query(
+        'INSERT INTO sov_lines(project_id,item_id,description,scheduled_value,sort_order) VALUES($1,$2,$3,$4,$5)',
+        [projectId, line.item_id, line.description, line.scheduled_value, i]
+      );
+    }
+    await pool.query('UPDATE projects SET original_contract=$1 WHERE id=$2', [sovTotal, projectId]);
+    // 3. Create Pay App #1 with 30% progress
+    const invoiceToken = require('crypto').randomBytes(24).toString('hex');
+    const pa = await pool.query(
+      `INSERT INTO pay_apps(project_id,app_number,period_label,period_start,period_end,invoice_token)
+       VALUES($1,1,'March 2026','2026-03-01','2026-03-31',$2) RETURNING *`,
+      [projectId, invoiceToken]
+    );
+    const paId = pa.rows[0].id;
+    // 4. Create pay app lines with 30% this period
+    const sovLines = await pool.query('SELECT * FROM sov_lines WHERE project_id=$1 ORDER BY sort_order', [projectId]);
+    let totalThisPeriod = 0;
+    for (const line of sovLines.rows) {
+      const thisPct = 30; // 30% progress this period
+      const sv = parseFloat(line.scheduled_value);
+      totalThisPeriod += sv * thisPct / 100;
+      await pool.query(
+        'INSERT INTO pay_app_lines(pay_app_id,sov_line_id,prev_pct,this_pct,retainage_pct,stored_materials) VALUES($1,$2,$3,$4,$5,$6)',
+        [paId, line.id, 0, thisPct, 10, 0]
+      );
+    }
+    // 5. Generate payment link token
+    const payToken = require('crypto').randomBytes(24).toString('hex');
+    await pool.query('UPDATE pay_apps SET payment_link_token=$1, status=$2 WHERE id=$3', [payToken, 'submitted', paId]);
+    // 6. Calculate expected payment amounts
+    const grossThisPeriod = totalThisPeriod;
+    const retainage = grossThisPeriod * 0.10;
+    const netAfterRetainage = grossThisPeriod - retainage;
+    const paymentDue = netAfterRetainage; // First pay app, no previous certs
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    res.json({
+      message: 'Test project + pay app created',
+      project_id: projectId,
+      project_name: pName,
+      pay_app_id: paId,
+      sov_total: sovTotal,
+      sov_lines: sovItems.length,
+      progress_pct: 30,
+      gross_this_period: grossThisPeriod,
+      retainage_10pct: retainage,
+      net_after_retainage: netAfterRetainage,
+      payment_due: paymentDue,
+      payment_link: `${baseUrl}/pay/${payToken}`,
+      payment_token: payToken,
+      owner: oName,
+      owner_email: oEmail,
+      expected_fees: {
+        ach: { platform_fee: 25.00, gc_receives: paymentDue - 25.00, owner_pays: paymentDue },
+        card: {
+          processing_fee: Math.round((paymentDue * 0.033 + 0.40) * 100) / 100,
+          owner_pays: Math.round((paymentDue + paymentDue * 0.033 + 0.40) * 100) / 100,
+          gc_receives: paymentDue,
+          platform_keeps_margin: Math.round(((paymentDue * 0.033 + 0.40) - (paymentDue * 0.029 + 0.30)) * 100) / 100
+        }
+      }
+    });
+  } catch(e) {
+    console.error('[Test Create PayApp]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Complete reconciliation report — shows ALL money flow with math verification
+app.get('/api/admin/test/reconciliation', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  try {
+    // 1. All payments in our DB
+    const payments = await pool.query(`
+      SELECT p.*, pa.app_number, pa.project_id, pa.payment_link_token,
+             pr.name as project_name, pr.owner, u.name as gc_name, u.email as gc_email,
+             ca.stripe_account_id
+      FROM payments p
+      JOIN pay_apps pa ON pa.id = p.pay_app_id
+      JOIN projects pr ON pr.id = pa.project_id
+      JOIN users u ON u.id = p.user_id
+      LEFT JOIN connected_accounts ca ON ca.user_id = p.user_id
+      ORDER BY p.created_at DESC
+    `);
+    // 2. All connected accounts with balances
+    const connectedAccts = await pool.query(`
+      SELECT ca.*, u.name as gc_name, u.email as gc_email
+      FROM connected_accounts ca
+      JOIN users u ON u.id = ca.user_id
+    `);
+    const accountDetails = [];
+    for (const acct of connectedAccts.rows) {
+      try {
+        const stripeAcct = await stripe.accounts.retrieve(acct.stripe_account_id);
+        let balance = null;
+        try { balance = await stripe.balance.retrieve({ stripeAccount: acct.stripe_account_id }); } catch(e) {}
+        accountDetails.push({
+          gc_name: acct.gc_name,
+          gc_email: acct.gc_email,
+          stripe_id: acct.stripe_account_id,
+          charges_enabled: stripeAcct.charges_enabled,
+          payouts_enabled: stripeAcct.payouts_enabled,
+          business_name: stripeAcct.business_profile?.name || stripeAcct.settings?.dashboard?.display_name,
+          balance: balance ? {
+            available: balance.available.map(b => ({ amount: b.amount / 100, currency: b.currency })),
+            pending: balance.pending.map(b => ({ amount: b.amount / 100, currency: b.currency }))
+          } : 'Unable to retrieve'
+        });
+      } catch(e) {
+        accountDetails.push({ gc_name: acct.gc_name, stripe_id: acct.stripe_account_id, error: e.message });
+      }
+    }
+    // 3. Platform balance
+    let platformBalance;
+    try {
+      const bal = await stripe.balance.retrieve();
+      platformBalance = {
+        available: bal.available.map(b => ({ amount: b.amount / 100, currency: b.currency })),
+        pending: bal.pending.map(b => ({ amount: b.amount / 100, currency: b.currency }))
+      };
+    } catch(e) { platformBalance = { error: e.message }; }
+    // 4. Recent Stripe charges (last 20)
+    let recentCharges = [];
+    try {
+      const charges = await stripe.charges.list({ limit: 20 });
+      recentCharges = charges.data.map(c => ({
+        id: c.id,
+        amount: c.amount / 100,
+        fee: c.application_fee_amount ? c.application_fee_amount / 100 : 0,
+        net: (c.amount - (c.application_fee_amount || 0)) / 100,
+        status: c.status,
+        method: c.payment_method_details?.type || 'unknown',
+        destination: c.transfer_data?.destination || 'platform',
+        created: new Date(c.created * 1000).toISOString(),
+        description: c.description
+      }));
+    } catch(e) { recentCharges = [{ error: e.message }]; }
+    // 5. Subscription revenue
+    let subscriptions = [];
+    try {
+      const subs = await stripe.subscriptions.list({ limit: 50, status: 'all' });
+      subscriptions = subs.data.map(s => ({
+        id: s.id,
+        customer: s.customer,
+        status: s.status,
+        amount: s.items.data[0]?.price?.unit_amount / 100,
+        interval: s.items.data[0]?.price?.recurring?.interval,
+        created: new Date(s.created * 1000).toISOString(),
+        current_period_end: new Date(s.current_period_end * 1000).toISOString()
+      }));
+    } catch(e) {}
+    // 6. Math verification
+    const dbPayments = payments.rows.map(p => ({
+      id: p.id,
+      pay_app: `#${p.app_number}`,
+      project: p.project_name,
+      gc: p.gc_name,
+      amount: parseFloat(p.amount),
+      processing_fee: parseFloat(p.processing_fee || 0),
+      platform_fee: parseFloat(p.platform_fee || 0),
+      method: p.payment_method,
+      status: p.status,
+      stripe_session: p.stripe_checkout_session_id,
+      connected_account: p.stripe_account_id,
+      created: p.created_at
+    }));
+    const totals = {
+      total_payments: dbPayments.length,
+      total_amount: dbPayments.reduce((s, p) => s + p.amount, 0),
+      total_platform_fees: dbPayments.reduce((s, p) => s + p.platform_fee, 0),
+      total_processing_fees: dbPayments.reduce((s, p) => s + p.processing_fee, 0),
+      total_subscriptions: subscriptions.length,
+      active_subscriptions: subscriptions.filter(s => s.status === 'active').length,
+      monthly_subscription_revenue: subscriptions.filter(s => s.status === 'active').reduce((s, sub) => s + (sub.amount || 0), 0)
+    };
+    res.json({
+      summary: totals,
+      platform_balance: platformBalance,
+      connected_accounts: accountDetails,
+      payments: dbPayments,
+      stripe_charges: recentCharges,
+      subscriptions: subscriptions,
+      generated_at: new Date().toISOString()
+    });
+  } catch(e) {
+    console.error('[Reconciliation]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// List all test GC accounts with their Stripe status
+app.get('/api/admin/test/list-test-gcs', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  try {
+    const gcs = await pool.query(`
+      SELECT u.id, u.name, u.email, u.subscription_status, u.plan_type,
+             ca.stripe_account_id, ca.charges_enabled, ca.payouts_enabled, ca.account_status, ca.business_name,
+             COUNT(DISTINCT pr.id) as project_count,
+             COUNT(DISTINCT pa.id) as payapp_count
+      FROM users u
+      LEFT JOIN connected_accounts ca ON ca.user_id = u.id
+      LEFT JOIN projects pr ON pr.user_id = u.id
+      LEFT JOIN pay_apps pa ON pa.project_id = pr.id AND pa.deleted_at IS NULL
+      GROUP BY u.id, u.name, u.email, u.subscription_status, u.plan_type,
+               ca.stripe_account_id, ca.charges_enabled, ca.payouts_enabled, ca.account_status, ca.business_name
+      ORDER BY u.created_at DESC
+    `);
+    // Enrich with live Stripe data
+    const results = [];
+    for (const gc of gcs.rows) {
+      const entry = { ...gc, project_count: parseInt(gc.project_count), payapp_count: parseInt(gc.payapp_count) };
+      if (gc.stripe_account_id) {
+        try {
+          const acct = await stripe.accounts.retrieve(gc.stripe_account_id);
+          entry.stripe_live = {
+            charges_enabled: acct.charges_enabled,
+            payouts_enabled: acct.payouts_enabled,
+            details_submitted: acct.details_submitted,
+            business_name: acct.business_profile?.name || acct.settings?.dashboard?.display_name
+          };
+        } catch(e) { entry.stripe_live = { error: e.message }; }
+      }
+      results.push(entry);
+    }
+    res.json(results);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Cleanup: remove test data (test users, projects, pay apps)
+app.post('/api/admin/test/cleanup', adminAuth, async (req, res) => {
+  try {
+    const { user_ids } = req.body;
+    if (!user_ids || !Array.isArray(user_ids) || user_ids.length === 0) {
+      return res.status(400).json({ error: 'user_ids array required' });
+    }
+    // Delete connected accounts from Stripe
+    for (const uid of user_ids) {
+      const ca = await pool.query('SELECT stripe_account_id FROM connected_accounts WHERE user_id=$1', [uid]);
+      if (ca.rows[0]?.stripe_account_id) {
+        try { await stripe.accounts.del(ca.rows[0].stripe_account_id); } catch(e) {
+          console.log(`[Test Cleanup] Could not delete Stripe account ${ca.rows[0].stripe_account_id}: ${e.message}`);
+        }
+      }
+    }
+    // Delete users (CASCADE takes care of projects, pay_apps, sov_lines, etc.)
+    const placeholders = user_ids.map((_, i) => `$${i + 1}`).join(',');
+    const deleted = await pool.query(`DELETE FROM users WHERE id IN (${placeholders}) RETURNING id, email`, user_ids);
+    res.json({ message: `Cleaned up ${deleted.rows.length} test users`, deleted: deleted.rows });
+  } catch(e) {
+    console.error('[Test Cleanup]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── User-facing AI Assistant (product help) ──────────────────────────────────
 const PRODUCT_KNOWLEDGE = `
 You are Aria, the friendly AI assistant built into ConstructInvoice AI — a construction billing platform for General Contractors.
