@@ -3539,7 +3539,7 @@ app.post('/api/admin/test/complete-onboarding', adminAuth, async (req, res) => {
         name: companyName,
         tax_id: '000000000',
         address: { line1: '123 Test Street', city: 'San Francisco', state: 'CA', postal_code: '94105', country: 'US' },
-        phone: '+15555550100',
+        phone: '+10000000000',
         owners_provided: true,
         executives_provided: true,
       },
