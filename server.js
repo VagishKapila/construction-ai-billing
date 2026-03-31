@@ -3491,6 +3491,125 @@ app.get('/api/admin/test/reconciliation', adminAuth, async (req, res) => {
   }
 });
 
+// Complete Express onboarding programmatically in TEST MODE
+// This replaces the Stripe-hosted onboarding form with SDK calls
+app.post('/api/admin/test/complete-onboarding', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  const isTest = process.env.STRIPE_SECRET_KEY?.startsWith('sk_test');
+  if (!isTest) return res.status(403).json({ error: 'Only works in Stripe TEST mode' });
+  try {
+    const { user_id } = req.body;
+    if (!user_id) return res.status(400).json({ error: 'user_id required' });
+    const row = await pool.query('SELECT * FROM connected_accounts WHERE user_id=$1', [user_id]);
+    if (!row.rows[0]) return res.status(404).json({ error: 'No connected account found for this user' });
+    const accountId = row.rows[0].stripe_account_id;
+    const user = await pool.query('SELECT name, email FROM users WHERE id=$1', [user_id]);
+    const company = await pool.query('SELECT company_name FROM company_settings WHERE user_id=$1', [user_id]);
+    const userName = user.rows[0]?.name || 'Test User';
+    const companyName = company.rows[0]?.company_name || 'Test Construction Co';
+    // Step 1: Update account with required business info
+    await stripe.accounts.update(accountId, {
+      business_profile: {
+        mcc: '1520', // General contractor MCC code
+        url: 'https://example.com',
+        name: companyName,
+      },
+      company: {
+        name: companyName,
+        tax_id: '000000000', // Test EIN
+        address: {
+          line1: '123 Test Street',
+          city: 'San Francisco',
+          state: 'CA',
+          postal_code: '94105',
+          country: 'US',
+        },
+        phone: '5555550100',
+      },
+      tos_acceptance: {
+        date: Math.floor(Date.now() / 1000),
+        ip: '127.0.0.1',
+      },
+    });
+    // Step 2: Add a representative/person (required for company accounts)
+    const nameParts = userName.split(' ');
+    const firstName = nameParts[0] || 'Test';
+    const lastName = nameParts.slice(1).join(' ') || 'User';
+    // Check if person already exists
+    const persons = await stripe.accounts.listPersons(accountId, { limit: 10 });
+    let personId;
+    if (persons.data.length === 0) {
+      const person = await stripe.accounts.createPerson(accountId, {
+        first_name: firstName,
+        last_name: lastName,
+        email: user.rows[0]?.email || 'test@example.com',
+        phone: '+15555550100',
+        dob: { day: 1, month: 1, year: 1990 },
+        address: {
+          line1: '123 Test Street',
+          city: 'San Francisco',
+          state: 'CA',
+          postal_code: '94105',
+          country: 'US',
+        },
+        ssn_last_4: '0000',
+        relationship: {
+          representative: true,
+          executive: true,
+          owner: true,
+          percent_ownership: 100,
+          title: 'Owner',
+        },
+      });
+      personId = person.id;
+    } else {
+      personId = persons.data[0].id;
+    }
+    // Mark ownership verification complete
+    await stripe.accounts.update(accountId, {
+      company: { owners_provided: true, executives_provided: true },
+    });
+    // Step 3: Add a test bank account for payouts
+    const existingBanks = await stripe.accounts.listExternalAccounts(accountId, { object: 'bank_account', limit: 5 });
+    if (existingBanks.data.length === 0) {
+      await stripe.accounts.createExternalAccount(accountId, {
+        external_account: {
+          object: 'bank_account',
+          country: 'US',
+          currency: 'usd',
+          routing_number: '110000000', // Stripe test routing number
+          account_number: '000123456789', // Stripe test account number
+        },
+      });
+    }
+    // Step 4: Verify the account status
+    const acct = await stripe.accounts.retrieve(accountId);
+    // Update our DB
+    await pool.query(
+      'UPDATE connected_accounts SET charges_enabled=$1, payouts_enabled=$2, account_status=$3, business_name=$4, onboarded_at=CASE WHEN $1 AND onboarded_at IS NULL THEN NOW() ELSE onboarded_at END WHERE user_id=$5',
+      [acct.charges_enabled, acct.payouts_enabled, acct.charges_enabled ? 'active' : 'pending', companyName, user_id]
+    );
+    res.json({
+      message: 'Onboarding completed via SDK',
+      stripe_account_id: accountId,
+      charges_enabled: acct.charges_enabled,
+      payouts_enabled: acct.payouts_enabled,
+      details_submitted: acct.details_submitted,
+      requirements: {
+        currently_due: acct.requirements?.currently_due || [],
+        eventually_due: acct.requirements?.eventually_due || [],
+        past_due: acct.requirements?.past_due || [],
+        disabled_reason: acct.requirements?.disabled_reason || null,
+      },
+      business_name: acct.business_profile?.name,
+      person_id: personId,
+    });
+  } catch(e) {
+    console.error('[Test Onboarding]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // List all test GC accounts with their Stripe status
 app.get('/api/admin/test/list-test-gcs', adminAuth, async (req, res) => {
   if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
