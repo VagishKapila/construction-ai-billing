@@ -3079,6 +3079,108 @@ app.post('/api/admin/update-subscription-price', adminAuth, async (req, res) => 
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Admin: Stripe webhook management (SDK-only, no dashboard needed) ─────────
+const REQUIRED_WEBHOOK_EVENTS = [
+  'checkout.session.completed',
+  'checkout.session.expired',
+  'invoice.paid',
+  'invoice.payment_failed',
+  'customer.subscription.deleted',
+  'customer.subscription.updated',
+  'payment_intent.payment_failed'
+];
+
+app.get('/api/admin/stripe/list-webhooks', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  try {
+    const endpoints = await stripe.webhookEndpoints.list({ limit: 20 });
+    res.json(endpoints.data.map(ep => ({
+      id: ep.id,
+      url: ep.url,
+      status: ep.status,
+      enabled_events: ep.enabled_events,
+      api_version: ep.api_version,
+      created: new Date(ep.created * 1000).toISOString()
+    })));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/stripe/create-webhook', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  try {
+    const { url } = req.body;
+    const targetUrl = url || `${process.env.BASE_URL || `${req.protocol}://${req.get('host')}`}/api/stripe/webhook`;
+    // Check if webhook already exists for this URL
+    const existing = await stripe.webhookEndpoints.list({ limit: 20 });
+    const found = existing.data.find(ep => ep.url === targetUrl && ep.status === 'enabled');
+    if (found) {
+      return res.json({ message: 'Webhook already exists', id: found.id, url: found.url, secret: '(already created — check Railway env)', events: found.enabled_events });
+    }
+    const endpoint = await stripe.webhookEndpoints.create({
+      url: targetUrl,
+      enabled_events: REQUIRED_WEBHOOK_EVENTS,
+      description: 'ConstructInvoice AI — payments + subscriptions',
+      metadata: { app: 'constructinvoice', created_by: 'admin_sdk' }
+    });
+    console.log(`[Stripe] Webhook endpoint created: ${endpoint.id} → ${targetUrl}`);
+    res.json({ message: 'Webhook created', id: endpoint.id, url: endpoint.url, secret: endpoint.secret, events: endpoint.enabled_events });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/admin/stripe/delete-webhook', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  try {
+    const { webhook_id } = req.body;
+    if (!webhook_id) return res.status(400).json({ error: 'webhook_id required' });
+    await stripe.webhookEndpoints.del(webhook_id);
+    console.log(`[Stripe] Webhook endpoint deleted: ${webhook_id}`);
+    res.json({ message: 'Webhook deleted', id: webhook_id });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Comprehensive Stripe setup verification
+app.get('/api/admin/stripe/verify-setup', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  try {
+    const checks = {};
+    // 1. Account info
+    const account = await stripe.accounts.retrieve();
+    checks.account = { id: account.id, name: account.settings?.dashboard?.display_name, country: account.country, charges: account.charges_enabled, payouts: account.payouts_enabled };
+    // 2. Mode detection
+    checks.mode = process.env.STRIPE_SECRET_KEY?.startsWith('sk_test') ? 'TEST' : 'LIVE';
+    // 3. Subscription product
+    const prodRow = (await pool.query("SELECT value FROM app_settings WHERE key='subscription_product_id'")).rows[0];
+    const priceRow = (await pool.query("SELECT value FROM app_settings WHERE key='subscription_price_id'")).rows[0];
+    checks.subscription = { product_id: prodRow?.value || 'NOT SET', price_id: priceRow?.value || 'NOT SET' };
+    if (priceRow?.value) {
+      try {
+        const price = await stripe.prices.retrieve(priceRow.value);
+        checks.subscription.amount = price.unit_amount / 100;
+        checks.subscription.currency = price.currency;
+        checks.subscription.interval = price.recurring?.interval;
+        checks.subscription.active = price.active;
+      } catch(e) { checks.subscription.error = 'Price not found in Stripe: ' + e.message; }
+    }
+    // 4. Webhooks
+    const endpoints = await stripe.webhookEndpoints.list({ limit: 20 });
+    checks.webhooks = endpoints.data.map(ep => ({ id: ep.id, url: ep.url, status: ep.status, events: ep.enabled_events.length }));
+    checks.webhook_secret_configured = !!process.env.STRIPE_WEBHOOK_SECRET;
+    // 5. Connected accounts count
+    const connectedAccounts = (await pool.query('SELECT COUNT(*) FROM connected_accounts WHERE account_status=$1', ['active'])).rows[0].count;
+    checks.connected_accounts = parseInt(connectedAccounts);
+    // 6. Overall readiness
+    const issues = [];
+    if (!prodRow?.value) issues.push('No subscription product — run setup-subscription-product');
+    if (!priceRow?.value) issues.push('No subscription price — run setup-subscription-product');
+    if (checks.webhooks.length === 0) issues.push('No webhook endpoints configured');
+    if (!process.env.STRIPE_WEBHOOK_SECRET) issues.push('STRIPE_WEBHOOK_SECRET env var not set');
+    if (!process.env.BASE_URL) issues.push('BASE_URL env var not set (needed for payment links)');
+    checks.ready = issues.length === 0;
+    checks.issues = issues;
+    res.json(checks);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── User-facing AI Assistant (product help) ──────────────────────────────────
 const PRODUCT_KNOWLEDGE = `
 You are Aria, the friendly AI assistant built into ConstructInvoice AI — a construction billing platform for General Contractors.

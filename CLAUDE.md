@@ -482,6 +482,7 @@ Retainage is per-line (can vary). Default from project settings.
 - **Do NOT** modify Stripe fee amounts (ACH $25, CC 3.3%+$0.40) without discussing with Vagish
 - **Do NOT** switch Stripe from test mode to live mode without explicit approval from Vagish
 - **Do NOT** make changes to email sending logic without discussing first (risk of spamming users)
+- **Do NOT** use browser automation for Stripe — `dashboard.stripe.com` and `checkout.stripe.com` are blocked. ALL Stripe operations (creating products, webhook endpoints, checking account status, etc.) must be done via Stripe SDK, Stripe CLI, or direct API calls (`curl`) through the terminal. Vagish handles anything that requires the Stripe Dashboard UI manually in his own browser.
 
 ---
 
