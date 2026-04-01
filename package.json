@@ -1,10 +1,12 @@
 {
   "name": "construction-ai-billing",
   "version": "1.0.0",
-  "main": "server.js",
+  "main": "server/index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "start": "node server/index.js",
+    "dev": "nodemon server/index.js",
+    "build": "cd client && npm install && npm run build",
+    "postinstall": "cd client && npm install",
     "test": "node qa_test.js",
     "test:e2e": "npx playwright test",
     "test:e2e:headed": "npx playwright test --headed",

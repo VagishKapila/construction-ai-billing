@@ -10,7 +10,7 @@ const { defineConfig } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: '.',
-  testMatch: 'e2e_test.js',
+  testMatch: ['e2e_test.js', 'visual_regression_test.js'],
   timeout: 30000,
   retries: 1,
   workers: 1, // sequential — tests share state via login

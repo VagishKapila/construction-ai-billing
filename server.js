@@ -6729,6 +6729,23 @@ app.get('/pay/:token', (req, res) => {
 
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 
+// ── Exports for route modules ──────────────────────────────────────────────
+global.__serverHelpers = {
+  generatePayAppHTML,
+  renderLienWaiverContent,
+  generateLienDocPDF,
+  generatePaymentToken,
+  fetchEmail
+};
+
+module.exports = {
+  generatePayAppHTML,
+  renderLienWaiverContent,
+  generateLienDocPDF,
+  generatePaymentToken,
+  fetchEmail
+};
+
 initDB()
   .then(() => app.listen(PORT, () => console.log(`Construction AI Billing running on port ${PORT}`)))
   .catch(err => {

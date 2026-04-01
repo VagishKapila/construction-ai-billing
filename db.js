@@ -365,6 +365,53 @@ async function initDB() {
       value TEXT,
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
+
+    -- QuickBooks Online Integration (Phase 8, Apr 2026)
+    CREATE TABLE IF NOT EXISTS quickbooks_connections (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+      realm_id VARCHAR(100) NOT NULL,          -- QB company ID
+      access_token_enc TEXT NOT NULL,           -- encrypted access token
+      refresh_token_enc TEXT NOT NULL,          -- encrypted refresh token
+      token_expires_at TIMESTAMPTZ NOT NULL,
+      company_name VARCHAR(300),
+      company_id VARCHAR(100),
+      sandbox BOOLEAN DEFAULT FALSE,
+      connected_at TIMESTAMPTZ DEFAULT NOW(),
+      last_sync_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_qb_realm ON quickbooks_connections(realm_id);
+
+    CREATE TABLE IF NOT EXISTS quickbooks_sync_log (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+      pay_app_id INTEGER REFERENCES pay_apps(id) ON DELETE SET NULL,
+      sync_type VARCHAR(50) NOT NULL,           -- 'project', 'invoice', 'payment', 'estimate_import'
+      sync_direction VARCHAR(20) NOT NULL,      -- 'push' (to QB) or 'pull' (from QB)
+      qb_entity_type VARCHAR(50),              -- 'Customer', 'Invoice', 'Payment', 'Estimate'
+      qb_entity_id VARCHAR(100),              -- QB entity ID
+      sync_status VARCHAR(50) DEFAULT 'pending', -- 'pending', 'success', 'error', 'skipped'
+      request_payload JSONB,
+      response_payload JSONB,
+      error_message TEXT,
+      synced_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_qb_sync_project ON quickbooks_sync_log(project_id);
+    CREATE INDEX IF NOT EXISTS idx_qb_sync_user ON quickbooks_sync_log(user_id);
+    CREATE INDEX IF NOT EXISTS idx_qb_sync_status ON quickbooks_sync_log(sync_status);
+
+    -- Add QB mapping columns to projects
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS qb_customer_id VARCHAR(100);
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS qb_project_id VARCHAR(100);
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS qb_sync_status VARCHAR(50) DEFAULT 'not_synced';
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS qb_last_synced_at TIMESTAMPTZ;
+
+    -- Add QB mapping columns to pay apps
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS qb_invoice_id VARCHAR(100);
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS qb_payment_id VARCHAR(100);
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS qb_sync_status VARCHAR(50) DEFAULT 'not_synced';
   `);
   console.log('Database ready');
 }

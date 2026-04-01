@@ -29,3 +29,43 @@ build/
 ~$*.xlsx
 ~$*.pptx
 package-lock.json
+
+# Client build output (built on Railway via npm run build)
+client/dist/
+client/node_modules/
+
+# Python cache
+__pycache__/
+
+# Test artifacts
+test-results/
+test doc/
+
+# Playwright
+playwright-report/
+
+# Skill files (Cowork artifacts)
+*.skill
+
+# Marketing docs (not part of app code)
+Marketing/
+*.docx
+*.xlsx
+!client/**
+
+# Plan/implementation docs
+CONSTRUCTINV_REV2_PLAN.md
+IMPLEMENTATION_SUMMARY.md
+
+# UI mockups (dev scratchpad)
+ui-mockup*.jsx
+
+# Misc dev artifacts
+*.bak
+qb_test_harness.js
+visual_regression_test.js
+Varshyl_Business_Hub_Spec.*
+client/MODULE_6_INTEGRATION.md
+client/README.md
+client/src/hooks/README.md
+client/src/hooks/USAGE_EXAMPLES.md
