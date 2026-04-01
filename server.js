@@ -3082,6 +3082,8 @@ app.post('/api/admin/update-subscription-price', adminAuth, async (req, res) => 
 // ── Admin: Stripe webhook management (SDK-only, no dashboard needed) ─────────
 const REQUIRED_WEBHOOK_EVENTS = [
   'checkout.session.completed',
+  'checkout.session.async_payment_succeeded',
+  'checkout.session.async_payment_failed',
   'checkout.session.expired',
   'invoice.paid',
   'invoice.payment_failed',
@@ -3462,7 +3464,7 @@ app.get('/api/admin/test/reconciliation', adminAuth, async (req, res) => {
       processing_fee: parseFloat(p.processing_fee || 0),
       platform_fee: parseFloat(p.platform_fee || 0),
       method: p.payment_method,
-      status: p.status,
+      payment_status: p.payment_status,
       stripe_session: p.stripe_checkout_session_id,
       connected_account: p.stripe_account_id,
       created: p.created_at
@@ -5945,6 +5947,8 @@ app.get('/api/pay/:token', async (req, res) => {
        WHERE pal.pay_app_id=$1`, [pa.id]
     )).rows;
     let totalDue = 0;
+    let totalRetainageHeld = 0;
+    let avgRetainagePct = 0;
     lines.forEach(l => {
       const sv = parseFloat(l.scheduled_value) || 0;
       const prevPct = parseFloat(l.prev_pct) || 0;
@@ -5955,9 +5959,17 @@ app.get('/api/pay/:token', async (req, res) => {
       const f = d - e;
       const g = sv * prevPct / 100 * (1 - retPct / 100);
       totalDue += (f - g);
+      // Track retainage for this period only
+      const thisWork = sv * thisPct / 100;
+      totalRetainageHeld += thisWork * retPct / 100;
+      avgRetainagePct = retPct; // Use last line's retainage (usually uniform)
     });
     const amountPaid = parseFloat(pa.amount_paid) || 0;
     const amountRemaining = Math.max(0, totalDue - amountPaid);
+    // Check if there are any succeeded/pending payments for this pay app
+    const existingPayments = (await pool.query(
+      "SELECT COUNT(*) as count FROM payments WHERE pay_app_id=$1 AND payment_status IN ('succeeded','pending')", [pa.id]
+    )).rows[0].count;
     // Calculate fees for display
     const ccFee = Math.round(amountRemaining * STRIPE_FEE.cc_rate * 100 + STRIPE_FEE.cc_flat) / 100;
     const achFee = STRIPE_FEE.ach_flat / 100; // $25 flat, deducted from GC
@@ -5987,8 +5999,11 @@ app.get('/api/pay/:token', async (req, res) => {
       amount_due: parseFloat(amountRemaining.toFixed(2)),
       amount_paid: amountPaid,
       total_due: parseFloat(totalDue.toFixed(2)),
-      payment_status: pa.payment_status || 'unpaid',
+      payment_status: parseInt(existingPayments) > 0 && (pa.payment_status === 'unpaid' || !pa.payment_status) ? 'processing' : (pa.payment_status || 'unpaid'),
+      has_pending_payment: parseInt(existingPayments) > 0,
       bad_debt: pa.bad_debt,
+      retainage_held: parseFloat(totalRetainageHeld.toFixed(2)),
+      retainage_pct: avgRetainagePct,
       cc_fee: ccFee,
       ach_fee: achFee,
       stripe_account_id: acct.stripe_account_id,
@@ -6220,7 +6235,25 @@ app.post('/api/pay/:token/verify', async (req, res) => {
       // Update pay app totals
       const payAppId = payment.pay_app_id;
       const currentPaid = (await pool.query("SELECT COALESCE(SUM(amount),0) as total FROM payments WHERE pay_app_id=$1 AND payment_status='succeeded'", [payAppId])).rows[0].total;
-      const totalDue = parseFloat(payment.amount_due) || 0;
+      let totalDue = parseFloat(payment.amount_due) || 0;
+      // If amount_due not snapshotted, calculate from line items
+      if (totalDue <= 0) {
+        const linesResult = await pool.query(
+          `SELECT pal.*, sl.scheduled_value FROM pay_app_lines pal
+           JOIN sov_lines sl ON pal.sov_line_id=sl.id WHERE pal.pay_app_id=$1`, [payAppId]);
+        linesResult.rows.forEach(l => {
+          const sv = parseFloat(l.scheduled_value) || 0;
+          const prevP = parseFloat(l.prev_pct) || 0;
+          const thisP = parseFloat(l.this_pct) || 0;
+          const retP = parseFloat(l.retainage_pct) || 10;
+          const d2 = sv * (prevP + thisP) / 100;
+          const e2 = d2 * retP / 100;
+          const f2 = d2 - e2;
+          const g2 = sv * prevP / 100 * (1 - retP / 100);
+          totalDue += (f2 - g2);
+        });
+        if (totalDue > 0) await pool.query('UPDATE pay_apps SET amount_due=$1 WHERE id=$2', [totalDue.toFixed(2), payAppId]);
+      }
       const paidNum = parseFloat(currentPaid);
       const newStatus = paidNum >= totalDue && totalDue > 0 ? 'paid' : paidNum > 0 ? 'partial' : 'unpaid';
       await pool.query(
@@ -6253,7 +6286,7 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
   } catch(e) { console.error('[Webhook Verify Error]', e.message); return res.status(400).send('Webhook Error'); }
 
   try {
-    if (event.type === 'checkout.session.completed') {
+    if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
       const session = event.data.object;
       const payAppId = parseInt(session.metadata?.pay_app_id);
       const paymentToken = session.metadata?.payment_token;
@@ -6267,16 +6300,51 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
         const payAppAmount = (await pool.query('SELECT amount FROM payments WHERE stripe_checkout_session_id=$1', [session.id])).rows[0]?.amount;
         if (payAppAmount) actualAmount = parseFloat(payAppAmount);
       }
-      // Update payment record
-      await pool.query(
-        `UPDATE payments SET payment_status='succeeded', stripe_payment_intent_id=$1, paid_at=NOW(), payer_email=COALESCE(NULLIF(payer_email,''),$2)
-         WHERE stripe_checkout_session_id=$3`,
-        [session.payment_intent, session.customer_details?.email || '', session.id]
-      );
-      // Update pay app totals
+      // For ACH: checkout.session.completed fires first with payment_status='unpaid' (processing).
+      // checkout.session.async_payment_succeeded fires later when ACH clears.
+      // Only mark payment as 'succeeded' when actually paid.
+      const isACH = method === 'ach';
+      const sessionPaid = session.payment_status === 'paid';
+      const isAsyncSuccess = event.type === 'checkout.session.async_payment_succeeded';
+      if (!isACH || isAsyncSuccess || sessionPaid) {
+        // Update payment record to succeeded
+        await pool.query(
+          `UPDATE payments SET payment_status='succeeded', stripe_payment_intent_id=$1, paid_at=NOW(), payer_email=COALESCE(NULLIF(payer_email,''),$2)
+           WHERE stripe_checkout_session_id=$3`,
+          [session.payment_intent, session.customer_details?.email || '', session.id]
+        );
+      } else {
+        // ACH checkout completed but payment still processing — keep as pending
+        await pool.query(
+          `UPDATE payments SET stripe_payment_intent_id=$1, payer_email=COALESCE(NULLIF(payer_email,''),$2)
+           WHERE stripe_checkout_session_id=$3`,
+          [session.payment_intent, session.customer_details?.email || '', session.id]
+        );
+        console.log(`[Payment] ACH payment initiated for PA#${payAppId} — waiting for bank confirmation`);
+      }
+      // Update pay app totals — calculate totalDue from line items if amount_due not set
       const currentPaid = (await pool.query('SELECT COALESCE(SUM(amount),0) as total FROM payments WHERE pay_app_id=$1 AND payment_status=\'succeeded\'', [payAppId])).rows[0].total;
       const pa = (await pool.query('SELECT amount_due FROM pay_apps WHERE id=$1', [payAppId])).rows[0];
-      const totalDue = parseFloat(pa?.amount_due) || 0;
+      let totalDue = parseFloat(pa?.amount_due) || 0;
+      // If amount_due not snapshotted, calculate from line items (G702 math)
+      if (totalDue <= 0) {
+        const linesResult = await pool.query(
+          `SELECT pal.*, sl.scheduled_value FROM pay_app_lines pal
+           JOIN sov_lines sl ON pal.sov_line_id=sl.id WHERE pal.pay_app_id=$1`, [payAppId]);
+        linesResult.rows.forEach(l => {
+          const sv = parseFloat(l.scheduled_value) || 0;
+          const prevP = parseFloat(l.prev_pct) || 0;
+          const thisP = parseFloat(l.this_pct) || 0;
+          const retP = parseFloat(l.retainage_pct) || 10;
+          const d2 = sv * (prevP + thisP) / 100;
+          const e2 = d2 * retP / 100;
+          const f2 = d2 - e2;
+          const g2 = sv * prevP / 100 * (1 - retP / 100);
+          totalDue += (f2 - g2);
+        });
+        // Snapshot it for future lookups
+        if (totalDue > 0) await pool.query('UPDATE pay_apps SET amount_due=$1 WHERE id=$2', [totalDue.toFixed(2), payAppId]);
+      }
       const paidNum = parseFloat(currentPaid);
       const newStatus = paidNum >= totalDue && totalDue > 0 ? 'paid' : paidNum > 0 ? 'partial' : 'unpaid';
       await pool.query(
@@ -6286,7 +6354,20 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
       // Log event
       const userId = (await pool.query('SELECT user_id FROM payments WHERE stripe_checkout_session_id=$1', [session.id])).rows[0]?.user_id;
       if (userId) await logEvent(userId, 'payment_received', { pay_app_id: payAppId, amount: actualAmount, method, total_paid: paidNum });
-      console.log(`[Payment] ${method} payment $${actualAmount} received for PA#${payAppId} (total paid: $${paidNum}, status: ${newStatus})`);
+      console.log(`[Payment] ${event.type}: ${method} $${actualAmount} for PA#${payAppId} (total paid: $${paidNum}, status: ${newStatus})`);
+    }
+    // Handle async ACH payment failure
+    if (event.type === 'checkout.session.async_payment_failed') {
+      const session = event.data.object;
+      const payAppId = parseInt(session.metadata?.pay_app_id);
+      await pool.query(
+        "UPDATE payments SET payment_status='failed', failed_at=NOW(), failure_reason='ACH bank transfer failed' WHERE stripe_checkout_session_id=$1",
+        [session.id]
+      );
+      if (payAppId) {
+        await pool.query("UPDATE pay_apps SET payment_status='unpaid' WHERE id=$1 AND payment_status != 'paid'", [payAppId]);
+      }
+      console.log(`[Payment] ACH payment FAILED for PA#${payAppId}`);
     }
     if (event.type === 'checkout.session.expired' || event.type === 'payment_intent.payment_failed') {
       const session = event.data.object;

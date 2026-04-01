@@ -420,11 +420,15 @@ function renderInvoice() {
 
   // Handle special states
   if (d.bad_debt) { showState('baddebt'); return; }
-  if (d.payment_status === 'paid' || d.amount_due <= 0) {
+  if (d.payment_status === 'paid' || d.payment_status === 'partial' || d.payment_status === 'processing' || d.has_pending_payment || d.amount_due <= 0) {
     if (d.logo_filename) {
       const img = document.getElementById('paid-logo');
       img.src = '/uploads/' + d.logo_filename;
       img.style.display = 'block';
+    }
+    // Customize message based on status
+    if (d.payment_status === 'processing' || d.has_pending_payment) {
+      document.getElementById('paid-detail').textContent = 'A payment for this invoice is being processed. Bank transfers (ACH) typically take 1-2 business days to clear. You will receive a confirmation once complete.';
     }
     showState('paid');
     return;
@@ -479,7 +483,13 @@ function renderInvoice() {
       totalThis += l.this_period;
       html += '<tr><td>' + (l.item_id || '') + '</td><td>' + (l.description || '') + '</td><td class="amt">' + formatCurrency(l.scheduled_value) + '</td><td class="amt">' + formatCurrency(l.this_period) + '</td></tr>';
     });
-    html += '</tbody><tfoot><tr><td></td><td>Total</td><td class="amt">' + formatCurrency(totalSched) + '</td><td class="amt">' + formatCurrency(totalThis) + '</td></tr></tfoot>';
+    html += '</tbody><tfoot>';
+    html += '<tr><td></td><td>Gross This Period</td><td class="amt">' + formatCurrency(totalSched) + '</td><td class="amt">' + formatCurrency(totalThis) + '</td></tr>';
+    if (d.retainage_held && d.retainage_held > 0) {
+      html += '<tr><td></td><td>Less Retainage (' + (d.retainage_pct || 10) + '%)</td><td class="amt"></td><td class="amt" style="color:#dc2626">−' + formatCurrency(d.retainage_held) + '</td></tr>';
+      html += '<tr style="font-weight:700;border-top:2px solid #333"><td></td><td>Net Amount Due</td><td class="amt"></td><td class="amt">' + formatCurrency(d.amount_due) + '</td></tr>';
+    }
+    html += '</tfoot>';
     document.getElementById('details-table').innerHTML = html;
   }
 
