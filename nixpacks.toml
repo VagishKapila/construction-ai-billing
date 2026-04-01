@@ -3,9 +3,6 @@
 # not available when server.js tries to spawn parse_sov.py.
 providers = ["node", "python"]
 
-# Vite 8 + Rolldown require Node >= 22.12
-# nodejs_22 gives us the latest 22.x LTS from nixpkgs.
-#
 # libvips-dev is required by the optional 'sharp' npm package for server-side
 # image compression. Using aptPkgs (not nixPkgs) to avoid nix-collect-garbage
 # removing Node.js after our derivation runs. If sharp fails to install,
@@ -15,7 +12,6 @@ providers = ["node", "python"]
 # generation. Without these, puppeteer.launch() fails with missing .so errors
 # (e.g. libbdbus-1.so.3). These are the minimal deps for headless Chrome.
 [phases.setup]
-nixPkgs = ["nodejs_22"]
 aptPkgs = [
   "libvips-dev",
   "libnss3", "libatk1.0-0", "libatk-bridge2.0-0", "libcups2",
