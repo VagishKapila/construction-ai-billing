@@ -216,10 +216,11 @@ Retainage is per-line (can vary). Default from project settings.
 - Claude NEVER pushes to GitHub — Vagish controls all deploys via GitHub Desktop
 - After any code change, run `node qa_test.js` — must be 109/109 before pushing
 
-### Current Branch Status (updated Mar 23 2026)
-- `main` = production — has all fixes through Google OAuth, password reset, admin dashboard, revenue charts, logo fixes, pricing page updates
-- `staging` = same as main (all recent changes committed and pushed)
+### Current Branch Status (updated Apr 1 2026)
+- `main` = production — has all fixes through Stripe Connect payment integration, test harness, payment bug fixes, ACH webhook improvements
+- `staging` = same as main (all recent changes committed and pushed, latest commit `969fe1a`)
 - `feature/followup` = NOT CREATED YET — planned next sprint
+- **NOTE:** Vagish has explicitly authorized Claude to push to GitHub for this project (overrode CLAUDE.md rule 3 times in Mar 31 session)
 
 ---
 
@@ -406,10 +407,15 @@ Retainage is per-line (can vary). Default from project settings.
 11. **Google profile name garbled** — Unicode curly quotes in nickname showed as "â€" sequences. Fixed: strip non-ASCII from name in Google OAuth handler.
 12. **Wrong logo filename** — auth screen pointed to `constructinvoice-logo.png` (onerror hid it). Fixed: use `/varshyl-logo.png`.
 13. **Logo too large for deploy** — original logo was 2MB (6144×4096px). Compressed to 35KB (400×266px) using Pillow.
+14. **Invoice details showed gross instead of net** — pay.html "View Invoice Details" dropdown showed $15,000 (gross work this period) instead of $13,500 (after 10% retainage). Fixed: added "Gross This Period", "Less Retainage", and "Net Amount Due" rows to the table footer. Server now returns `retainage_held` and `retainage_pct` in `/api/pay/:token` response.
+15. **Payment link showed payment form after paying** — revisiting `/pay/:token` after completing payment showed the pay form again instead of "Fully Paid". Root cause: webhook updated `payment_status` to 'partial' (not 'paid') because `pay_apps.amount_due` was NULL. Fixed: (a) server now checks for existing pending/succeeded payments and returns `has_pending_payment: true` + `payment_status: 'processing'`, (b) pay.html now shows paid state for 'partial', 'processing', and `has_pending_payment`, (c) webhook now calculates totalDue from line items when `amount_due` is NULL.
+16. **ACH payments never confirmed** — webhook was missing `checkout.session.async_payment_succeeded` event. ACH payments stayed as 'pending' forever because `checkout.session.completed` fires when session completes but ACH bank transfer takes 1-2 days. Fixed: added `async_payment_succeeded` and `async_payment_failed` to webhook events list and handler.
+17. **Stripe Express accounts can't be API-onboarded** — tried to set `company`, `tos_acceptance` via API on Express accounts. Error: "This application does not have the required permissions". Fixed: use `type: 'custom'` with `business_type: 'individual'` for programmatic test account creation.
+18. **Stripe company.phone rejected** — Custom accounts with `business_type: 'company'` kept rejecting phone number in every format. Fixed: switched to `business_type: 'individual'` which doesn't require company.phone.
 
 ---
 
-## Stripe Connect — Payment Integration (added Mar 28 2026)
+## Stripe Connect — Payment Integration (added Mar 28 2026, updated Apr 1 2026)
 
 ### Account Structure
 - **Parent org:** Varshyl (Stripe Organization)
@@ -447,24 +453,66 @@ Retainage is per-line (can vary). Default from project settings.
 - `pay_apps` additions: `payment_status`, `amount_paid`, `payment_link_token`, `bad_debt`, `bad_debt_at`, `bad_debt_reason`
 - `users` additions: `stripe_connect_id`, `payments_enabled`
 
+### Webhook Events (9 total — must match REQUIRED_WEBHOOK_EVENTS in server.js)
+- `checkout.session.completed` — Card payments confirmed immediately; ACH sessions complete but payment still processing
+- `checkout.session.async_payment_succeeded` — ACH bank transfer cleared (1-2 business days after session)
+- `checkout.session.async_payment_failed` — ACH bank transfer rejected
+- `checkout.session.expired` — Checkout session timed out
+- `invoice.paid` — Subscription invoice paid
+- `invoice.payment_failed` — Subscription payment failed
+- `customer.subscription.deleted` / `customer.subscription.updated` — Subscription lifecycle
+- `payment_intent.payment_failed` — Generic payment failure
+
+**Current staging webhook:** `we_1THPrlA9PDiZOpzDEhbgmFlk` → `https://construction-ai-billing-staging.up.railway.app/api/stripe/webhook`
+
 ### Server Routes (all in server.js)
 - `POST /api/stripe/connect` — Start Connect Express onboarding
 - `GET /api/stripe/account-status` — Check GC's connected account
 - `POST /api/stripe/dashboard-link` — Generate Stripe Express dashboard link
 - `POST /api/pay-apps/:id/payment-link` — Generate payment link for a pay app
-- `GET /api/pay/:token` — Public: get pay app data for payment page
+- `GET /api/pay/:token` — Public: get pay app data for payment page (returns `retainage_held`, `retainage_pct`, `has_pending_payment`)
 - `POST /api/pay/:token/checkout` — Create Stripe Checkout session (ACH or card)
-- `POST /api/stripe/webhook` — Handle Stripe webhook events
+- `POST /api/pay/:token/verify` — Verify payment on success redirect (fallback if webhook delayed)
+- `POST /api/stripe/webhook` — Handle Stripe webhook events (9 event types)
 - `GET /api/payments` — List GC's payments with summary stats
 - `POST /api/pay-apps/:id/bad-debt` — Mark as uncollectable
 - `POST /api/pay-apps/:id/undo-bad-debt` — Undo bad debt
 - `GET /pay/:token` — Serve pay.html (public payment page)
 
+### Admin Test Harness Routes (added Apr 1 2026)
+All protected by `adminAuth` middleware. For creating realistic Stripe payment test scenarios.
+- `POST /api/admin/test/create-test-gc` — Creates test user + Stripe Express account + onboarding link
+- `POST /api/admin/test/complete-onboarding` — Creates Custom connected account with full API control (replaces Express for test mode)
+- `POST /api/admin/test/create-test-payapp` — Creates project + 10 SOV lines + pay app with 30% progress + payment link
+- `GET /api/admin/test/reconciliation` — Complete money flow report (all payments, balances, Stripe charges, subscriptions)
+- `GET /api/admin/test/list-test-gcs` — Lists all test GC accounts with live Stripe status
+- `POST /api/admin/test/cleanup` — Removes test users and deletes their Stripe accounts
+
+### Test Accounts (staging, as of Apr 1 2026)
+| User | Email | Company | Stripe Account | Status |
+|------|-------|---------|---------------|--------|
+| Mike Rodriguez | mike.rodriguez.test@constructinv.com | ABC General Contractors | acct_1THBQHAcdALyzl9F | Active, charges_enabled |
+| Sarah Chen | sarah.chen.test@constructinv.com | Pacific Coast Builders | acct_1THBbqARAn2OPXl5 | Active, charges_enabled |
+| Vagish (admin) | vnkapila@gmail.com | Varshyl Inc. | acct_1TGLGxAmFfzOG6zY | Active, charges_enabled |
+
+**Test login password:** `TestPass123!` (for Mike and Sarah only)
+
+### Test Payment Data (staging)
+- **Elm Street Addition** ($50K contract) → Pay App $13,500 due → ACH payment succeeded, $13,475 in Mike's Stripe balance
+- **Downtown Bathroom Remodel** ($42K) → Pay App $11,340 due → ACH payment processing
+- **Oak Street Kitchen Renovation** ($85K) → Pay App $22,950 due → ACH payment processing
+
 ### Going Live Checklist
+- [x] Stripe Connect payment flow working end-to-end in test mode
+- [x] ACH and card payment flows verified with test accounts
+- [x] Webhook handling all 9 event types (including ACH async)
+- [x] Payment page shows correct state after payment (paid/processing)
+- [x] Invoice details show retainage correctly
+- [x] Test harness built for creating realistic payment scenarios
 - [ ] Switch Stripe to live mode, get `sk_live_` and `pk_live_` keys
 - [ ] Update Railway production env vars with live keys
 - [ ] Create live webhook endpoint pointing to production URL
-- [ ] Verify GC onboarding flow works end-to-end
+- [ ] Verify GC onboarding flow works end-to-end with real Stripe
 - [ ] Test real ACH and card payment (use small amount)
 - [ ] Confirm payouts to GC's bank account
 
