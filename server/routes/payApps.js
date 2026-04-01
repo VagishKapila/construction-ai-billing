@@ -9,6 +9,8 @@ const { upload } = require('../middleware/fileValidation');
 const { logEvent } = require('../lib/logEvent');
 const { fmt } = require('../lib/format');
 const PDFDocument = require('pdfkit');
+const { generateLienDocPDF } = require('./lienWaivers');
+const { generatePaymentToken } = require('../services/stripe');
 
 // PDF generation via Puppeteer (fallback to PDFKit if unavailable)
 let puppeteer = null;
@@ -172,6 +174,76 @@ router.put('/payapps/:id', auth, async (req,res) => {
         );
       }
     } catch(dueErr) { console.error('[Auto due date]', dueErr.message); }
+
+    // Auto-generate lien waiver on submit (non-blocking)
+    // - Progress payments → Conditional Waiver (with amount, conditional on receiving payment)
+    // - Final payment (≥98% complete) → Unconditional Final Waiver (waives all remaining rights)
+    try {
+      const lienCheck = await pool.query(
+        'SELECT id FROM lien_documents WHERE pay_app_id=$1', [req.params.id]
+      );
+      if (!lienCheck.rows[0]) {
+        const projData = await pool.query(
+          `SELECT p.*, cs.company_name, cs.logo_filename, cs.contact_name
+           FROM projects p
+           LEFT JOIN company_settings cs ON cs.user_id = p.user_id
+           WHERE p.id IN (SELECT project_id FROM pay_apps WHERE id=$1)`,
+          [req.params.id]
+        );
+        if (projData.rows[0]) {
+          const proj = projData.rows[0];
+          const paRow = await pool.query(
+            'SELECT amount_due, period_end, app_number, period_label FROM pay_apps WHERE id=$1',
+            [req.params.id]
+          );
+          const pa = paRow.rows[0] || {};
+          const lienAmount = parseFloat(pa.amount_due || 0);
+          const through_date = pa.period_end
+            ? new Date(pa.period_end).toISOString().split('T')[0]
+            : new Date().toISOString().split('T')[0];
+          const signatory_name = proj.contact_name || proj.company_name || proj.contractor || 'Contractor';
+          const jurisdiction = proj.jurisdiction || 'california';
+          const pay_app_ref = `Pay App #${pa.app_number}${pa.period_label ? ' — ' + pa.period_label : ''}`;
+
+          // Determine if this is a final payment: ≥98% of contract billed
+          const compCheck = await pool.query(`
+            SELECT SUM(sl.scheduled_value) as total_contract,
+                   SUM(sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100) as total_billed
+            FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id
+            WHERE pal.pay_app_id=$1`, [req.params.id]);
+          const totalContract = parseFloat(compCheck.rows[0]?.total_contract || 0);
+          const totalBilled = parseFloat(compCheck.rows[0]?.total_billed || 0);
+          const isFinalPayment = totalContract > 0 && (totalBilled / totalContract) >= 0.98;
+
+          const doc_type = isFinalPayment ? 'unconditional_final_waiver' : 'conditional_waiver';
+          const lienAmountForDoc = isFinalPayment ? 0 : lienAmount;
+          const fname = `lien_${doc_type}_${req.params.id}_${Date.now()}.pdf`;
+          const fpath = path.join(__dirname, '..', 'uploads', fname);
+          const signedAt = new Date();
+
+          await generateLienDocPDF({
+            fpath, doc_type, project: proj,
+            through_date, amount: lienAmountForDoc,
+            maker_of_check: proj.owner || '',
+            check_payable_to: proj.company_name || proj.contractor || '',
+            signatory_name, signatory_title: null,
+            signedAt, ip: req.ip || 'auto', jurisdiction, pay_app_ref
+          });
+          await pool.query(
+            `INSERT INTO lien_documents(project_id, pay_app_id, doc_type, filename, jurisdiction,
+               through_date, amount, maker_of_check, check_payable_to,
+               signatory_name, signatory_title, signed_at, signatory_ip)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+            [proj.id, parseInt(req.params.id), doc_type, fname, jurisdiction,
+             through_date, lienAmountForDoc, proj.owner||null, proj.company_name||proj.contractor||null,
+             signatory_name, null, signedAt, req.ip || 'auto']
+          );
+          await logEvent(req.user.id, 'lien_auto_generated', {
+            pay_app_id: parseInt(req.params.id), doc_type, is_final: isFinalPayment
+          });
+        }
+      }
+    } catch(lienErr) { console.error('[Auto lien release]', lienErr.message); }
   }
   res.json(r.rows[0]);
 });
@@ -666,7 +738,32 @@ router.post('/payapps/:id/email', auth, async (req, res) => {
     const due=Math.max(0,earned-tPrevCert);
     const totals={tComp,tRet,tPrevCert,tCO,contract,earned,due};
 
+    // Auto-generate payment link if GC has Stripe Connect and pay app doesn't have one yet
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    let payNowUrl = null;
+    if (shouldIncludePayLink) {
+      try {
+        const acctCheck = (await pool.query(
+          'SELECT stripe_account_id FROM connected_accounts WHERE user_id=$1 AND charges_enabled=TRUE',
+          [req.user.id]
+        )).rows[0];
+        if (acctCheck && due > 0) {
+          let payToken = pa.payment_link_token;
+          if (!payToken) {
+            payToken = generatePaymentToken();
+            await pool.query('UPDATE pay_apps SET payment_link_token=$1 WHERE id=$2', [payToken, req.params.id]);
+          }
+          payNowUrl = `${baseUrl}/pay/${payToken}`;
+        }
+      } catch(payLinkErr) { console.error('[Email] Payment link gen error:', payLinkErr.message); }
+    }
+
     const safeMsg = (message||'').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+    const payNowBtnHtml = payNowUrl ? `
+        <div style="text-align:center;margin:20px 0 8px">
+          <a href="${payNowUrl}" style="display:inline-block;background:#2563eb;color:#ffffff;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:12pt">Pay Now — $${due.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</a>
+        </div>
+        <p style="font-size:9pt;color:#888;text-align:center;margin:4px 0 0">ACH bank transfer or credit card accepted. Secure payment via Stripe.</p>` : '';
     const emailHtml = `<div style="font-family:sans-serif;max-width:600px;margin:0 auto">
       <div style="background:#2563eb;padding:18px 24px;color:#fff">
         <h2 style="margin:0;font-size:16pt">Pay Application #${pa.app_number}</h2>
@@ -681,6 +778,7 @@ router.post('/payapps/:id/email', auth, async (req, res) => {
           <tr style="background:#f7f7f7"><td style="padding:5px 8px;color:#555;font-weight:bold">Current Payment Due</td>
             <td style="padding:5px 8px;font-weight:bold;color:#2563eb;font-size:11pt">$${due.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>
         </table>
+        ${payNowBtnHtml}
       </div>
       <div style="padding:10px 24px;font-size:8pt;color:#aaa;text-align:center">
         Sent via <a href="https://constructinv.varshyl.com" style="color:#aaa">ConstructInvoice AI</a> · Varshyl Inc.

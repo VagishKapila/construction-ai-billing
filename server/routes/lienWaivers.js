@@ -548,3 +548,4 @@ async function generateLienDocPDF({
 }
 
 module.exports = router;
+module.exports.generateLienDocPDF = generateLienDocPDF;
