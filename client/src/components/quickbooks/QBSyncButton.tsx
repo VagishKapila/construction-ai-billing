@@ -129,7 +129,7 @@ export function QBSyncButton({
         )}
 
         {hasError && (
-          <Badge variant="destructive">Failed</Badge>
+          <Badge variant="danger">Failed</Badge>
         )}
       </div>
 

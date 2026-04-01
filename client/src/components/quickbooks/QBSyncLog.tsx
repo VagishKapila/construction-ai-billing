@@ -71,7 +71,7 @@ export function QBSyncLog({ projectId }: QBSyncLogProps) {
       case 'pending':
         return <Badge className="bg-blue-50 text-blue-700 border-blue-200">Pending</Badge>;
       case 'failed':
-        return <Badge variant="destructive">Failed</Badge>;
+        return <Badge variant="danger">Failed</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
