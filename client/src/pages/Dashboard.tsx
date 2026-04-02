@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FolderOpen,
-  DollarSign,
   Clock,
   TrendingUp,
   TrendingDown,
@@ -19,9 +18,7 @@ import type { Project } from '@/types'
 import { useProjects } from '@/hooks/useProjects'
 import { useReports } from '@/hooks/useReports'
 import { useTrial } from '@/hooks/useTrial'
-import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Spotlight } from '@/components/aceternity/spotlight'
@@ -38,17 +35,6 @@ import {
 // ---------------------------------------------------------------------------
 // Animation Variants
 // ---------------------------------------------------------------------------
-
-const fadeUp = {
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0 },
-}
-
-const staggerContainer = {
-  animate: {
-    transition: { staggerChildren: 0.1 },
-  },
-}
 
 // ---------------------------------------------------------------------------
 // KPI Card — 3D tilt with gradient icon

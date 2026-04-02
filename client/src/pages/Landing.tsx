@@ -1,7 +1,6 @@
 import { Suspense, lazy } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Button } from '@/components/ui/button'
 import { BackgroundBeams } from '@/components/aceternity/background-beams'
 import { TextGenerateEffect } from '@/components/aceternity/text-generate-effect'
 import { Spotlight } from '@/components/aceternity/spotlight'
@@ -24,7 +23,6 @@ import {
   ArrowRight,
   Check,
   Building2,
-  Shield,
   Zap,
 } from 'lucide-react'
 

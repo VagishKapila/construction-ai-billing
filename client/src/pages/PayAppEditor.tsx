@@ -9,7 +9,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import {
   ChevronLeft,
   AlertTriangle,
@@ -17,8 +17,6 @@ import {
   Download,
   Mail,
   Plus,
-  Calculator,
-  PenLine,
 } from 'lucide-react'
 import type { PayAppLineComputed } from '@/types'
 import { usePayApp } from '@/hooks/usePayApp'
@@ -30,7 +28,6 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Spotlight } from '@/components/aceternity/spotlight'
 
 // ============================================================================
 // EMAIL MODAL

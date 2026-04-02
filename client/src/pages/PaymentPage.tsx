@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ChevronDown, ChevronUp, CheckCircle, AlertCircle, Lock, Shield, Landmark, CreditCard } from 'lucide-react'
+import { ChevronDown, ChevronUp, CheckCircle, AlertCircle, Lock, Shield } from 'lucide-react'
 
 interface PayAppData {
   project_name: string
