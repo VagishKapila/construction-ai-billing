@@ -79,9 +79,14 @@ export function usePayApp(
         };
       }
 
-      // Calculate previous certificates from prior pay apps (simplified: assume it's 0 for now)
-      // In a full implementation, this would sum all previous pay app totals
-      const prevCerts = 0;
+      // Column G: Previous certificates = total earned less retainage from prior billing
+      // prevAmount (B) = prev_pct/100 × scheduledValue
+      // Previous retainage = retainage_pct/100 × prevAmount
+      // Previous certificates (G) = prevAmount − previous retainage
+      const sv = Number(sovLine.scheduled_value) || 0;
+      const prevAmt = (line.prev_pct / 100) * sv;
+      const prevRetainage = (line.retainage_pct / 100) * prevAmt;
+      const prevCerts = prevAmt - prevRetainage;
 
       return computeLine(
         line,

@@ -37,6 +37,7 @@ export interface EmailPayAppRequest {
   subject?: string;
   message?: string;
   include_lien_waiver?: boolean;
+  include_payment_link?: boolean;
 }
 
 // ============================================================================

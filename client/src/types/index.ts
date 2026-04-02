@@ -289,7 +289,7 @@ export interface LienDocument {
   pay_app_id?: number;
 
   // Type & jurisdiction
-  doc_type: 'conditional' | 'unconditional';
+  doc_type: 'preliminary_notice' | 'conditional_waiver' | 'unconditional_waiver' | 'conditional_final_waiver' | 'unconditional_final_waiver';
   jurisdiction?: string;
 
   // Document details

@@ -24,8 +24,9 @@ import {
   Paperclip,
   Shield,
 } from 'lucide-react'
-import type { PayAppLineComputed, ChangeOrder } from '@/types'
+import type { PayAppLineComputed, ChangeOrder, LienDocument } from '@/types'
 import { usePayApp } from '@/hooks/usePayApp'
+import { getLienDocs, createLienDoc, downloadLienDocPDF } from '@/api/lienWaivers'
 import { useTrial } from '@/hooks/useTrial'
 import { formatCurrency, formatPercent, formatDate } from '@/lib/formatters'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -676,29 +677,240 @@ function Step4Summary({
 }
 
 // ============================================================================
-// STEP 5: LIEN WAIVER (placeholder — functional in old UI)
+// STEP 5: LIEN WAIVER — fully wired to server API
 // ============================================================================
 
-function Step5LienWaiver() {
+function Step5LienWaiver({
+  payApp,
+  project,
+  totals,
+}: {
+  payApp: any
+  project: any
+  totals: any
+}) {
+  const [lienDocs, setLienDocs] = useState<LienDocument[]>([])
+  const [isLoadingDocs, setIsLoadingDocs] = useState(true)
+  const [isCreating, setIsCreating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [showForm, setShowForm] = useState(false)
+
+  // Form state
+  const [docType, setDocType] = useState<LienDocument['doc_type']>('conditional_waiver')
+  const [signatoryName, setSignatoryName] = useState('')
+  const [signatoryTitle, setSignatoryTitle] = useState('')
+  const [throughDate, setThroughDate] = useState('')
+  const [amount, setAmount] = useState('')
+  const [makerOfCheck, setMakerOfCheck] = useState('')
+  const [checkPayableTo, setCheckPayableTo] = useState('')
+
+  // Load existing lien docs on mount
+  useEffect(() => {
+    if (!project?.id) return
+    setIsLoadingDocs(true)
+    getLienDocs(project.id)
+      .then((res) => {
+        if (res.data) {
+          // Filter to this pay app's docs
+          const docs = (Array.isArray(res.data) ? res.data : []).filter(
+            (d: LienDocument) => d.pay_app_id === payApp?.id || !d.pay_app_id
+          )
+          setLienDocs(docs)
+        }
+      })
+      .catch(() => setError('Failed to load lien documents'))
+      .finally(() => setIsLoadingDocs(false))
+  }, [project?.id, payApp?.id])
+
+  // Pre-fill form from project/pay app data
+  useEffect(() => {
+    if (project) {
+      setMakerOfCheck(project.owner || '')
+      setCheckPayableTo(project.contractor || '')
+    }
+    if (payApp) {
+      setThroughDate(payApp.period_end ? payApp.period_end.split('T')[0] : '')
+    }
+    if (totals) {
+      setAmount(String(Math.round((totals.totalCurrentDue || 0) * 100) / 100))
+    }
+  }, [project, payApp, totals])
+
+  const handleCreate = async () => {
+    if (!signatoryName.trim()) {
+      setError('Signatory name is required')
+      return
+    }
+    setIsCreating(true)
+    setError(null)
+    try {
+      const res = await createLienDoc(project.id, {
+        doc_type: docType,
+        signatory_name: signatoryName,
+        signatory_title: signatoryTitle || undefined,
+        through_date: throughDate || undefined,
+        amount: amount ? parseFloat(amount) : undefined,
+        maker_of_check: makerOfCheck || undefined,
+        check_payable_to: checkPayableTo || undefined,
+        pay_app_id: payApp?.id,
+        jurisdiction: project.jurisdiction || 'california',
+      })
+      if (res.data) {
+        setLienDocs((prev) => [res.data as LienDocument, ...prev])
+        setShowForm(false)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create lien waiver')
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  const handleDownload = async (docId: number) => {
+    try {
+      const blob = await downloadLienDocPDF(docId)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `lien-waiver-${docId}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setError('Failed to download lien waiver PDF')
+    }
+  }
+
+  const DOC_TYPE_LABELS: Record<string, string> = {
+    preliminary_notice: 'Preliminary Notice',
+    conditional_waiver: 'Conditional Waiver — Progress Payment',
+    unconditional_waiver: 'Unconditional Waiver — Progress Payment',
+    conditional_final_waiver: 'Conditional Waiver — Final Payment',
+    unconditional_final_waiver: 'Unconditional Waiver — Final Payment',
+  }
+
   return (
-    <Card className="p-6">
-      <h3 className="text-lg font-semibold text-text-primary mb-2">Lien Waiver</h3>
-      <p className="text-sm text-text-secondary mb-6">
-        A conditional waiver is auto-created with each pay app. You can also create additional waivers here.
-        They'll be included as page 3 of the PDF.
-      </p>
-
-      <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
-        <Shield className="w-10 h-10 text-text-muted mx-auto mb-3" />
-        <p className="text-sm text-text-secondary">
-          Lien waiver generation is available — skip if not needed for this pay app.
+    <div className="space-y-6">
+      <Card className="p-6">
+        <h3 className="text-lg font-semibold text-text-primary mb-2">Lien Waiver</h3>
+        <p className="text-sm text-text-secondary mb-6">
+          A conditional waiver is auto-generated when you submit the pay app. You can also create additional waivers manually below.
         </p>
-      </div>
 
-      <p className="text-xs text-text-muted text-center mt-4">
-        Lien waiver is optional — skip if not needed for this pay app
+        {error && (
+          <div className="rounded-lg bg-red-50 border border-red-200 p-3 mb-4">
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
+        )}
+
+        {/* Existing lien docs */}
+        {isLoadingDocs ? (
+          <div className="flex justify-center py-8">
+            <LoadingSpinner />
+          </div>
+        ) : lienDocs.length > 0 ? (
+          <div className="space-y-3 mb-6">
+            <h4 className="text-sm font-medium text-text-primary">Existing Waivers</h4>
+            {lienDocs.map((doc) => (
+              <div
+                key={doc.id}
+                className="flex items-center justify-between p-4 rounded-lg border border-border bg-white hover:bg-gray-50"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-text-primary">
+                    {DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type}
+                  </p>
+                  <div className="flex gap-4 text-xs text-text-muted mt-1">
+                    {doc.amount != null && <span>Amount: {formatCurrency(doc.amount)}</span>}
+                    {doc.through_date && <span>Through: {formatDate(doc.through_date)}</span>}
+                    <span>Created: {formatDate(doc.created_at)}</span>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleDownload(doc.id)}
+                  className="gap-1 flex-shrink-0 ml-3"
+                >
+                  <Download className="w-3 h-3" />
+                  PDF
+                </Button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="border-2 border-dashed border-border rounded-lg p-6 text-center mb-6">
+            <Shield className="w-8 h-8 text-text-muted mx-auto mb-2" />
+            <p className="text-sm text-text-secondary">
+              No lien waivers yet. One will be auto-generated when you submit this pay app.
+            </p>
+          </div>
+        )}
+
+        {/* Create new waiver */}
+        {!showForm ? (
+          <Button variant="outline" onClick={() => setShowForm(true)} className="gap-2">
+            <Plus className="w-4 h-4" />
+            Create Lien Waiver Manually
+          </Button>
+        ) : (
+          <Card className="p-5 border-primary-200 bg-primary-50/30">
+            <h4 className="text-sm font-semibold text-text-primary mb-4">New Lien Waiver</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-text-secondary mb-1">Waiver Type</label>
+                <select
+                  value={docType}
+                  onChange={(e) => setDocType(e.target.value as LienDocument['doc_type'])}
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-white"
+                >
+                  <option value="conditional_waiver">Conditional Waiver — Progress Payment</option>
+                  <option value="unconditional_waiver">Unconditional Waiver — Progress Payment</option>
+                  <option value="conditional_final_waiver">Conditional Waiver — Final Payment</option>
+                  <option value="unconditional_final_waiver">Unconditional Waiver — Final Payment</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1">Signatory Name *</label>
+                <Input value={signatoryName} onChange={(e) => setSignatoryName(e.target.value)} placeholder="John Smith" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1">Signatory Title</label>
+                <Input value={signatoryTitle} onChange={(e) => setSignatoryTitle(e.target.value)} placeholder="Project Manager" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1">Through Date</label>
+                <Input type="date" value={throughDate} onChange={(e) => setThroughDate(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1">Amount</label>
+                <Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1">Maker of Check</label>
+                <Input value={makerOfCheck} onChange={(e) => setMakerOfCheck(e.target.value)} placeholder="Property Owner" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1">Check Payable To</label>
+                <Input value={checkPayableTo} onChange={(e) => setCheckPayableTo(e.target.value)} placeholder="Your Company" />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <Button onClick={handleCreate} disabled={isCreating} className="gap-2">
+                <Shield className="w-4 h-4" />
+                {isCreating ? 'Creating...' : 'Generate Waiver'}
+              </Button>
+              <Button variant="outline" onClick={() => setShowForm(false)}>
+                Cancel
+              </Button>
+            </div>
+          </Card>
+        )}
+      </Card>
+
+      <p className="text-xs text-text-muted text-center">
+        Lien waivers are optional. Skip this step if not needed for this billing period.
       </p>
-    </Card>
+    </div>
   )
 }
 
@@ -910,6 +1122,7 @@ export function PayAppEditor() {
           subject: formData.subject,
           message: formData.message,
           include_lien_waiver: formData.includeLienWaiver,
+          include_payment_link: formData.includePaymentLink,
         })
 
         if (success) {
@@ -1050,7 +1263,13 @@ export function PayAppEditor() {
           />
         )}
 
-        {currentStep === 5 && <Step5LienWaiver />}
+        {currentStep === 5 && (
+          <Step5LienWaiver
+            payApp={payApp}
+            project={project}
+            totals={totals}
+          />
+        )}
 
         {currentStep === 6 && (
           <Step6Preview

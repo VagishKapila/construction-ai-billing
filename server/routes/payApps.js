@@ -704,8 +704,8 @@ router.get('/api/payapps/:id/pdf', async (req,res) => {
 
 // POST /api/payapps/:id/email - Send pay app via email with PDF
 router.post('/api/payapps/:id/email', auth, async (req, res) => {
-  const { to, cc, subject, message, attach_lien_waiver, include_payment_link } = req.body;
-  const shouldAttachLien = attach_lien_waiver !== false;
+  const { to, cc, subject, message, attach_lien_waiver, include_lien_waiver, include_payment_link } = req.body;
+  const shouldAttachLien = (attach_lien_waiver ?? include_lien_waiver) !== false;
   const shouldIncludePayLink = include_payment_link !== false;
   if (!to) return res.status(400).json({ error: 'Recipient email (to) is required' });
 
