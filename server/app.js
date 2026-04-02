@@ -50,10 +50,15 @@ const clientDistPath = path.join(__dirname, '..', 'client', 'dist');
 const publicPath = path.join(__dirname, '..', 'public');
 const hasReactBuild = fs.existsSync(path.join(clientDistPath, 'index.html'));
 
-// ── IMPORTANT: Intercept legacy /app.html BEFORE static middleware ────────
-// express.static(publicPath) would serve public/app.html as a static file
-// and our route handlers would never run. This middleware catches it first.
+// ── IMPORTANT: Intercept legacy routes BEFORE static middleware ───────────
+// express.static(publicPath) would serve public/index.html and public/app.html
+// as static files, bypassing route handlers. These middlewares catch them first.
 if (hasReactBuild) {
+  // Serve React SPA for root path instead of old public/index.html
+  app.get('/', (req, res) => {
+    res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+
   app.get('/app.html', (req, res) => {
     // Map old app.html query/hash params to React SPA routes
     const url = req.originalUrl;
