@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSettings } from '@/hooks/useSettings'
 import { useTrial } from '@/hooks/useTrial'
@@ -77,6 +77,10 @@ export function Settings() {
   // Logo & signature state
   const [logoUploading, setLogoUploading] = useState(false)
   const [signatureUploading, setSignatureUploading] = useState(false)
+  const [logoBlobUrl, setLogoBlobUrl] = useState<string | null>(null)
+  const [signatureBlobUrl, setSignatureBlobUrl] = useState<string | null>(null)
+  const logoUrlRef = useRef<string | null>(null)
+  const sigUrlRef = useRef<string | null>(null)
 
   // Stripe state
   const [stripeAccount, setStripeAccount] = useState<any>(null)
@@ -115,6 +119,51 @@ export function Settings() {
       }))
     }
   }, [settings, user?.email])
+
+  // Fetch logo and signature images with auth headers (img src can't send JWT)
+  useEffect(() => {
+    const token = localStorage.getItem('ci_token')
+    if (!token) return
+
+    // Fetch logo
+    if (settings?.logo_filename) {
+      fetch('/api/settings/logo', { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => (r.ok ? r.blob() : null))
+        .then((blob) => {
+          if (blob) {
+            if (logoUrlRef.current) URL.revokeObjectURL(logoUrlRef.current)
+            const url = URL.createObjectURL(blob)
+            logoUrlRef.current = url
+            setLogoBlobUrl(url)
+          }
+        })
+        .catch(() => {})
+    } else {
+      setLogoBlobUrl(null)
+    }
+
+    // Fetch signature
+    if (settings?.signature_filename) {
+      fetch('/api/settings/signature', { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => (r.ok ? r.blob() : null))
+        .then((blob) => {
+          if (blob) {
+            if (sigUrlRef.current) URL.revokeObjectURL(sigUrlRef.current)
+            const url = URL.createObjectURL(blob)
+            sigUrlRef.current = url
+            setSignatureBlobUrl(url)
+          }
+        })
+        .catch(() => {})
+    } else {
+      setSignatureBlobUrl(null)
+    }
+
+    return () => {
+      if (logoUrlRef.current) URL.revokeObjectURL(logoUrlRef.current)
+      if (sigUrlRef.current) URL.revokeObjectURL(sigUrlRef.current)
+    }
+  }, [settings?.logo_filename, settings?.signature_filename])
 
   // Load Stripe account status
   useEffect(() => {
@@ -471,10 +520,10 @@ export function Settings() {
                 <label className="block text-sm font-medium text-text-primary mb-3">
                   Company Logo
                 </label>
-                {settings?.logo_filename && (
+                {settings?.logo_filename && logoBlobUrl && (
                   <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-border">
                     <img
-                      src={`/api/settings/logo`}
+                      src={logoBlobUrl}
                       alt="Company Logo"
                       className="h-12 object-contain"
                     />
@@ -508,10 +557,10 @@ export function Settings() {
                 <label className="block text-sm font-medium text-text-primary mb-3">
                   Signature
                 </label>
-                {settings?.signature_filename && (
+                {settings?.signature_filename && signatureBlobUrl && (
                   <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-border">
                     <img
-                      src={`/api/settings/signature`}
+                      src={signatureBlobUrl}
                       alt="Signature"
                       className="h-12 object-contain"
                     />

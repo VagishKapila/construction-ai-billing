@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -143,6 +143,8 @@ function ProjectRow({ project, index }: ProjectRowProps) {
         ? 'bg-amber-50 text-amber-700 border border-amber-200'
         : 'bg-green-50 text-green-700 border border-green-200'
 
+  const payAppCount = project.pay_app_count || 0
+
   return (
     <Link to={`/projects/${project.id}`}>
       <motion.div
@@ -153,9 +155,17 @@ function ProjectRow({ project, index }: ProjectRowProps) {
         className="flex items-center justify-between p-4 rounded-xl border border-gray-100 hover:border-indigo-200/50 transition-all cursor-pointer"
       >
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-gray-900 truncate">
-            {project.name}
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold text-gray-900 truncate">
+              {project.name}
+            </p>
+            {payAppCount > 0 && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 shrink-0">
+                <FileText className="w-3 h-3" />
+                {payAppCount}
+              </span>
+            )}
+          </div>
           <p className="text-xs text-gray-500 mt-0.5">
             {formatCurrency(project.original_contract)} contract
             {project.owner && ` · ${project.owner}`}
@@ -180,6 +190,7 @@ function ProjectRow({ project, index }: ProjectRowProps) {
           >
             {statusDisplay}
           </span>
+          <ArrowUpRight className="w-4 h-4 text-gray-400 shrink-0" />
         </div>
       </motion.div>
     </Link>
@@ -203,16 +214,18 @@ interface ActivityItemProps {
   amount?: string
   time: string
   index: number
+  projectId?: number
 }
 
-function ActivityItem({ type, text, amount, time, index }: ActivityItemProps) {
+function ActivityItem({ type, text, amount, time, index, projectId }: ActivityItemProps) {
   const { icon: Icon, bg } = activityIcons[type] || activityIcons.create
-  return (
+  const content = (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.4 + index * 0.08 }}
-      className="flex items-start gap-3"
+      whileHover={projectId ? { x: 3, backgroundColor: 'rgba(99,102,241,0.03)' } : undefined}
+      className={`flex items-start gap-3 p-2 rounded-lg -mx-2 ${projectId ? 'cursor-pointer hover:bg-gray-50 transition-colors' : ''}`}
     >
       <div
         className={`mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${bg}`}
@@ -228,8 +241,10 @@ function ActivityItem({ type, text, amount, time, index }: ActivityItemProps) {
           <span className="text-xs text-gray-400">{time}</span>
         </div>
       </div>
+      {projectId && <ArrowUpRight className="w-3.5 h-3.5 text-gray-400 mt-1 shrink-0" />}
     </motion.div>
   )
+  return projectId ? <Link to={`/projects/${projectId}`}>{content}</Link> : content
 }
 
 // ---------------------------------------------------------------------------
@@ -251,16 +266,23 @@ export function Dashboard() {
     [projects],
   )
 
+  const [showAllProjects, setShowAllProjects] = useState(false)
+
   const isLoading = projectsLoading || statsLoading
   const error = projectsError || statsError
 
-  // Build recent activity from projects (simple heuristic)
+  const displayedProjects = showAllProjects
+    ? sortedProjects
+    : sortedProjects.slice(0, 6)
+
+  // Build recent activity from projects with links
   const recentActivity = useMemo(() => {
     return sortedProjects.slice(0, 4).map((p) => ({
-      type: 'create',
+      type: 'create' as const,
       text: `Project updated — ${p.name}`,
       amount: formatCurrency(p.original_contract),
       time: formatRelativeDate(p.created_at),
+      projectId: p.id,
     }))
   }, [sortedProjects])
 
@@ -399,12 +421,15 @@ export function Dashboard() {
               <h2 className="text-lg font-bold text-gray-900">
                 Active Projects
               </h2>
-              <Link
-                to="/projects"
-                className="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
-              >
-                View All <ArrowUpRight className="w-3.5 h-3.5" />
-              </Link>
+              {sortedProjects.length > 6 && (
+                <button
+                  onClick={() => setShowAllProjects(!showAllProjects)}
+                  className="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
+                >
+                  {showAllProjects ? 'Show Less' : `View All (${sortedProjects.length})`}
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
             {projectsLoading ? (
@@ -415,7 +440,7 @@ export function Dashboard() {
               </div>
             ) : (
               <div className="space-y-3">
-                {sortedProjects.slice(0, 6).map((project, i) => (
+                {displayedProjects.map((project, i) => (
                   <ProjectRow key={project.id} project={project} index={i} />
                 ))}
               </div>

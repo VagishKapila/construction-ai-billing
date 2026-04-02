@@ -7,9 +7,20 @@ const { auth } = require('../middleware/auth');
 const { upload, rejectFile, MIME_CONTRACT } = require('../middleware/fileValidation');
 const { logEvent } = require('../lib/logEvent');
 
-// GET /api/projects — List all projects for authenticated user
+// GET /api/projects — List all projects for authenticated user (includes pay app count)
 router.get('/api/projects', auth, async (req, res) => {
-  const r = await pool.query('SELECT * FROM projects WHERE user_id=$1 ORDER BY created_at DESC', [req.user.id]);
+  const r = await pool.query(
+    `SELECT p.*, COALESCE(pa.pay_app_count, 0)::int AS pay_app_count
+     FROM projects p
+     LEFT JOIN (
+       SELECT project_id, COUNT(*) AS pay_app_count
+       FROM pay_apps WHERE deleted_at IS NULL
+       GROUP BY project_id
+     ) pa ON pa.project_id = p.id
+     WHERE p.user_id=$1
+     ORDER BY p.created_at DESC`,
+    [req.user.id]
+  );
   res.json(r.rows);
 });
 

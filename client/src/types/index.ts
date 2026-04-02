@@ -87,6 +87,9 @@ export interface Project {
   contract_filename?: string;
   contract_original_name?: string;
 
+  // Aggregates (from projects list query)
+  pay_app_count?: number;
+
   // Timestamps
   created_at: string; // ISO 8601
 }

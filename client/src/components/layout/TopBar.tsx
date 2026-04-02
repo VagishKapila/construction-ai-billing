@@ -73,14 +73,12 @@ export function TopBar({
   return (
     <header
       className={cn(
-        'fixed top-0 right-0 h-[64px] bg-white border-b border-[#e8e8f0]',
+        'fixed top-0 h-[64px] bg-white border-b border-[#e8e8f0]',
         'flex items-center justify-between px-4 md:px-6',
         'z-40 shadow-sm',
+        'left-0 w-full',           // Mobile: full width
+        'md:left-[260px] md:w-[calc(100%-260px)]', // Desktop: offset by sidebar
       )}
-      style={{
-        left: 'var(--sidebar-left, 0)',
-        width: 'var(--topbar-width, 100%)',
-      }}
     >
       {/* Left side: hamburger (mobile) + page title */}
       <div className="flex items-center gap-4">
