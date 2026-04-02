@@ -8,13 +8,16 @@
  * @param amount - The amount to format (can be null/undefined)
  * @returns Formatted string like "$1,234.56" or "($1,234.56)" for negatives
  */
-export function formatCurrency(amount: number | null | undefined): string {
+export function formatCurrency(amount: number | string | null | undefined): string {
   if (amount === null || amount === undefined) {
     return '$0.00'
   }
 
-  const isNegative = amount < 0
-  const absAmount = Math.abs(amount)
+  const num = Number(amount)
+  if (isNaN(num)) return '$0.00'
+
+  const isNegative = num < 0
+  const absAmount = Math.abs(num)
 
   const formatted = new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -54,12 +57,14 @@ export function formatDate(date: string | null | undefined): string {
  * @param decimals - Number of decimal places (default: 1)
  * @returns Formatted string like "10.0%" or "0.0%" if value is null/undefined
  */
-export function formatPercent(value: number | null | undefined, decimals = 1): string {
+export function formatPercent(value: number | string | null | undefined, decimals = 1): string {
   if (value === null || value === undefined) {
     return `0.${'0'.repeat(decimals)}%`
   }
 
-  return `${value.toFixed(decimals)}%`
+  const num = Number(value)
+  if (isNaN(num)) return `0.${'0'.repeat(decimals)}%`
+  return `${num.toFixed(decimals)}%`
 }
 
 /**
@@ -67,8 +72,9 @@ export function formatPercent(value: number | null | undefined, decimals = 1): s
  * @param amount - The amount to format
  * @returns Compact formatted string like "$1.2M", "$250K", or "$1,234"
  */
-export function formatCompactCurrency(amount: number): string {
-  const absAmount = Math.abs(amount)
+export function formatCompactCurrency(amount: number | string | null | undefined): string {
+  const num = Number(amount) || 0
+  const absAmount = Math.abs(num)
 
   if (absAmount >= 1_000_000) {
     const millions = absAmount / 1_000_000

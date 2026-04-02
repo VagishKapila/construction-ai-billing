@@ -26,20 +26,25 @@ export function computeLine(
   description: string,
   prevCertificates: number
 ): PayAppLineComputed {
-  // Column A: Scheduled Value (from SOV)
-  const scheduledVal = scheduledValue
+  // Column A: Scheduled Value (from SOV) — coerce from potential string
+  const scheduledVal = Number(scheduledValue) || 0
+
+  // Coerce line percentages from potential strings (PostgreSQL numeric → string)
+  const prevPct = Number(line.prev_pct) || 0
+  const thisPct = Number(line.this_pct) || 0
+  const retPct = Number(line.retainage_pct) || 0
 
   // Column B: Work completed from previous
-  const prevAmount = (line.prev_pct / 100) * scheduledVal
+  const prevAmount = (prevPct / 100) * scheduledVal
 
   // Column C: Work completed this period
-  const thisAmount = (line.this_pct / 100) * scheduledVal
+  const thisAmount = (thisPct / 100) * scheduledVal
 
   // Column D: Total work completed
   const totalCompleted = prevAmount + thisAmount
 
   // Column E: Retainage held
-  const retainageHeld = (line.retainage_pct / 100) * totalCompleted
+  const retainageHeld = (retPct / 100) * totalCompleted
 
   // Column F: Total earned
   const totalEarned = totalCompleted - retainageHeld

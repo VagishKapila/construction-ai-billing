@@ -84,8 +84,8 @@ export function usePayApp(
       // Previous retainage = retainage_pct/100 × prevAmount
       // Previous certificates (G) = prevAmount − previous retainage
       const sv = Number(sovLine.scheduled_value) || 0;
-      const prevAmt = (line.prev_pct / 100) * sv;
-      const prevRetainage = (line.retainage_pct / 100) * prevAmt;
+      const prevAmt = (Number(line.prev_pct) || 0) / 100 * sv;
+      const prevRetainage = (Number(line.retainage_pct) || 0) / 100 * prevAmt;
       const prevCerts = prevAmt - prevRetainage;
 
       return computeLine(
