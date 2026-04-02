@@ -322,7 +322,17 @@ export function Settings() {
   const handleNotificationSave = async () => {
     setNotificationSaving(true)
     try {
-      showToast('success', 'Notification preferences saved')
+      const result = await saveSettings({
+        reminder_7before: notificationForm.emailOnPaymentReceived,
+        reminder_due: notificationForm.emailWeeklySummary,
+        reminder_7after: notificationForm.emailOverdueReminder,
+        reminder_email: notificationForm.reminderEmail || undefined,
+      } as any)
+      if (result) {
+        showToast('success', 'Notification preferences saved')
+      } else {
+        showToast('error', 'Failed to save notification preferences')
+      }
     } catch (err) {
       showToast('error', 'Failed to save notification preferences')
     } finally {

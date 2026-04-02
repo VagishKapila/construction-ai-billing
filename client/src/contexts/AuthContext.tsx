@@ -55,6 +55,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     const initAuth = async () => {
       try {
+        // Check for Google OAuth token in URL hash (#google_token=...)
+        const hash = window.location.hash;
+        if (hash.includes('google_token=')) {
+          const googleToken = hash.split('google_token=')[1]?.split('&')[0];
+          if (googleToken) {
+            api.setToken(googleToken);
+            // Clean the hash from URL
+            window.history.replaceState(null, '', window.location.pathname + window.location.search);
+          }
+        }
+
         const token = api.getToken();
         if (!token) {
           setState((prev) => ({ ...prev, isLoading: false }));

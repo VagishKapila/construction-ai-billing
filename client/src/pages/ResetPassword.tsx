@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import * as authApi from '@/api/auth'
 
 export function ResetPassword() {
   const [searchParams] = useSearchParams()
@@ -15,7 +16,8 @@ export function ResetPassword() {
   const [success, setSuccess] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
-  const token = searchParams.get('token') || ''
+  // Server sends reset link as /reset-password?reset=TOKEN
+  const token = searchParams.get('reset') || searchParams.get('token') || ''
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -34,9 +36,12 @@ export function ResetPassword() {
     setIsLoading(true)
 
     try {
-      // TODO: Call reset password API with token
-      console.log('Reset password with token:', token, 'New password:', password)
-      setSuccess(true)
+      const response = await authApi.resetPassword(token, password)
+      if (response.error) {
+        setError(response.error)
+      } else {
+        setSuccess(true)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reset password')
     } finally {

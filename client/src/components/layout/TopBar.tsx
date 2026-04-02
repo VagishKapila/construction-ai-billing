@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, Link } from 'react-router-dom'
 import {
   Menu,
   LogOut,
@@ -158,8 +158,8 @@ export function TopBar({
 
               {/* Menu items */}
               <DropdownMenu.Item asChild>
-                <a
-                  href="/settings"
+                <Link
+                  to="/settings"
                   className={cn(
                     'flex items-center gap-3 px-3 py-2.5 text-sm',
                     'rounded cursor-pointer',
@@ -169,12 +169,12 @@ export function TopBar({
                 >
                   <Settings size={16} />
                   <span>Settings</span>
-                </a>
+                </Link>
               </DropdownMenu.Item>
 
               <DropdownMenu.Item asChild>
-                <a
-                  href="/settings#profile"
+                <Link
+                  to="/settings"
                   className={cn(
                     'flex items-center gap-3 px-3 py-2.5 text-sm',
                     'rounded cursor-pointer',
@@ -184,7 +184,7 @@ export function TopBar({
                 >
                   <User size={16} />
                   <span>Profile</span>
-                </a>
+                </Link>
               </DropdownMenu.Item>
 
               {/* Logout */}

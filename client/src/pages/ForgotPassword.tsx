@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import * as authApi from '@/api/auth'
 
 export function ForgotPassword() {
   const [email, setEmail] = useState('')
@@ -15,9 +16,12 @@ export function ForgotPassword() {
     setIsLoading(true)
 
     try {
-      // TODO: Call forgot password API
-      console.log('Reset password email sent to:', email)
-      setSubmitted(true)
+      const response = await authApi.forgotPassword(email)
+      if (response.error) {
+        setError(response.error)
+      } else {
+        setSubmitted(true)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send reset email')
     } finally {

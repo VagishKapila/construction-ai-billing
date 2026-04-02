@@ -150,8 +150,7 @@ export function AIChatWidget({ triggerContent, onToggle }: AIChatWidgetProps) {
 
         // If we showed a hint, add it as a subtle system message
         if (systemHint) {
-          // Just log it, don't add to messages
-          console.log('Product question detected')
+          // Product question detected — hint applied silently
         }
       } else {
         setError(response.error || 'Failed to get response from AI')

@@ -227,8 +227,7 @@ function ChangeOrdersSection() {
 
   const handleAddCO = (e: React.FormEvent) => {
     e.preventDefault()
-    // TODO: Add change order via API
-    console.log('Add CO:', formData)
+    // TODO: Add change order via API — wire to POST /api/payapps/:id/changeorders
     setFormData({ description: '', amount: '' })
     setShowForm(false)
   }
