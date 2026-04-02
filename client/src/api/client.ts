@@ -119,23 +119,29 @@ export class ApiClient {
       }
 
       // Parse response as JSON
-      let data: ApiResponse<T>;
+      let raw: Record<string, unknown>;
       const contentType = response.headers.get('content-type');
       if (contentType?.includes('application/json')) {
-        data = await response.json();
+        raw = await response.json();
       } else {
-        // If not JSON, treat as error
-        data = {
-          error: `Unexpected response type: ${contentType}`,
-        };
+        raw = { error: `Unexpected response type: ${contentType}` };
       }
 
-      // Throw on non-2xx status (but data may still be set)
+      // Throw on non-2xx status
       if (!response.ok) {
-        throw new Error(data.error || data.message || `HTTP ${response.status}`);
+        throw new Error(
+          (raw.error as string) || (raw.message as string) || `HTTP ${response.status}`,
+        );
       }
 
-      return data;
+      // Normalize: server may return { data: ... } or flat { token, user, ... }
+      // The React app expects ApiResponse<T> which has a .data property
+      if ('data' in raw) {
+        // Already wrapped — return as-is
+        return raw as ApiResponse<T>;
+      }
+      // Flat response (e.g. { token, user }) — wrap in { data: ... }
+      return { data: raw as unknown as T } as ApiResponse<T>;
     } catch (error) {
       // Network error or parse error
       const message = error instanceof Error ? error.message : 'Unknown error';
