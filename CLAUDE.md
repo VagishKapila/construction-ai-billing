@@ -35,6 +35,23 @@ Users create projects, upload a Schedule of Values (SOV), then generate G702/G70
 | Payments | Stripe Connect Express (ACH + card via Checkout), `stripe` npm v21+ |
 | File storage | Railway Volume `construction-ai-billing-volume` mounted at `/app/uploads` (persistent across deploys) |
 
+### Rev 2 Frontend Stack (constructinv-2.0 branch)
+
+| Library | Purpose | Version |
+|---------|---------|---------|
+| React 19 + TypeScript | UI framework | ^19.2.4 |
+| Vite 6 | Build tool (NOT Vite 8 — Rolldown native bindings crash Railway) | ^6.4.1 |
+| Tailwind CSS v4 + shadcn/ui | Styling + component primitives | ^4.2.2 |
+| Remotion + @remotion/player | Animated marketing videos, hero content | ^4.0.443 |
+| @remotion/three | 3D video content (React Three Fiber integration) | ^4.0.443 |
+| Framer Motion | 3D UI animations, page transitions, hover effects | ^12.38.0 |
+| Three.js + @react-three/fiber + @react-three/drei | 3D scene rendering for UI and Remotion | ^0.183.2 |
+| Aceternity UI patterns | 3D tilting cards, spotlight effects, aurora backgrounds (copy-paste, not npm) | N/A |
+| Recharts | Charts and data visualization | ^3.8.1 |
+| Lucide React | Icon set | ^1.7.0 |
+
+**IMPORTANT:** Remotion + Framer Motion + Three.js are part of this project's animation/3D stack. Do NOT remove them. They were installed together with Nano Banana 2 (image generation) and the ui-ux-pro-max skill as part of the design system overhaul.
+
 ---
 
 ## File Structure (critical files)

@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ConstructInvoice AI - Landing Page Preview (Contemporary)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+* { font-family: 'Inter', sans-serif; }
+body { background: #fafafe; margin: 0; }
+
+@keyframes fadeUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+.fade-up { animation: fadeUp 0.6s ease forwards; opacity: 0; }
+.fade-up-1 { animation-delay: 0.1s; }
+.fade-up-2 { animation-delay: 0.2s; }
+.fade-up-3 { animation-delay: 0.3s; }
+.fade-up-4 { animation-delay: 0.4s; }
+.fade-up-5 { animation-delay: 0.5s; }
+
+@keyframes beam { 0% { transform: translateX(-100%) rotate(45deg); } 100% { transform: translateX(200%) rotate(45deg); } }
+.beam-line { position: absolute; width: 200px; height: 1px; background: linear-gradient(90deg, transparent, rgba(99,102,241,0.15), transparent); animation: beam 12s linear infinite; }
+
+.feature-card { transition: all 0.3s ease; border: 2px solid #e5e7eb; }
+.feature-card:hover { border-color: rgba(99,102,241,0.3); transform: translateY(-4px); box-shadow: 0 12px 40px rgba(99,102,241,0.08); }
+
+.gradient-text { background: linear-gradient(180deg, #111827, #6b7280); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+
+.step-num { transition: all 0.3s ease; }
+.step-num:hover { transform: scale(1.1) rotate(5deg); }
+
+.cta-btn { transition: all 0.3s ease; }
+.cta-btn:hover { box-shadow: 0 0 40px rgba(99,102,241,0.35); transform: scale(1.03); }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="fade-up relative z-20 flex items-center justify-between px-8 py-5 max-w-7xl mx-auto">
+  <div class="flex items-center gap-3">
+    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+      <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16"></path></svg>
+    </div>
+    <span class="text-xl font-bold text-gray-900">ConstructInvoice AI</span>
+  </div>
+  <div class="hidden md:flex items-center gap-8 text-sm text-gray-500">
+    <a href="#features" class="hover:text-gray-900 transition-colors">Features</a>
+    <a href="#pricing" class="hover:text-gray-900 transition-colors">Pricing</a>
+    <a href="#contact" class="hover:text-gray-900 transition-colors">Help</a>
+  </div>
+  <div class="flex items-center gap-3">
+    <a href="#" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">Sign In</a>
+    <a href="#" class="cta-btn px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl">Start Free Trial</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="relative overflow-hidden min-h-[85vh] flex items-center justify-center px-6 pb-20">
+  <div class="beam-line top-[20%] left-0" style="animation-delay: 0s;"></div>
+  <div class="beam-line top-[40%] left-0" style="animation-delay: 3s;"></div>
+  <div class="beam-line top-[60%] left-0" style="animation-delay: 6s;"></div>
+
+  <div class="text-center max-w-4xl mx-auto relative z-10">
+    <div class="fade-up fade-up-1 inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-indigo-200 bg-indigo-50 text-indigo-600 text-sm mb-8">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+      AI-Powered Construction Billing
+    </div>
+
+    <h1 class="fade-up fade-up-2 text-5xl md:text-7xl font-bold gradient-text leading-tight mb-6">
+      G702/G703 Pay Applications in Minutes, Not Hours
+    </h1>
+
+    <p class="fade-up fade-up-3 text-lg text-gray-500 max-w-2xl mx-auto leading-relaxed mb-10">
+      Upload your Schedule of Values. Generate AIA-standard pay applications. Get paid faster with built-in ACH and card payments. Built for General Contractors who are done with spreadsheets.
+    </p>
+
+    <div class="fade-up fade-up-4 flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
+      <a href="#" class="cta-btn px-8 py-4 text-white bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl font-semibold text-lg flex items-center gap-2">
+        Start Free — 90 Days
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>
+      </a>
+      <a href="#" class="px-8 py-4 border border-gray-300 hover:border-gray-400 rounded-2xl font-medium text-gray-600 hover:text-gray-900 transition-all">Sign In</a>
+    </div>
+
+    <div class="fade-up fade-up-5 flex flex-wrap items-center justify-center gap-6 text-sm text-gray-500">
+      <span class="flex items-center gap-1.5"><svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> No credit card required</span>
+      <span class="flex items-center gap-1.5"><svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> 90-day free trial</span>
+      <span class="flex items-center gap-1.5"><svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Cancel anytime</span>
+    </div>
+  </div>
+</section>
+
+<!-- APP PREVIEW CARD -->
+<section class="px-6 pb-20 -mt-10">
+  <div class="max-w-5xl mx-auto bg-white rounded-3xl border-2 border-gray-200 p-6 sm:p-8 shadow-xl shadow-indigo-500/5">
+    <div class="flex items-center gap-2 mb-6">
+      <div class="w-3 h-3 rounded-full bg-red-400"></div>
+      <div class="w-3 h-3 rounded-full bg-yellow-400"></div>
+      <div class="w-3 h-3 rounded-full bg-green-400"></div>
+      <span class="ml-4 text-sm text-gray-400">constructinv.varshyl.com/app</span>
+    </div>
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+      <div class="rounded-2xl bg-gray-50 border border-gray-200 p-4">
+        <p class="text-xs text-gray-500 uppercase tracking-wider">Active Projects</p>
+        <p class="text-2xl font-bold mt-1 bg-gradient-to-r from-indigo-500 to-purple-600 bg-clip-text text-transparent">12</p>
+      </div>
+      <div class="rounded-2xl bg-gray-50 border border-gray-200 p-4">
+        <p class="text-xs text-gray-500 uppercase tracking-wider">Pending Pay Apps</p>
+        <p class="text-2xl font-bold mt-1 bg-gradient-to-r from-blue-500 to-cyan-500 bg-clip-text text-transparent">5</p>
+      </div>
+      <div class="rounded-2xl bg-gray-50 border border-gray-200 p-4">
+        <p class="text-xs text-gray-500 uppercase tracking-wider">Amount Billed</p>
+        <p class="text-2xl font-bold mt-1 bg-gradient-to-r from-green-500 to-emerald-500 bg-clip-text text-transparent">$1.2M</p>
+      </div>
+      <div class="rounded-2xl bg-gray-50 border border-gray-200 p-4">
+        <p class="text-xs text-gray-500 uppercase tracking-wider">Payments Due</p>
+        <p class="text-2xl font-bold mt-1 bg-gradient-to-r from-amber-500 to-orange-500 bg-clip-text text-transparent">$340K</p>
+      </div>
+    </div>
+    <div class="rounded-xl bg-gray-50 border border-gray-200 overflow-hidden hidden sm:block">
+      <div class="grid grid-cols-8 gap-px bg-gray-100 text-xs text-gray-500 font-medium">
+        <div class="bg-gray-50 px-3 py-2">Item</div><div class="bg-gray-50 px-3 py-2">Description</div><div class="bg-gray-50 px-3 py-2">Scheduled</div><div class="bg-gray-50 px-3 py-2">Previous</div><div class="bg-gray-50 px-3 py-2">This Period</div><div class="bg-gray-50 px-3 py-2">Total</div><div class="bg-gray-50 px-3 py-2">Retainage</div><div class="bg-gray-50 px-3 py-2">Balance</div>
+      </div>
+      <div class="grid grid-cols-8 gap-px text-xs text-gray-700"><div class="bg-white px-3 py-2">1</div><div class="bg-white px-3 py-2">General Conditions</div><div class="bg-white px-3 py-2">$45,000</div><div class="bg-white px-3 py-2">$22,500</div><div class="bg-white px-3 py-2">$11,250</div><div class="bg-white px-3 py-2">$33,750</div><div class="bg-white px-3 py-2">$3,375</div><div class="bg-white px-3 py-2">$11,250</div></div>
+      <div class="grid grid-cols-8 gap-px text-xs text-gray-700"><div class="bg-white px-3 py-2">2</div><div class="bg-white px-3 py-2">Site Work</div><div class="bg-white px-3 py-2">$120,000</div><div class="bg-white px-3 py-2">$60,000</div><div class="bg-white px-3 py-2">$24,000</div><div class="bg-white px-3 py-2">$84,000</div><div class="bg-white px-3 py-2">$8,400</div><div class="bg-white px-3 py-2">$36,000</div></div>
+      <div class="grid grid-cols-8 gap-px text-xs text-gray-700"><div class="bg-white px-3 py-2">3</div><div class="bg-white px-3 py-2">Concrete</div><div class="bg-white px-3 py-2">$85,000</div><div class="bg-white px-3 py-2">$42,500</div><div class="bg-white px-3 py-2">$21,250</div><div class="bg-white px-3 py-2">$63,750</div><div class="bg-white px-3 py-2">$6,375</div><div class="bg-white px-3 py-2">$21,250</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- SOCIAL PROOF -->
+<section class="py-16 px-6 bg-gray-50 border-y border-gray-200">
+  <div class="max-w-6xl mx-auto">
+    <p class="text-center text-gray-400 font-medium mb-10 text-sm uppercase tracking-wider">Trusted by contractors across the US</p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+      <div><p class="text-4xl font-bold bg-gradient-to-r from-indigo-500 to-purple-500 bg-clip-text text-transparent">500+</p><p class="text-gray-500 text-sm mt-1">Pay Apps Generated</p></div>
+      <div><p class="text-4xl font-bold bg-gradient-to-r from-indigo-500 to-purple-500 bg-clip-text text-transparent">$12M+</p><p class="text-gray-500 text-sm mt-1">in Billing Tracked</p></div>
+      <div><p class="text-4xl font-bold bg-gradient-to-r from-indigo-500 to-purple-500 bg-clip-text text-transparent">90 Days</p><p class="text-gray-500 text-sm mt-1">Free Trial</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section id="features" class="py-24 px-6">
+  <div class="max-w-6xl mx-auto">
+    <div class="text-center mb-16">
+      <h2 class="text-4xl sm:text-5xl font-bold gradient-text mb-4">Built for Modern Contractors</h2>
+      <p class="text-lg text-gray-500 max-w-2xl mx-auto">Everything you need to manage construction billing from start to finish.</p>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div class="feature-card rounded-2xl bg-white p-6 shadow-sm">
+        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center mb-4"><svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg></div>
+        <h3 class="text-xl font-semibold text-gray-900">Smart SOV Parsing</h3>
+        <p class="mt-2 text-sm text-gray-500 leading-relaxed">Upload Excel, CSV, PDF, or Word. Our AI detects columns, descriptions, and amounts automatically.</p>
+      </div>
+      <div class="feature-card rounded-2xl bg-white p-6 shadow-sm">
+        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center mb-4"><svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg></div>
+        <h3 class="text-xl font-semibold text-gray-900">G702/G703 PDFs</h3>
+        <p class="mt-2 text-sm text-gray-500 leading-relaxed">AIA-standard pay applications generated in seconds. Professional formatting included.</p>
+      </div>
+      <div class="feature-card rounded-2xl bg-white p-6 shadow-sm">
+        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center mb-4"><svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div>
+        <h3 class="text-xl font-semibold text-gray-900">Auto Lien Waivers</h3>
+        <p class="mt-2 text-sm text-gray-500 leading-relaxed">Conditional or unconditional waivers generated automatically when you submit.</p>
+      </div>
+      <div class="feature-card rounded-2xl bg-white p-6 shadow-sm">
+        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center mb-4"><svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg></div>
+        <h3 class="text-xl font-semibold text-gray-900">Get Paid Instantly</h3>
+        <p class="mt-2 text-sm text-gray-500 leading-relaxed">Built-in ACH and card payments. Owner gets a Pay Now link. You get paid in 1-2 days.</p>
+      </div>
+      <div class="feature-card rounded-2xl bg-white p-6 shadow-sm">
+        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center mb-4"><svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg></div>
+        <h3 class="text-xl font-semibold text-gray-900">One-Click Send</h3>
+        <p class="mt-2 text-sm text-gray-500 leading-relaxed">Send pay apps directly to owners with PDF auto-attached. Follow-up reminders built in.</p>
+      </div>
+      <div class="feature-card rounded-2xl bg-white p-6 shadow-sm">
+        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-rose-500 to-red-600 flex items-center justify-center mb-4"><svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg></div>
+        <h3 class="text-xl font-semibold text-gray-900">Smart Reporting</h3>
+        <p class="mt-2 text-sm text-gray-500 leading-relaxed">Track revenue, filter by project, export to CSV. See your billing pipeline at a glance.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="py-24 px-6 bg-gray-50">
+  <div class="max-w-4xl mx-auto">
+    <div class="text-center mb-16">
+      <h2 class="text-4xl sm:text-5xl font-bold text-gray-900 mb-4">How It Works</h2>
+      <p class="text-lg text-gray-500">Three simple steps to professional construction billing.</p>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <div class="text-center">
+        <div class="step-num flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold text-xl mx-auto mb-6 shadow-lg shadow-indigo-500/20">1</div>
+        <h3 class="text-xl font-bold text-gray-900 mb-3">Create a Project</h3>
+        <p class="text-gray-500">Upload your Schedule of Values and enter project details.</p>
+      </div>
+      <div class="text-center">
+        <div class="step-num flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold text-xl mx-auto mb-6 shadow-lg shadow-indigo-500/20">2</div>
+        <h3 class="text-xl font-bold text-gray-900 mb-3">Enter Progress</h3>
+        <p class="text-gray-500">Fill in completion percentages, add change orders, track retainage.</p>
+      </div>
+      <div class="text-center">
+        <div class="step-num flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold text-xl mx-auto mb-6 shadow-lg shadow-indigo-500/20">3</div>
+        <h3 class="text-xl font-bold text-gray-900 mb-3">Send & Get Paid</h3>
+        <p class="text-gray-500">Download PDF, email to owner, accept ACH or card payments.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section id="pricing" class="py-24 px-6">
+  <div class="max-w-2xl mx-auto text-center">
+    <h2 class="text-4xl sm:text-5xl font-bold text-gray-900 mb-4">Simple Pricing</h2>
+    <p class="text-lg text-gray-500 mb-12">One plan. All the features contractors need.</p>
+    <div class="rounded-3xl border-2 border-gray-200 bg-white p-10 shadow-lg shadow-indigo-500/5">
+      <h3 class="text-3xl font-bold text-gray-900 mb-2">Pro Plan</h3>
+      <p class="text-lg mb-8"><span class="text-4xl font-bold bg-gradient-to-r from-indigo-500 to-purple-500 bg-clip-text text-transparent">$40</span><span class="text-gray-500">/month</span></p>
+      <p class="text-gray-500 mb-8">Start with a 90-day free trial. No credit card required.</p>
+      <div class="space-y-3 mb-10 text-left max-w-sm mx-auto">
+        <div class="flex items-center gap-3"><svg class="w-5 h-5 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span class="text-gray-600">Unlimited projects</span></div>
+        <div class="flex items-center gap-3"><svg class="w-5 h-5 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span class="text-gray-600">G702/G703 PDFs</span></div>
+        <div class="flex items-center gap-3"><svg class="w-5 h-5 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span class="text-gray-600">Payment collection (ACH + card)</span></div>
+        <div class="flex items-center gap-3"><svg class="w-5 h-5 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span class="text-gray-600">Auto lien waivers</span></div>
+        <div class="flex items-center gap-3"><svg class="w-5 h-5 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span class="text-gray-600">AI assistant</span></div>
+        <div class="flex items-center gap-3"><svg class="w-5 h-5 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span class="text-gray-600">Reports & exports</span></div>
+        <div class="flex items-center gap-3"><svg class="w-5 h-5 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span class="text-gray-600">Priority support</span></div>
+      </div>
+      <a href="#" class="cta-btn block w-full py-4 text-center text-white bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl font-semibold text-lg">Start Free Trial</a>
+      <p class="text-sm text-gray-500 mt-6">Can't afford it? <a href="mailto:vaakapila@gmail.com" class="text-indigo-500 hover:text-indigo-600">Email us</a> — we'll work something out.</p>
+    </div>
+  </div>
+</section>
+
+<!-- CTA BAND -->
+<section class="py-24 px-6 bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+  <div class="max-w-4xl mx-auto text-center">
+    <h2 class="text-4xl sm:text-5xl font-bold text-gray-900 mb-4">Ready to simplify your construction billing?</h2>
+    <p class="text-lg text-gray-500 mb-8">Join hundreds of contractors who save hours every month.</p>
+    <a href="#" class="cta-btn inline-flex items-center gap-2 px-8 py-4 text-white bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl font-semibold text-lg">
+      Start Free Trial <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>
+    </a>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer id="contact" class="py-16 px-6 bg-gray-50 border-t border-gray-200">
+  <div class="max-w-6xl mx-auto">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
+      <div>
+        <div class="flex items-center gap-2 mb-2">
+          <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center"><svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16"></path></svg></div>
+          <span class="font-bold text-gray-900">ConstructInvoice AI</span>
+        </div>
+        <p class="text-sm text-gray-500">A product of Varshyl Inc.</p>
+      </div>
+      <div>
+        <p class="font-bold text-gray-900 mb-4 text-sm">Product</p>
+        <ul class="space-y-2 text-sm text-gray-500"><li><a href="#features" class="hover:text-gray-900 transition-colors">Features</a></li><li><a href="#pricing" class="hover:text-gray-900 transition-colors">Pricing</a></li></ul>
+      </div>
+      <div>
+        <p class="font-bold text-gray-900 mb-4 text-sm">Support</p>
+        <ul class="space-y-2 text-sm text-gray-500"><li><a href="mailto:vaakapila@gmail.com" class="hover:text-gray-900 transition-colors">Contact</a></li><li><a href="#" class="hover:text-gray-900 transition-colors">Help</a></li></ul>
+      </div>
+      <div>
+        <p class="font-bold text-gray-900 mb-4 text-sm">Legal</p>
+        <ul class="space-y-2 text-sm text-gray-500"><li><a href="#" class="hover:text-gray-900 transition-colors">Privacy</a></li><li><a href="#" class="hover:text-gray-900 transition-colors">Terms</a></li></ul>
+      </div>
+    </div>
+    <div class="border-t border-gray-200 pt-8 text-center text-sm text-gray-400">&copy; 2026 Varshyl Inc. All rights reserved.</div>
+  </div>
+</footer>
+
+</body>
+</html>

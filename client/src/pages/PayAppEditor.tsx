@@ -9,6 +9,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronLeft,
   AlertTriangle,
@@ -16,6 +17,8 @@ import {
   Download,
   Mail,
   Plus,
+  Calculator,
+  PenLine,
 } from 'lucide-react'
 import type { PayAppLineComputed } from '@/types'
 import { usePayApp } from '@/hooks/usePayApp'
@@ -27,6 +30,7 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Spotlight } from '@/components/aceternity/spotlight'
 
 // ============================================================================
 // EMAIL MODAL
@@ -90,7 +94,18 @@ function EmailModal({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+    >
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        transition={{ type: 'spring', duration: 0.4 }}
+      >
       <Card className="w-full max-w-md p-6">
         <h2 className="text-lg font-semibold text-text-primary mb-4">
           Send Pay Application
@@ -182,7 +197,8 @@ function EmailModal({
           </div>
         </form>
       </Card>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }
 
@@ -803,7 +819,12 @@ export function PayAppEditor() {
   return (
     <div className="space-y-8 pb-8">
       {/* Page Header */}
-      <div className="flex items-start justify-between gap-4">
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="flex items-start justify-between gap-4"
+      >
         <div>
           <div className="flex items-center gap-2 mb-2">
             <Link
@@ -828,40 +849,53 @@ export function PayAppEditor() {
         {/* Action Buttons Top Right */}
         <div className="flex flex-wrap gap-2 justify-end">
           {payApp.status === 'draft' && (
-            <Button
-              onClick={handleSave}
-              disabled={!isDirty || isSaving}
-              className="gap-2"
-            >
-              <Save className="w-4 h-4" />
-              {isSaving ? 'Saving...' : 'Save'}
-            </Button>
+            <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+              <Button
+                onClick={handleSave}
+                disabled={!isDirty || isSaving}
+                className="gap-2"
+              >
+                <Save className="w-4 h-4" />
+                {isSaving ? 'Saving...' : 'Save'}
+              </Button>
+            </motion.div>
           )}
 
-          <Button
-            onClick={handleDownloadPDF}
-            variant="outline"
-            className="gap-2"
-          >
-            <Download className="w-4 h-4" />
-            PDF
-          </Button>
-
-          {payApp.status === 'draft' && (
+          <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
             <Button
-              onClick={() => setIsEmailModalOpen(true)}
+              onClick={handleDownloadPDF}
               variant="outline"
               className="gap-2"
             >
-              <Mail className="w-4 h-4" />
-              Email
+              <Download className="w-4 h-4" />
+              PDF
             </Button>
+          </motion.div>
+
+          {payApp.status === 'draft' && (
+            <motion.div
+              whileHover={{ scale: 1.05, boxShadow: '0 4px 20px rgba(99,102,241,0.3)' }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Button
+                onClick={() => setIsEmailModalOpen(true)}
+                className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white"
+              >
+                <Mail className="w-4 h-4" />
+                Submit & Send
+              </Button>
+            </motion.div>
           )}
         </div>
-      </div>
+      </motion.div>
 
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.2 }}
+        className="grid grid-cols-1 lg:grid-cols-3 gap-8"
+      >
         {/* Left Column: G703 Table + Notes */}
         <div className="lg:col-span-2 space-y-6">
           {/* G703 Table */}
@@ -961,7 +995,7 @@ export function PayAppEditor() {
             </Card>
           )}
         </div>
-      </div>
+      </motion.div>
 
       {/* Email Modal */}
       <EmailModal

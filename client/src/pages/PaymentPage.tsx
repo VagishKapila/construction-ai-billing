@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
 import { useState, useEffect } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ChevronDown, ChevronUp, CheckCircle, AlertCircle } from 'lucide-react'
+import { ChevronDown, ChevronUp, CheckCircle, AlertCircle, Lock, Shield, Landmark, CreditCard } from 'lucide-react'
 
 interface PayAppData {
   project_name: string
@@ -222,10 +223,20 @@ export function PaymentPage() {
   const cardTotal = totalAmount + cardFeeAmount
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 py-8 px-4 sm:py-12 sm:px-6">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100 py-8 px-4 sm:py-12 sm:px-6">
       <div className="max-w-2xl mx-auto">
         {/* Header with Logo */}
-        <div className="text-center mb-8">
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="text-center mb-8"
+        >
+          {/* Security badge */}
+          <div className="flex items-center justify-center gap-2 text-xs text-slate-500 mb-4">
+            <Lock className="w-3.5 h-3.5 text-green-500" />
+            <span>256-bit SSL encrypted</span>
+          </div>
           {payAppData.logo_filename && (
             <div className="mb-6 flex justify-center">
               <img
@@ -246,7 +257,7 @@ export function PaymentPage() {
           <p className="text-slate-600 mt-2">
             Secure payment processing via Stripe
           </p>
-        </div>
+        </motion.div>
 
         {/* Invoice Details Card */}
         <Card className="p-6 sm:p-8 mb-6 border border-slate-200 shadow-sm">
@@ -506,24 +517,42 @@ export function PaymentPage() {
           </div>
 
           {/* Pay Button */}
-          <Button
-            onClick={handlePayment}
-            disabled={isProcessing}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 font-semibold text-base transition-colors disabled:opacity-70"
+          <motion.div
+            whileHover={{ scale: 1.02, boxShadow: '0 0 30px rgba(79,70,229,0.3)' }}
+            whileTap={{ scale: 0.98 }}
           >
-            {isProcessing ? 'Processing...' : 'Pay Now'}
-          </Button>
+            <Button
+              onClick={handlePayment}
+              disabled={isProcessing}
+              className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white py-3 font-semibold text-base transition-all disabled:opacity-70 rounded-xl flex items-center justify-center gap-2"
+            >
+              <Lock className="w-4 h-4" />
+              {isProcessing ? 'Processing...' : `Pay ${formatCurrency(paymentMethod === 'ach' ? achTotal : cardTotal)}`}
+            </Button>
+          </motion.div>
 
-          {/* Security Notice */}
-          <p className="text-xs text-slate-500 text-center mt-4">
-            🔒 This page is secured with SSL encryption. Your payment is
-            processed securely by Stripe.
-          </p>
+          {/* Trust indicators */}
+          <div className="flex items-center justify-center gap-6 text-xs text-slate-500 mt-4">
+            <span className="flex items-center gap-1.5">
+              <Shield className="w-3.5 h-3.5 text-green-500" /> Secure Payment
+            </span>
+            <span className="flex items-center gap-1.5">
+              <CheckCircle className="w-3.5 h-3.5 text-green-500" /> PCI Compliant
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Lock className="w-3.5 h-3.5 text-green-500" /> Powered by Stripe
+            </span>
+          </div>
         </Card>
 
         {/* Contact Info Footer */}
         {(payAppData.contact_name || payAppData.contact_email) && (
-          <div className="mt-8 text-center text-sm text-slate-600">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.5 }}
+            className="mt-8 text-center text-sm text-slate-600"
+          >
             <p className="font-medium text-slate-900">Questions?</p>
             <p className="mt-1">
               Contact{' '}
@@ -540,7 +569,7 @@ export function PaymentPage() {
                 </a>
               )}
             </p>
-          </div>
+          </motion.div>
         )}
       </div>
     </div>
