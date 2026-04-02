@@ -324,8 +324,8 @@ router.post('/subscription/checkout', auth, requireStripe, async (req, res) => {
       customer: customerId,
       mode: 'subscription',
       line_items: [{ price: priceRow.value, quantity: 1 }],
-      success_url: `${baseUrl}/app.html?subscription=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${baseUrl}/app.html?subscription=cancelled`,
+      success_url: `${baseUrl}/settings?subscription=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/settings?subscription=cancelled`,
       metadata: { user_id: String(user.id), app: 'constructinvoice' },
       subscription_data: {
         metadata: { user_id: String(user.id), app: 'constructinvoice' }
@@ -344,7 +344,7 @@ router.post('/subscription/portal', auth, requireStripe, async (req, res) => {
     const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
     const session = await stripe.billingPortal.sessions.create({
       customer: user.stripe_customer_id,
-      return_url: `${baseUrl}/app.html#settings`,
+      return_url: `${baseUrl}/settings`,
     });
     res.json({ portal_url: session.url });
   } catch(e) { console.error('[Portal Error]', e.message); res.status(500).json({ error: e.message }); }
@@ -533,8 +533,8 @@ router.post('/test/create-test-gc', adminAuth, async (req, res) => {
     const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
     const link = await stripe.accountLinks.create({
       account: accountId,
-      refresh_url: `${baseUrl}/app.html#payments_setup=refresh`,
-      return_url: `${baseUrl}/app.html#payments_setup=complete`,
+      refresh_url: `${baseUrl}/settings?payments_setup=refresh`,
+      return_url: `${baseUrl}/settings?payments_setup=complete`,
       type: 'account_onboarding',
     });
     const acct = await stripe.accounts.retrieve(accountId);

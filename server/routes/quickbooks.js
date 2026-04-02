@@ -130,11 +130,11 @@ router.get('/callback', async (req, res) => {
     );
 
     // Redirect to settings page with success message
-    const redirectUrl = `${process.env.BASE_URL || 'https://constructinv.varshyl.com'}/app.html#/settings?qb=connected&company=${encodeURIComponent(companyName)}`;
+    const redirectUrl = `${process.env.BASE_URL || 'https://constructinv.varshyl.com'}/settings?qb=connected&company=${encodeURIComponent(companyName)}`;
     res.redirect(redirectUrl);
   } catch (error) {
     console.error('[QB Callback]', error.message);
-    const errorUrl = `${process.env.BASE_URL || 'https://constructinv.varshyl.com'}/app.html#/settings?qb=error&message=${encodeURIComponent(error.message)}`;
+    const errorUrl = `${process.env.BASE_URL || 'https://constructinv.varshyl.com'}/settings?qb=error&message=${encodeURIComponent(error.message)}`;
     res.redirect(errorUrl);
   }
 });

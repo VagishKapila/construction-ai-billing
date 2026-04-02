@@ -48,8 +48,29 @@ app.use(express.urlencoded({ extended: false }));
 // In production, serve the React build from client/dist/
 const clientDistPath = path.join(__dirname, '..', 'client', 'dist');
 const publicPath = path.join(__dirname, '..', 'public');
+const hasReactBuild = fs.existsSync(path.join(clientDistPath, 'index.html'));
 
-if (fs.existsSync(clientDistPath)) {
+// ── IMPORTANT: Intercept legacy /app.html BEFORE static middleware ────────
+// express.static(publicPath) would serve public/app.html as a static file
+// and our route handlers would never run. This middleware catches it first.
+if (hasReactBuild) {
+  app.get('/app.html', (req, res) => {
+    // Map old app.html query/hash params to React SPA routes
+    const url = req.originalUrl;
+    if (url.includes('reset='))          return res.redirect(302, url.replace('/app.html', '/reset-password'));
+    if (url.includes('verified='))       return res.redirect(302, '/login?verified=1');
+    if (url.includes('verify_error='))   return res.redirect(302, '/login?verify_error=1');
+    if (url.includes('auth_error='))     return res.redirect(302, '/login?auth_error=' + (req.query.auth_error || ''));
+    if (url.includes('google_token='))   return res.redirect(302, url.replace('/app.html', '/dashboard'));
+    if (url.includes('subscription='))   return res.redirect(302, '/settings');
+    if (url.includes('invite_error='))   return res.redirect(302, '/login?invite_error=1');
+    // Default: send to dashboard (user is likely already logged in)
+    return res.redirect(302, '/dashboard');
+  });
+  console.log('[Router] Legacy /app.html interceptor active — redirecting to React SPA');
+}
+
+if (hasReactBuild) {
   // Production: serve React SPA build
   app.use(express.static(clientDistPath, {
     setHeaders: (res, filePath) => {

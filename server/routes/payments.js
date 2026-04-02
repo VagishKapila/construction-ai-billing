@@ -50,8 +50,8 @@ router.post('/api/stripe/connect', auth, requireStripe, async (req, res) => {
     const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
     const link = await stripe.accountLinks.create({
       account: accountId,
-      refresh_url: `${baseUrl}/app.html#payments_setup=refresh`,
-      return_url: `${baseUrl}/app.html#payments_setup=complete`,
+      refresh_url: `${baseUrl}/settings?payments_setup=refresh`,
+      return_url: `${baseUrl}/settings?payments_setup=complete`,
       type: 'account_onboarding',
     });
     res.json({ url: link.url, account_id: accountId });

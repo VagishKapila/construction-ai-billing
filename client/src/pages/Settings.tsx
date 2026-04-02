@@ -282,7 +282,7 @@ export function Settings() {
   }
 
   const handleChangePassword = () => {
-    window.location.href = '/app.html?page=forgot-password'
+    window.location.href = '/forgot-password'
   }
 
   const handleDeleteAccount = () => {

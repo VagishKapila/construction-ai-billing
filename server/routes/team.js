@@ -100,10 +100,10 @@ router.get('/api/auth/accept-invite/:token', async (req, res) => {
        RETURNING *`,
       [req.params.token]
     );
-    if (!r.rows[0]) return res.redirect('/app.html?invite_error=invalid_or_expired');
-    res.redirect('/app.html?invite_accepted=1');
+    if (!r.rows[0]) return res.redirect('/login?invite_error=invalid_or_expired');
+    res.redirect('/dashboard?invite_accepted=1');
   } catch(e) {
-    res.redirect('/app.html?invite_error=server');
+    res.redirect('/login?invite_error=server');
   }
 });
 
