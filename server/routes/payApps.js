@@ -39,7 +39,15 @@ router.get('/api/projects/:id/payapps', auth, async (req,res) => {
 
 // POST /api/projects/:id/payapps - Create new pay app
 router.post('/api/projects/:id/payapps', auth, async (req,res) => {
-  const {period_label,period_start,period_end,app_number} = req.body;
+  let {period_label,period_start,period_end,app_number} = req.body;
+  // Auto-calculate app_number if not provided (React UI calls without it)
+  if (app_number === undefined || app_number === null) {
+    const maxRes = await pool.query(
+      'SELECT COALESCE(MAX(app_number), 0) as max_num FROM pay_apps WHERE project_id=$1 AND deleted_at IS NULL',
+      [req.params.id]
+    );
+    app_number = (parseInt(maxRes.rows[0].max_num) || 0) + 1;
+  }
   const invoiceToken = require('crypto').randomBytes(24).toString('hex');
   const pa = await pool.query(
     'INSERT INTO pay_apps(project_id,app_number,period_label,period_start,period_end,invoice_token) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',

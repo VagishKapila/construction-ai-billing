@@ -201,8 +201,9 @@ export function ProjectDetail() {
       if (response.data) {
         navigate(`/projects/${projectId}/pay-app/${response.data.id}`)
       }
-    } catch {
-      // fallback — shouldn't happen
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to create pay application'
+      alert(msg)
     } finally {
       setIsCreatingPayApp(false)
     }
