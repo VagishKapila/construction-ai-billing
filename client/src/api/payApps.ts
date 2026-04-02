@@ -5,10 +5,7 @@
 import type {
   ApiResponse,
   PayApp,
-  PayAppLine,
   ChangeOrder,
-  Project,
-  SOVLine,
 } from '@/types';
 import { api } from './client';
 
@@ -46,13 +43,13 @@ export interface EmailPayAppRequest {
 // RESPONSE TYPES
 // ============================================================================
 
-export interface GetPayAppResponse {
-  payApp: PayApp;
-  lines: PayAppLine[];
-  changeOrders: ChangeOrder[];
-  project: Project;
-  sovLines: SOVLine[];
-}
+/**
+ * Server returns a FLAT response: { ...payAppFields, lines: [...], change_orders: [...], attachments: [...] }
+ * Each line includes SOV data (item_id, description, scheduled_value) from the SQL JOIN.
+ * The usePayApp hook manually parses this into structured objects.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type GetPayAppResponse = Record<string, any>;
 
 // ============================================================================
 // PAY APP CRUD

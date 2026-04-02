@@ -111,7 +111,45 @@ export function usePayApp(
       if (response.error) {
         setError(response.error);
       } else if (response.data) {
-        const { payApp: pa, lines: lineItems, changeOrders: cos, project: proj, sovLines: sols } = response.data;
+        // Server returns flat: { ...payAppFields, lines: [...], change_orders: [...], attachments: [...] }
+        // Each line includes sov data (item_id, description, scheduled_value) from the SQL JOIN
+        const raw = response.data as Record<string, unknown>;
+        const lineItems = (raw.lines || []) as PayAppLine[];
+        const cos = (raw.change_orders || raw.changeOrders || []) as ChangeOrder[];
+
+        // Extract pay app fields (everything except lines/change_orders/attachments)
+        const { lines: _l, change_orders: _co, attachments: _a, ...paFields } = raw;
+        const pa = paFields as unknown as PayApp;
+
+        // Build project object from the joined fields
+        const proj: Project = {
+          id: pa.project_id as unknown as number,
+          name: (raw.project_name as string) || '',
+          owner: (raw.owner as string) || '',
+          contractor: (raw.contractor as string) || '',
+          architect: (raw.architect as string) || '',
+          contact_name: (raw.contact_name as string) || '',
+          contact_phone: (raw.contact_phone as string) || '',
+          contact_email: (raw.contact_email as string) || '',
+          original_contract: raw.original_contract as number,
+          number: (raw.project_number as string) || '',
+          building_area: (raw.building_area as string) || '',
+          contract_date: (raw.contract_date as string) || '',
+          payment_terms: (raw.payment_terms as string) || '',
+          include_architect: raw.include_architect as boolean,
+          include_retainage: raw.include_retainage as boolean,
+        } as Project;
+
+        // Build SOV lines from the line items (each line has sov data from the JOIN)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const sols: SOVLine[] = (lineItems as any[]).map((line) => ({
+          id: line.sov_line_id as number,
+          project_id: pa.project_id as unknown as number,
+          item_id: (line.item_id as string) || '',
+          description: (line.description as string) || '',
+          scheduled_value: Number(line.scheduled_value) || 0,
+          sort_order: (line.sort_order as number) || 0,
+        })) as SOVLine[];
 
         setPayApp(pa);
         setLines(lineItems);
