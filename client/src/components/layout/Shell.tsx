@@ -19,11 +19,6 @@ import { cn } from '@/lib/cn'
 export function Shell({ children }: { children?: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  /**
-   * Calculate content area left offset (desktop only)
-   */
-  const contentLeftOffset = '260px'
-
   return (
     <div className="min-h-screen bg-[#fafafe]">
       {/* Desktop Sidebar */}
@@ -93,11 +88,6 @@ export function Shell({ children }: { children?: React.ReactNode }) {
           'md:ml-[260px] transition-all duration-300',
           'overflow-x-hidden',
         )}
-        style={{
-          // CSS variables for responsive sizing
-          '--sidebar-left': contentLeftOffset,
-          '--topbar-width': `calc(100% - ${contentLeftOffset})`,
-        } as React.CSSProperties}
       >
         {/* Page content container with padding */}
         <div className="h-full px-4 sm:px-6 md:px-8 py-4 md:py-6 max-w-full">

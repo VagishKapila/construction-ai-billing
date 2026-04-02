@@ -85,7 +85,7 @@ function KPICard({
             {isLoading ? (
               <Skeleton className="h-8 w-24" />
             ) : (
-              <p className="text-3xl font-bold text-gray-900 font-mono tabular-nums">
+              <p className="text-xl sm:text-2xl lg:text-xl xl:text-2xl 2xl:text-3xl font-bold text-gray-900 font-mono tabular-nums truncate">
                 {value}
               </p>
             )}
