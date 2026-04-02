@@ -64,13 +64,17 @@ router.post('/api/projects/:id/payapps', auth, async (req,res) => {
   );
   const prevMap = {};
   prevLines.rows.forEach(r => prevMap[r.sov_line_id]=r);
+  // Auto-fill default billing %: PA#1→20%, PA#2→25%, PA#3+→20% (matching old app.html behavior)
+  const defaultThisPct = app_number === 1 ? 20 : app_number === 2 ? 25 : 20;
   for(const line of sovLines.rows) {
     const prev = prevMap[line.id];
     const prevPct = prev ? Math.min(100, parseFloat(prev.prev_pct)+parseFloat(prev.this_pct)) : 0;
     const retPct = prev ? parseFloat(prev.retainage_pct) : projDefaultRet;
+    // Auto-fill this_pct, capped so prev+this doesn't exceed 100%
+    const thisPct = Math.min(defaultThisPct, 100 - prevPct);
     await pool.query(
       'INSERT INTO pay_app_lines(pay_app_id,sov_line_id,prev_pct,this_pct,retainage_pct,stored_materials) VALUES($1,$2,$3,$4,$5,$6)',
-      [paId,line.id,prevPct,0,retPct,0]
+      [paId,line.id,prevPct,thisPct,retPct,0]
     );
   }
   await logEvent(req.user.id, 'payapp_created', { project_id: parseInt(req.params.id), app_number });

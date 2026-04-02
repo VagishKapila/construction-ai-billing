@@ -133,9 +133,13 @@ function EmailModal({
           <h2 className="text-lg font-semibold text-text-primary mb-4">
             Send Pay Application
           </h2>
-          <p className="text-sm text-text-secondary mb-4">
-            The client will receive a professional email with the G702/G703 PDF attached.
-          </p>
+          {/* Email info banner — matches old app.html */}
+          <div className="rounded-lg bg-gradient-to-r from-blue-50 to-green-50 border border-blue-100 p-3 mb-4">
+            <p className="text-xs font-semibold text-blue-800 mb-1">📧 What your client receives:</p>
+            <p className="text-xs text-blue-700">
+              Professional invoice email with your G702/G703 PDF, lien waiver, and a "Pay Now" button. They click it and pay by ACH or card — money goes straight to your bank.
+            </p>
+          </div>
 
           <form
             onSubmit={(e) => {
@@ -176,8 +180,8 @@ function EmailModal({
                 <span className="text-sm text-text-secondary">Attach lien waiver to email</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" name="includePaymentLink" checked={formData.includePaymentLink} onChange={handleChange} className="rounded" />
-                <span className="text-sm text-text-secondary">Include "Pay Now" button in email</span>
+                <input type="checkbox" name="includePaymentLink" checked={formData.includePaymentLink} onChange={handleChange} className="rounded accent-blue-600" />
+                <span className="text-sm text-text-secondary">Include "Pay Now" button in email <span className="text-green-600 text-xs">(ACH or card — get paid faster)</span></span>
               </label>
             </div>
 
@@ -185,8 +189,8 @@ function EmailModal({
               <Button type="button" variant="outline" onClick={onClose} disabled={isLoading} className="flex-1">
                 Cancel
               </Button>
-              <Button type="submit" disabled={isLoading} className="flex-1 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white">
-                {isLoading ? 'Sending...' : 'Send & Mark Submitted'}
+              <Button type="submit" disabled={isLoading} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">
+                {isLoading ? '⏳ Sending…' : '📤 Send & Mark Submitted'}
               </Button>
             </div>
           </form>
@@ -937,14 +941,27 @@ function Step6Preview({
     <div className="space-y-6">
       {/* Action buttons */}
       <div className="flex flex-wrap gap-3">
-        <Button onClick={onDownloadPDF} disabled={isTrialGated} className="gap-2 bg-primary-600 hover:bg-primary-700">
+        <Button onClick={onDownloadPDF} disabled={isTrialGated} className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
           <Download className="w-4 h-4" />
-          Download Pay App PDF
+          ⬇ Download Pay App PDF
         </Button>
-        <Button onClick={onOpenEmail} disabled={isTrialGated} className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white">
+        <Button onClick={onOpenEmail} disabled={isTrialGated} className="gap-2 bg-green-600 hover:bg-green-700 text-white">
           <Mail className="w-4 h-4" />
-          Send & Mark Submitted
+          📤 {payApp?.status === 'submitted' ? 'Resend' : 'Send & Mark Submitted'}
         </Button>
+        {payApp?.payment_link_token && (
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => {
+              const url = `${window.location.origin}/pay/${payApp.payment_link_token}`
+              navigator.clipboard.writeText(url)
+              alert('Payment link copied to clipboard!')
+            }}
+          >
+            🔗 Copy Payment Link
+          </Button>
+        )}
       </div>
 
       {/* Invoice Preview */}
@@ -1099,8 +1116,15 @@ export function PayAppEditor() {
       alert('Your trial has ended. Please upgrade to continue.')
       return
     }
-    await downloadPDF()
-  }, [downloadPDF, isTrialGated])
+    // Open PDF in new tab (matching old app.html behavior) + auto-mark as submitted
+    const token = localStorage.getItem('ci_token')
+    window.open(`/api/payapps/${payAppId}/pdf?token=${encodeURIComponent(token || '')}`, '_blank')
+    if (payApp?.status === 'draft') {
+      try {
+        await updatePayApp({ status: 'submitted' } as any)
+      } catch { /* auto-submit is best-effort */ }
+    }
+  }, [payAppId, payApp?.status, updatePayApp, isTrialGated])
 
   // Email submit
   const handleEmailSubmit = useCallback(

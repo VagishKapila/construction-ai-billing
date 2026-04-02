@@ -106,22 +106,20 @@ export function Sidebar({ isCollapsed = false }: { isCollapsed?: boolean }) {
         )}
       >
         {!isCollapsed && (
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-[#6366f1] to-[#8b5cf6] rounded-lg flex items-center justify-center">
-              <span className="text-white text-sm font-bold">CI</span>
-            </div>
+          <Link to="/dashboard" className="flex items-center gap-2">
+            <img src="/varshyl-logo.png" alt="ConstructInvoice AI" className="h-9 w-auto" />
             <div className="flex flex-col">
               <span className="text-sm font-semibold text-[#1a1a2e]">
                 ConstructInvoice
               </span>
-              <span className="text-xs text-[#888888]">AI</span>
+              <span className="text-[10px] font-medium text-transparent bg-clip-text bg-gradient-to-r from-[#2563eb] to-[#3b82f6]">AI</span>
             </div>
-          </div>
+          </Link>
         )}
         {isCollapsed && (
-          <div className="w-8 h-8 bg-gradient-to-br from-[#6366f1] to-[#8b5cf6] rounded-lg flex items-center justify-center">
-            <span className="text-white text-sm font-bold">CI</span>
-          </div>
+          <Link to="/dashboard">
+            <img src="/varshyl-logo.png" alt="CI" className="h-8 w-auto" />
+          </Link>
         )}
       </div>
 
