@@ -57,7 +57,7 @@ export function SOVTable({ lines, isLoading = false }: SOVTableProps) {
     }
   })
 
-  const totalValue = lines.reduce((sum, line) => sum + line.scheduled_value, 0)
+  const totalValue = lines.reduce((sum, line) => sum + (Number(line.scheduled_value) || 0), 0)
 
   if (isLoading) {
     return (
@@ -129,7 +129,7 @@ export function SOVTable({ lines, isLoading = false }: SOVTableProps) {
                   {line.description}
                 </td>
                 <td className="px-6 py-4 text-sm text-right text-text-primary font-mono">
-                  {formatCurrency(line.scheduled_value)}
+                  {formatCurrency(Number(line.scheduled_value) || 0)}
                 </td>
               </tr>
             ))}

@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronRight, ChevronLeft, Check } from 'lucide-react'
 import type { CreateProjectData } from '@/api/projects'
 import { saveSOVLines } from '@/api/projects'
+import { createPayApp } from '@/api/payApps'
 import { useProjects } from '@/hooks/useProjects'
 import { useSettings } from '@/hooks/useSettings'
 import { Button } from '@/components/ui/button'
@@ -32,12 +33,12 @@ export function NewProject() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Form state
+  // Form state — contractor auto-fills from company settings, retainage uses ?? to allow 0
   const [formData, setFormData] = useState<CreateProjectData>({
     name: '',
     number: '',
-    owner: settings?.company_name || '',
-    contractor: '',
+    owner: '',
+    contractor: settings?.company_name || '',
     architect: '',
     contact_name: settings?.contact_name || '',
     contact_phone: settings?.contact_phone || '',
@@ -47,14 +48,32 @@ export function NewProject() {
     contract_date: '',
     est_date: '',
     payment_terms: settings?.default_payment_terms || 'Due on receipt',
-    default_retainage: settings?.default_retainage || DEFAULT_RETAINAGE,
+    default_retainage: settings?.default_retainage ?? DEFAULT_RETAINAGE,
     address: '',
     owner_email: '',
     owner_phone: '',
-    jurisdiction: 'general',
+    jurisdiction: 'california',
     include_architect: true,
     include_retainage: true,
   })
+
+  // Track if settings were applied (they may load async after mount)
+  const settingsApplied = useRef(false)
+
+  useEffect(() => {
+    if (settings && !settingsApplied.current) {
+      settingsApplied.current = true
+      setFormData((prev) => ({
+        ...prev,
+        contractor: prev.contractor || settings.company_name || '',
+        contact_name: prev.contact_name || settings.contact_name || '',
+        contact_phone: prev.contact_phone || settings.contact_phone || '',
+        contact_email: prev.contact_email || settings.contact_email || '',
+        payment_terms: prev.payment_terms || settings.default_payment_terms || 'Due on receipt',
+        default_retainage: prev.default_retainage ?? settings.default_retainage ?? DEFAULT_RETAINAGE,
+      }))
+    }
+  }, [settings])
 
   const [sovRows, setSovRows] = useState<SOVRow[]>([])
 
@@ -128,7 +147,19 @@ export function NewProject() {
         await saveSOVLines(project.id, sovData)
       }
 
-      // Navigate to project detail
+      // Auto-create first pay app and navigate directly to it
+      try {
+        const payAppResponse = await createPayApp(project.id, {})
+
+        if (payAppResponse.data) {
+          navigate(`/projects/${project.id}/pay-app/${payAppResponse.data.id}`)
+          return
+        }
+      } catch {
+        // If pay app creation fails, fall back to project detail
+      }
+
+      // Fallback: navigate to project detail if pay app creation failed
       navigate(`/projects/${project.id}`)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create project'
@@ -297,11 +328,18 @@ export function NewProject() {
             {/* Original Contract Amount */}
             <Input
               label="Original Contract Amount"
-              type="number"
-              value={formData.original_contract || ''}
-              onChange={(e) =>
-                handleInputChange('original_contract', parseFloat(e.target.value) || 0)
+              type="text"
+              inputMode="decimal"
+              value={
+                formData.original_contract
+                  ? new Intl.NumberFormat('en-US').format(formData.original_contract)
+                  : ''
               }
+              onChange={(e) => {
+                const raw = e.target.value.replace(/[^0-9.]/g, '')
+                const parsed = parseFloat(raw)
+                handleInputChange('original_contract', isNaN(parsed) ? 0 : parsed)
+              }}
               placeholder="0.00"
             />
 
@@ -343,11 +381,15 @@ export function NewProject() {
             <Input
               label="Default Retainage %"
               type="number"
-              value={formData.default_retainage || DEFAULT_RETAINAGE}
-              onChange={(e) =>
-                handleInputChange('default_retainage', parseFloat(e.target.value) || 0)
-              }
+              value={formData.default_retainage ?? DEFAULT_RETAINAGE}
+              onChange={(e) => {
+                const val = e.target.value
+                handleInputChange('default_retainage', val === '' ? 0 : parseFloat(val))
+              }}
               placeholder="10"
+              min="0"
+              max="100"
+              step="0.5"
             />
 
             {/* Jurisdiction */}
@@ -356,7 +398,7 @@ export function NewProject() {
                 Jurisdiction
               </label>
               <select
-                value={formData.jurisdiction || 'general'}
+                value={formData.jurisdiction || 'california'}
                 onChange={(e) => handleInputChange('jurisdiction', e.target.value)}
                 className="flex h-10 w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               >

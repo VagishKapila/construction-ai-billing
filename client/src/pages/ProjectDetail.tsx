@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { Upload, FileText, ChevronRight } from 'lucide-react'
 import type { PayApp, SOVLine } from '@/types'
 import { useProject } from '@/hooks/useProject'
 import { useTrial } from '@/hooks/useTrial'
+import { createPayApp } from '@/api/payApps'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -131,7 +132,7 @@ function SOVTable({ lines, isLoading }: SOVTableProps) {
     )
   }
 
-  const total = lines.reduce((sum, line) => sum + line.scheduled_value, 0)
+  const total = lines.reduce((sum, line) => sum + (Number(line.scheduled_value) || 0), 0)
 
   return (
     <div className="overflow-x-auto">
@@ -159,7 +160,7 @@ function SOVTable({ lines, isLoading }: SOVTableProps) {
                 {line.description}
               </td>
               <td className="py-3 px-4 text-right text-text-primary font-mono tabular-nums">
-                {formatCurrency(line.scheduled_value)}
+                {formatCurrency(Number(line.scheduled_value) || 0)}
               </td>
             </tr>
           ))}
@@ -180,11 +181,32 @@ function SOVTable({ lines, isLoading }: SOVTableProps) {
 export function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const projectId = Number(id)
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('payapps')
+  const [isCreatingPayApp, setIsCreatingPayApp] = useState(false)
 
   const { project, sovLines, payApps, isLoading, error } =
     useProject(projectId)
   const { isTrialGated } = useTrial()
+
+  /**
+   * Create a new pay app and navigate to it
+   * This avoids navigating to /pay-app/new which causes "Invalid pay app ID"
+   */
+  const handleCreatePayApp = async () => {
+    if (isCreatingPayApp || isTrialGated) return
+    setIsCreatingPayApp(true)
+    try {
+      const response = await createPayApp(projectId, {})
+      if (response.data) {
+        navigate(`/projects/${projectId}/pay-app/${response.data.id}`)
+      }
+    } catch {
+      // fallback — shouldn't happen
+    } finally {
+      setIsCreatingPayApp(false)
+    }
+  }
 
   // Sort pay apps by app_number descending (newest first)
   const sortedPayApps = useMemo(
@@ -236,11 +258,12 @@ export function ProjectDetail() {
         title={project.name}
         description={`Contract Amount: ${formatCurrency(project.original_contract)}`}
         actions={
-          <Link to={`/projects/${projectId}/pay-app/new`}>
-            <Button disabled={isTrialGated}>
-              New Pay Application
-            </Button>
-          </Link>
+          <Button
+            disabled={isTrialGated || isCreatingPayApp}
+            onClick={handleCreatePayApp}
+          >
+            {isCreatingPayApp ? 'Creating...' : 'New Pay Application'}
+          </Button>
         }
       />
 
@@ -306,11 +329,12 @@ export function ProjectDetail() {
                 title="No pay applications"
                 description="Create your first pay application to track progress on this project"
                 actions={
-                  <Link to={`/projects/${projectId}/pay-app/new`}>
-                    <Button disabled={isTrialGated}>
-                      Create Pay Application
-                    </Button>
-                  </Link>
+                  <Button
+                    disabled={isTrialGated || isCreatingPayApp}
+                    onClick={handleCreatePayApp}
+                  >
+                    {isCreatingPayApp ? 'Creating...' : 'Create Pay Application'}
+                  </Button>
                 }
               />
             ) : (
