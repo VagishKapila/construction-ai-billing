@@ -474,7 +474,7 @@ router.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
 });
 
 // GET /api/projects/:id/sov/uploads - Get SOV upload history for a project
-router.get('/api/projects/:id/uploads', auth, async (req, res) => {
+router.get('/api/projects/:id/sov/uploads', auth, async (req, res) => {
   const r = await pool.query('SELECT * FROM sov_uploads WHERE project_id=$1 ORDER BY uploaded_at DESC',[req.params.id]);
   res.json(r.rows);
 });

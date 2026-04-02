@@ -31,14 +31,14 @@ function getServerHelpers() {
 }
 
 // GET /api/projects/:id/payapps - List pay apps for a project
-router.get('/projects/:id/payapps', auth, async (req,res) => {
+router.get('/api/projects/:id/payapps', auth, async (req,res) => {
   // Exclude soft-deleted pay apps from the normal listing
   const r = await pool.query('SELECT * FROM pay_apps WHERE project_id=$1 AND deleted_at IS NULL ORDER BY app_number',[req.params.id]);
   res.json(r.rows);
 });
 
 // POST /api/projects/:id/payapps - Create new pay app
-router.post('/projects/:id/payapps', auth, async (req,res) => {
+router.post('/api/projects/:id/payapps', auth, async (req,res) => {
   const {period_label,period_start,period_end,app_number} = req.body;
   const invoiceToken = require('crypto').randomBytes(24).toString('hex');
   const pa = await pool.query(
@@ -70,7 +70,7 @@ router.post('/projects/:id/payapps', auth, async (req,res) => {
 });
 
 // GET /api/payapps/:id - Get single pay app with lines and change orders
-router.get('/payapps/:id', auth, async (req,res) => {
+router.get('/api/payapps/:id', auth, async (req,res) => {
   const pa = await pool.query(
     'SELECT pa.*,p.name as project_name,p.owner,p.contractor,p.architect,p.contact,p.contact_name,p.contact_phone,p.contact_email,p.original_contract,p.number as project_number,p.building_area,p.id as project_id,p.contract_date,p.payment_terms,p.include_architect,p.include_retainage FROM pay_apps pa JOIN projects p ON p.id=pa.project_id WHERE pa.id=$1 AND p.user_id=$2 AND pa.deleted_at IS NULL',
     [req.params.id, req.user.id]
@@ -86,7 +86,7 @@ router.get('/payapps/:id', auth, async (req,res) => {
 });
 
 // PUT /api/payapps/:id - Update pay app
-router.put('/payapps/:id', auth, async (req,res) => {
+router.put('/api/payapps/:id', auth, async (req,res) => {
   const {period_label,period_start,period_end,status,architect_certified,architect_name,architect_date,notes,po_number,special_notes} = req.body;
   // Boolean fields need explicit undefined check — false is valid but falsy
   const distOwner    = req.body.dist_owner    !== undefined ? req.body.dist_owner    : null;
@@ -249,7 +249,7 @@ router.put('/payapps/:id', auth, async (req,res) => {
 });
 
 // POST /api/payapps/:id/unsubmit - Unsubmit a pay app
-router.post('/payapps/:id/unsubmit', auth, async (req,res) => {
+router.post('/api/payapps/:id/unsubmit', auth, async (req,res) => {
   try {
     const r = await pool.query(
       `UPDATE pay_apps SET status='draft', submitted_at=NULL
@@ -264,7 +264,7 @@ router.post('/payapps/:id/unsubmit', auth, async (req,res) => {
 });
 
 // DELETE /api/payapps/:id - Soft-delete a pay app
-router.delete('/payapps/:id', auth, async (req, res) => {
+router.delete('/api/payapps/:id', auth, async (req, res) => {
   try {
     const cascade = req.query.cascade === 'true';
 
@@ -319,7 +319,7 @@ router.delete('/payapps/:id', auth, async (req, res) => {
 });
 
 // POST /api/payapps/:id/restore - Restore a soft-deleted pay app
-router.post('/payapps/:id/restore', auth, async (req, res) => {
+router.post('/api/payapps/:id/restore', auth, async (req, res) => {
   try {
     const r = await pool.query(
       `UPDATE pay_apps SET deleted_at=NULL, deleted_by=NULL
@@ -336,7 +336,7 @@ router.post('/payapps/:id/restore', auth, async (req, res) => {
 });
 
 // GET /api/projects/:id/payapps/deleted - Get deleted pay apps for a project
-router.get('/projects/:id/payapps/deleted', auth, async (req, res) => {
+router.get('/api/projects/:id/payapps/deleted', auth, async (req, res) => {
   try {
     const r = await pool.query(
       `SELECT pa.id, pa.app_number, pa.period_label, pa.amount_due, pa.retention_held,
@@ -357,7 +357,7 @@ router.get('/projects/:id/payapps/deleted', auth, async (req, res) => {
 });
 
 // PUT /api/payapps/:id/lines - Update pay app lines (percentages, retainage, stored materials)
-router.put('/payapps/:id/lines', auth, async (req,res) => {
+router.put('/api/payapps/:id/lines', auth, async (req,res) => {
   // Verify ownership before updating any lines
   const own = await pool.query(
     'SELECT pa.id, pa.status FROM pay_apps pa JOIN projects p ON p.id=pa.project_id WHERE pa.id=$1 AND p.user_id=$2',
@@ -393,7 +393,7 @@ router.put('/payapps/:id/lines', auth, async (req,res) => {
 
 // CHANGE ORDERS
 // POST /api/payapps/:id/changeorders - Add change order
-router.post('/payapps/:id/changeorders', auth, async (req,res) => {
+router.post('/api/payapps/:id/changeorders', auth, async (req,res) => {
   // Verify user owns this pay app before adding change orders
   const own = await pool.query(
     'SELECT pa.id FROM pay_apps pa JOIN projects p ON p.id=pa.project_id WHERE pa.id=$1 AND p.user_id=$2',
@@ -409,7 +409,7 @@ router.post('/payapps/:id/changeorders', auth, async (req,res) => {
 });
 
 // PUT /api/changeorders/:id - Update change order
-router.put('/changeorders/:id', auth, async (req,res) => {
+router.put('/api/changeorders/:id', auth, async (req,res) => {
   const own = await pool.query(
     'SELECT co.id FROM change_orders co JOIN pay_apps pa ON pa.id=co.pay_app_id JOIN projects p ON p.id=pa.project_id WHERE co.id=$1 AND p.user_id=$2',
     [req.params.id, req.user.id]
@@ -424,7 +424,7 @@ router.put('/changeorders/:id', auth, async (req,res) => {
 });
 
 // DELETE /api/changeorders/:id - Delete change order
-router.delete('/changeorders/:id', auth, async (req,res) => {
+router.delete('/api/changeorders/:id', auth, async (req,res) => {
   const own = await pool.query(
     'SELECT co.id FROM change_orders co JOIN pay_apps pa ON pa.id=co.pay_app_id JOIN projects p ON p.id=pa.project_id WHERE co.id=$1 AND p.user_id=$2',
     [req.params.id, req.user.id]
@@ -436,7 +436,7 @@ router.delete('/changeorders/:id', auth, async (req,res) => {
 
 // ATTACHMENTS
 // POST /api/payapps/:id/attachments - Upload file attachment
-router.post('/payapps/:id/attachments', auth, upload.single('file'), async (req,res) => {
+router.post('/api/payapps/:id/attachments', auth, upload.single('file'), async (req,res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   // Verify user owns this pay app before attaching files
   const own = await pool.query(
@@ -466,7 +466,7 @@ router.post('/payapps/:id/attachments', auth, upload.single('file'), async (req,
 });
 
 // DELETE /api/attachments/:id - Delete attachment
-router.delete('/attachments/:id', auth, async (req,res) => {
+router.delete('/api/attachments/:id', auth, async (req,res) => {
   const own = await pool.query(
     'SELECT a.filename FROM attachments a JOIN pay_apps pa ON pa.id=a.pay_app_id JOIN projects p ON p.id=pa.project_id WHERE a.id=$1 AND p.user_id=$2',
     [req.params.id, req.user.id]
@@ -483,7 +483,7 @@ router.delete('/attachments/:id', auth, async (req,res) => {
 // ──────────────────────────────────────────────────────────────────────────────
 
 // GET /api/payapps/:id/pdf - Generate and download pay app PDF
-router.get('/payapps/:id/pdf', async (req,res) => {
+router.get('/api/payapps/:id/pdf', async (req,res) => {
   const token = req.query.token || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
   let decoded;
   try { decoded = jwt.verify(token, JWT_SECRET); } catch(e) { return res.status(401).json({error:'Invalid token'}); }
@@ -695,7 +695,7 @@ router.get('/payapps/:id/pdf', async (req,res) => {
 // ──────────────────────────────────────────────────────────────────────────────
 
 // POST /api/payapps/:id/email - Send pay app via email with PDF
-router.post('/payapps/:id/email', auth, async (req, res) => {
+router.post('/api/payapps/:id/email', auth, async (req, res) => {
   const { to, cc, subject, message, attach_lien_waiver, include_payment_link } = req.body;
   const shouldAttachLien = attach_lien_waiver !== false;
   const shouldIncludePayLink = include_payment_link !== false;

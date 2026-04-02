@@ -3,6 +3,34 @@ const router = express.Router();
 const { pool } = require('../../db');
 const { auth } = require('../middleware/auth');
 
+// GET /api/stats — Dashboard stats (total billed, retainage, other invoices)
+router.get('/api/stats', auth, async (req, res) => {
+  try {
+    const [billing, otherInv] = await Promise.all([
+      pool.query(`
+        SELECT
+          COALESCE(SUM(sl.scheduled_value * pal.this_pct / 100.0), 0)                               AS total_billed,
+          COALESCE(SUM(sl.scheduled_value * pal.this_pct / 100.0 * pal.retainage_pct / 100.0), 0)  AS total_retainage
+        FROM projects p
+        JOIN pay_apps       pa  ON pa.project_id  = p.id
+        JOIN pay_app_lines  pal ON pal.pay_app_id  = pa.id
+        JOIN sov_lines      sl  ON sl.id           = pal.sov_line_id
+        WHERE p.user_id = $1
+          AND pa.status = 'submitted'
+          AND pa.deleted_at IS NULL
+      `, [req.user.id]),
+      pool.query(`
+        SELECT COUNT(*) AS other_invoice_count,
+               COALESCE(SUM(amount), 0) AS other_invoice_total
+        FROM other_invoices WHERE user_id=$1 AND deleted_at IS NULL
+      `, [req.user.id])
+    ]);
+    const stats = billing.rows[0] || { total_billed: 0, total_retainage: 0 };
+    const oi = otherInv.rows[0] || { other_invoice_count: 0, other_invoice_total: 0 };
+    res.json({ ...stats, ...oi });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // GET /api/revenue/summary — Revenue summary with KPIs and charts
 router.get('/api/revenue/summary', auth, async (req, res) => {
   try {
@@ -361,8 +389,8 @@ router.get('/api/reports/export/csv', auth, async (req, res) => {
   }
 });
 
-// POST /api/payapps/:id/payment-received — Toggle payment received status
-router.post('/api/payapps/:id/payment-received', auth, async (req, res) => {
+// POST /api/pay-apps/:id/payment-received — Toggle payment received status
+router.post('/api/pay-apps/:id/payment-received', auth, async (req, res) => {
   try {
     const {received} = req.body;
     const check = await pool.query(
