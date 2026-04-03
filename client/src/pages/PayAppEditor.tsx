@@ -9,7 +9,7 @@
  *   Step 6: Preview & Send
  */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -814,23 +814,50 @@ function Step5LienWaiver({
   const [makerOfCheck, setMakerOfCheck] = useState('')
   const [checkPayableTo, setCheckPayableTo] = useState('')
 
-  // Load existing lien docs on mount
+  const autoGenRef = useRef(false)
+
+  // Load existing lien docs on mount, then auto-generate if none linked
   useEffect(() => {
     if (!project?.id) return
     setIsLoadingDocs(true)
     getLienDocs(project.id)
-      .then((res) => {
+      .then(async (res) => {
         if (res.data) {
           // Filter to this pay app's docs
           const docs = (Array.isArray(res.data) ? res.data : []).filter(
-            (d: LienDocument) => d.pay_app_id === payApp?.id || !d.pay_app_id
+            (d: LienDocument) => d.pay_app_id === payApp?.id
           )
           setLienDocs(docs)
+
+          // Auto-generate conditional waiver if none linked and we have enough data
+          const amtDue = totals?.totalCurrentDue || 0
+          const sigName = project?.contact_name || ''
+          if (docs.length === 0 && amtDue > 0 && sigName && !autoGenRef.current) {
+            autoGenRef.current = true
+            try {
+              const autoRes = await createLienDoc(project.id, {
+                doc_type: 'conditional_waiver',
+                signatory_name: sigName,
+                signatory_title: '',
+                through_date: payApp?.period_end ? payApp.period_end.split('T')[0] : new Date().toISOString().split('T')[0],
+                amount: amtDue,
+                maker_of_check: project.owner || '',
+                check_payable_to: project.contractor || '',
+                pay_app_id: payApp?.id,
+                jurisdiction: (project as any).jurisdiction || 'california',
+              })
+              if (autoRes.data) {
+                setLienDocs([autoRes.data as LienDocument])
+              }
+            } catch (autoErr) {
+              console.error('Auto-generate lien waiver failed:', autoErr)
+            }
+          }
         }
       })
       .catch(() => setError('Failed to load lien documents'))
       .finally(() => setIsLoadingDocs(false))
-  }, [project?.id, payApp?.id])
+  }, [project?.id, payApp?.id, totals?.totalCurrentDue, project?.contact_name])
 
   // Pre-fill form from project/pay app data
   useEffect(() => {
@@ -1047,6 +1074,23 @@ function Step6Preview({
   onOpenEmail: () => void
   isTrialGated: boolean
 }) {
+  // Lien waiver state for "Download + Lien Waiver" button
+  const [linkedLienDocId, setLinkedLienDocId] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (!project?.id || !payApp?.id) return
+    getLienDocs(project.id)
+      .then((res) => {
+        if (res.data) {
+          const linked = (Array.isArray(res.data) ? res.data : []).filter(
+            (d: LienDocument) => d.pay_app_id === payApp.id
+          )
+          if (linked.length > 0) setLinkedLienDocId(linked[0].id)
+        }
+      })
+      .catch(() => { /* silent */ })
+  }, [project?.id, payApp?.id])
+
   // Compute G702 fields A-I
   const originalContract = Number(project?.original_contract) || 0
   const netChangeOrders = changeOrders
@@ -1060,16 +1104,44 @@ function Step6Preview({
   const currentPaymentDue = totals?.totalCurrentDue || 0
   const balanceToFinish = contractSumToDate - totalCompleted + retainageToDate
 
+  // SOV vs Contract mismatch
+  const sovSum = computedLines.reduce((s, l) => s + (Number(l.scheduledValue) || 0), 0)
+  const hasMismatch = originalContract > 0 && sovSum > 0 && Math.abs(sovSum - originalContract) > 1
+
   const showRetainage = project?.include_retainage !== false
+
+  const handleDownloadWithLien = () => {
+    onDownloadPDF()
+    if (linkedLienDocId) {
+      const token = localStorage.getItem('ci_token')
+      window.open(`/api/lien-docs/${linkedLienDocId}/pdf?token=${encodeURIComponent(token || '')}`, '_blank')
+    }
+  }
 
   return (
     <div className="space-y-6">
+      {/* Contract mismatch warning */}
+      {hasMismatch && (
+        <div className="p-4 rounded-lg border" style={{ background: '#FFF8E1', borderColor: '#F59E0B' }}>
+          <span className="font-semibold text-amber-800">Contract sum mismatch</span>
+          <span className="text-sm text-amber-900 ml-3">
+            Contract: <strong>{formatCurrency(originalContract)}</strong> — SOV total: <strong>{formatCurrency(sovSum)}</strong>
+          </span>
+        </div>
+      )}
+
       {/* Action buttons */}
       <div className="flex flex-wrap gap-3">
         <Button onClick={onDownloadPDF} disabled={isTrialGated} className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
           <Download className="w-4 h-4" />
           Download Pay App PDF
         </Button>
+        {linkedLienDocId && (
+          <Button onClick={handleDownloadWithLien} disabled={isTrialGated} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
+            <Download className="w-4 h-4" />
+            Download + Lien Waiver
+          </Button>
+        )}
         <Button onClick={onOpenEmail} disabled={isTrialGated} className="gap-2 bg-green-600 hover:bg-green-700 text-white">
           <Mail className="w-4 h-4" />
           {payApp?.status === 'submitted' ? 'Resend' : 'Send & Mark Submitted'}

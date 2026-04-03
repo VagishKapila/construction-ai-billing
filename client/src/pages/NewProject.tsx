@@ -53,7 +53,7 @@ export function NewProject() {
     owner_email: '',
     owner_phone: '',
     jurisdiction: 'california',
-    include_architect: true,
+    include_architect: false,
     include_retainage: true,
   })
 
@@ -410,6 +410,20 @@ export function NewProject() {
               </select>
             </div>
 
+            {/* Include Architect Certificate */}
+            <div className="flex items-center gap-3 pt-6">
+              <input
+                type="checkbox"
+                id="include-architect"
+                checked={formData.include_architect ?? false}
+                onChange={(e) => handleInputChange('include_architect', e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <label htmlFor="include-architect" className="text-sm font-medium text-gray-900">
+                Include Architect Certificate for Payment
+              </label>
+            </div>
+
             {/* Address */}
             <Input
               label="Address"
@@ -585,14 +599,54 @@ export function NewProject() {
           </Card>
 
           {/* SOV Summary */}
-          {sovRows.length > 0 && (
+          {sovRows.length > 0 && (() => {
+            const sovTotal = sovRows.reduce((sum, r) => sum + (r.scheduled_value || 0), 0)
+            const contractAmt = formData.original_contract || 0
+            const variance = sovTotal - contractAmt
+            const variancePct = contractAmt > 0 ? (variance / contractAmt) * 100 : 0
+            const isMatch = Math.abs(variance) <= 1
+            return (
             <Card className="p-8">
               <h2 className="text-lg font-semibold text-text-primary mb-6">
                 Schedule of Values
               </h2>
               <p className="text-sm text-text-secondary mb-4">
-                {sovRows.length} line items • Total: {formatCurrency(sovRows.reduce((sum, r) => sum + (r.scheduled_value || 0), 0))}
+                {sovRows.length} line items • Total: {formatCurrency(sovTotal)}
               </p>
+
+              {/* SOV vs Contract Mismatch Warning */}
+              {contractAmt > 0 && !isMatch && (
+                <div className="mb-4 p-4 rounded-lg border" style={{ background: '#FFF8E1', borderColor: '#F59E0B' }}>
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div>
+                      <span className="font-semibold text-amber-800">
+                        SOV vs contract variance detected
+                      </span>
+                      <div className="text-sm text-amber-900 mt-1">
+                        Contract: <strong>{formatCurrency(contractAmt)}</strong> &middot;
+                        SOV Total: <strong>{formatCurrency(sovTotal)}</strong> &middot;
+                        Variance: <strong>{variance >= 0 ? '+' : ''}{formatCurrency(Math.abs(variance))} ({variancePct >= 0 ? '+' : ''}{variancePct.toFixed(2)}%)</strong>
+                      </div>
+                      <p className="text-xs text-amber-700 mt-1">
+                        Your SOV total differs from the contract sum by {formatCurrency(Math.abs(variance))}. Review your SOV line items.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => handleInputChange('original_contract', sovTotal)}
+                      className="bg-amber-500 hover:bg-amber-600 text-white text-xs whitespace-nowrap"
+                    >
+                      Fix: use SOV total
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {contractAmt > 0 && isMatch && (
+                <div className="mb-4 p-3 rounded-lg border border-green-200 bg-green-50">
+                  <span className="text-sm font-medium text-green-700">SOV matches contract sum</span>
+                </div>
+              )}
               <SOVTable
                 lines={sovRows.map((r, idx) => ({
                   id: idx,
@@ -604,7 +658,8 @@ export function NewProject() {
                 }))}
               />
             </Card>
-          )}
+            )
+          })()}
 
           {/* Navigation */}
           <div className="flex justify-between pt-6">
