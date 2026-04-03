@@ -492,9 +492,24 @@ function renderLienWaiverContent(doc, {
 
   doc.fontSize(7).font('Helvetica-Bold').fillColor('#555555')
     .text('AUTHORIZED SIGNATURE', L + 6, sigBoxY + 8, {width: sigColW - 12});
-  doc.moveTo(L + 6, sigBoxY + 32).lineTo(L + sigColW - 8, sigBoxY + 32).lineWidth(0.5).stroke('#999999');
+
+  // Embed uploaded signature image if available
+  let sigImagePlaced = false;
+  if (project && project.signature_filename) {
+    const sigPath = path.join(__dirname, '../../uploads', project.signature_filename);
+    if (fs.existsSync(sigPath)) {
+      try {
+        doc.image(sigPath, L + 6, sigBoxY + 17, {fit: [sigColW - 20, 28], align: 'left', valign: 'center'});
+        sigImagePlaced = true;
+      } catch (_) { }
+    }
+  }
+
+  if (!sigImagePlaced) {
+    doc.moveTo(L + 6, sigBoxY + 32).lineTo(L + sigColW - 8, sigBoxY + 32).lineWidth(0.5).stroke('#999999');
+  }
   doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000')
-    .text(signatory_name || '', L + 6, sigBoxY + 35, {width: sigColW - 12});
+    .text(signatory_name || '', L + 6, sigBoxY + (sigImagePlaced ? 46 : 35), {width: sigColW - 12});
   doc.fontSize(7.5).font('Helvetica').fillColor('#333333')
     .text((signatory_title ? signatory_title + '  ·  ' : '') + contractorName, L + 6, sigBoxY + 50, {width: sigColW - 12});
   doc.fontSize(7.5).text(

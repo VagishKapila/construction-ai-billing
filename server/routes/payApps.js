@@ -654,6 +654,22 @@ router.get('/api/payapps/:id/pdf', async (req,res) => {
     if (!fs.existsSync(lp)) console.log(`[PDF] Logo file missing: ${lp}`);
   }
 
+  // ── Auto-generate payment link token if GC has Stripe Connect ──────────
+  if (!pa.payment_link_token && due > 0) {
+    try {
+      const acctCheck = (await pool.query(
+        'SELECT stripe_account_id FROM connected_accounts WHERE user_id=$1 AND charges_enabled=TRUE',
+        [decoded.id]
+      )).rows[0];
+      if (acctCheck) {
+        const payToken = generatePaymentToken();
+        await pool.query('UPDATE pay_apps SET payment_link_token=$1 WHERE id=$2', [payToken, req.params.id]);
+        pa.payment_link_token = payToken;
+        console.log('[PDF] Auto-generated payment link token for pay app', req.params.id);
+      }
+    } catch(e) { console.error('[PDF] Payment token gen error:', e.message); }
+  }
+
   const totals = { tComp, tRet, tPrevCert, tCO, contract, earned, due };
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="PayApp_${pa.app_number}_${(pa.pname||'').replace(/\s+/g,'_')}.pdf"`);
@@ -672,17 +688,18 @@ router.get('/api/payapps/:id/pdf', async (req,res) => {
         const lienFilename = `lien_${crypto.randomBytes(8).toString('hex')}.pdf`;
         const fpath = path.join(__dirname, '..', '..', 'uploads', lienFilename);
         const today = new Date().toLocaleDateString('en-US');
+        const sigName = pa.contact_name || pa.company_name || pa.contractor || '';
         await generateLienDocPDF({
           fpath, doc_type: 'conditional_waiver',
-          project_name: pa.pname || '', owner_name: pa.owner || '',
-          claimant_name: pa.contact_name || pa.company_name || pa.contractor || '',
+          project: { name: pa.pname, owner: pa.owner, contractor: pa.contractor, company_name: pa.company_name, logo_filename: pa.logo_filename, signature_filename: pa.signature_filename },
           through_date: today, amount: due,
+          maker_of_check: pa.owner || '', check_payable_to: sigName,
+          signatory_name: sigName, signedAt: new Date(), ip: 'auto-gen',
         });
         const insertRes = await pool.query(
           `INSERT INTO lien_documents(project_id,pay_app_id,user_id,doc_type,status,amount,filename,through_date,claimant_name,owner_name)
            VALUES($1,$2,$3,'conditional_waiver','draft',$4,$5,$6,$7,$8) RETURNING *`,
-          [pa.project_id, req.params.id, decoded.id, due, lienFilename, today,
-           pa.contact_name || pa.company_name || pa.contractor || '', pa.owner || '']
+          [pa.project_id, req.params.id, decoded.id, due, lienFilename, today, sigName, pa.owner || '']
         );
         lienDoc = insertRes.rows[0];
         console.log('[PDF] Auto-generated conditional lien waiver:', lienFilename);
@@ -1055,20 +1072,18 @@ router.post('/api/payapps/:id/email', auth, async (req, res) => {
           const lienFilename = `lien_${crypto.randomBytes(8).toString('hex')}.pdf`;
           const fpath = path.join(__dirname, '..', '..', 'uploads', lienFilename);
           const today = new Date().toLocaleDateString('en-US');
+          const sigName = pa.contact_name || pa.company_name || pa.contractor || '';
           await generateLienDocPDF({
-            fpath,
-            doc_type: 'conditional_waiver',
-            project_name: pa.pname || '',
-            owner_name: pa.owner || '',
-            claimant_name: pa.contact_name || pa.company_name || pa.contractor || '',
-            through_date: today,
-            amount: due,
+            fpath, doc_type: 'conditional_waiver',
+            project: { name: pa.pname, owner: pa.owner, contractor: pa.contractor, company_name: pa.company_name, logo_filename: pa.logo_filename, signature_filename: pa.signature_filename },
+            through_date: today, amount: due,
+            maker_of_check: pa.owner || '', check_payable_to: sigName,
+            signatory_name: sigName, signedAt: new Date(), ip: 'auto-gen',
           });
           const insertRes = await pool.query(
             `INSERT INTO lien_documents(project_id,pay_app_id,user_id,doc_type,status,amount,filename,through_date,claimant_name,owner_name)
              VALUES($1,$2,$3,'conditional_waiver','draft',$4,$5,$6,$7,$8) RETURNING *`,
-            [pa.project_id, req.params.id, req.user.id, due, lienFilename, today,
-             pa.contact_name || pa.company_name || pa.contractor || '', pa.owner || '']
+            [pa.project_id, req.params.id, req.user.id, due, lienFilename, today, sigName, pa.owner || '']
           );
           lienDoc = insertRes.rows[0];
           console.log('[Email] Auto-generated conditional lien waiver:', lienFilename);

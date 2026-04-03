@@ -1811,7 +1811,7 @@ export function PayAppEditor() {
         onClose={() => setIsEmailModalOpen(false)}
         onSubmit={handleEmailSubmit}
         defaultTo={(project as any)?.owner_email || ''}
-        defaultCC={(project as any)?.contact_email || ''}
+        defaultCC=""
         payAppNumber={payApp.app_number}
         projectName={project.name}
       />
