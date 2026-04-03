@@ -1589,16 +1589,15 @@ export function PayAppEditor() {
     }
   }, [handleSave, currentStep])
 
-  // Download PDF — opens the professional AIA G702/G703 HTML preview with auto-print dialog
+  // Download PDF — direct PDF download via Puppeteer (pixel-perfect AIA G702/G703)
   const handleDownloadPDF = useCallback(async () => {
     if (isTrialGated) {
       alert('Your trial has ended. Please upgrade to continue.')
       return
     }
     const token = localStorage.getItem('ci_token')
-    // Use /html endpoint which serves the beautiful AIA template directly
-    // Browser print dialog opens automatically → user saves as PDF
-    window.open(`/api/payapps/${payAppId}/html?token=${encodeURIComponent(token || '')}`, '_blank')
+    // Use /pdf endpoint which generates a real PDF file via Puppeteer
+    window.open(`/api/payapps/${payAppId}/pdf?token=${encodeURIComponent(token || '')}`, '_blank')
     if (payApp?.status === 'draft') {
       try {
         await updatePayApp({ status: 'submitted' } as any)

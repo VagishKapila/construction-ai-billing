@@ -12,6 +12,7 @@ const PDFDocument = require('pdfkit');
 const { generateLienDocPDF } = require('./lienWaivers');
 const { generatePaymentToken } = require('../services/stripe');
 const { generatePayAppHTML } = require('../lib/generatePayAppHTML');
+const { PDFDocument: PDFLibDocument } = require('pdf-lib');
 
 // PDF generation via Puppeteer (fallback to PDFKit if unavailable)
 let puppeteer = null;
@@ -231,7 +232,7 @@ router.put('/api/payapps/:id', auth, async (req,res) => {
           const doc_type = isFinalPayment ? 'unconditional_final_waiver' : 'conditional_waiver';
           const lienAmountForDoc = isFinalPayment ? 0 : lienAmount;
           const fname = `lien_${doc_type}_${req.params.id}_${Date.now()}.pdf`;
-          const fpath = path.join(__dirname, '..', 'uploads', fname);
+          const fpath = path.join(__dirname, '..', '..', 'uploads', fname);
           const signedAt = new Date();
 
           await generateLienDocPDF({
@@ -470,7 +471,7 @@ router.post('/api/payapps/:id/attachments', auth, upload.single('file'), async (
     return res.status(400).json({ error: 'File type not allowed. Accepted: PDF, images, Word, Excel, CSV.' });
   }
   const {originalname,filename,mimetype} = req.file;
-  const actualSize = (() => { try { return fs.statSync(path.join(__dirname,'uploads',filename)).size; } catch(_) { return req.file.size; } })();
+  const actualSize = (() => { try { return fs.statSync(path.join(__dirname,'..','..','uploads',filename)).size; } catch(_) { return req.file.size; } })();
   const r = await pool.query(
     'INSERT INTO attachments(pay_app_id,filename,original_name,file_size,mime_type) VALUES($1,$2,$3,$4,$5) RETURNING *',
     [req.params.id,filename,originalname,actualSize,mimetype]
@@ -486,7 +487,7 @@ router.delete('/api/attachments/:id', auth, async (req,res) => {
   );
   if(!own.rows[0]) return res.status(403).json({error:'Forbidden'});
   await pool.query('DELETE FROM attachments WHERE id=$1',[req.params.id]);
-  const fp = path.join(__dirname,'uploads',own.rows[0].filename);
+  const fp = path.join(__dirname,'..','..','uploads',own.rows[0].filename);
   if(fs.existsSync(fp)) fs.unlinkSync(fp);
   res.json({ok:true});
 });
@@ -536,7 +537,7 @@ router.get('/api/payapps/:id/html', async (req,res) => {
   const due=Math.max(0,earned-tPrevCert);
 
   const imgMime = buf => { if (buf[0]===0x89 && buf[1]===0x50) return 'image/png'; if (buf[0]===0xFF && buf[1]===0xD8) return 'image/jpeg'; return 'image/png'; };
-  const readImgB64 = filename => { if (!filename) return null; try { const fp = path.join(__dirname, '..', 'uploads', filename); if (!fs.existsSync(fp)) return null; const buf = fs.readFileSync(fp); return `data:${imgMime(buf)};base64,${buf.toString('base64')}`; } catch(e) { return null; } };
+  const readImgB64 = filename => { if (!filename) return null; try { const fp = path.join(__dirname, '..', '..', 'uploads', filename); if (!fs.existsSync(fp)) return null; const buf = fs.readFileSync(fp); return `data:${imgMime(buf)};base64,${buf.toString('base64')}`; } catch(e) { return null; } };
   const logoBase64 = readImgB64(pa.logo_filename);
   const sigBase64  = readImgB64(pa.signature_filename);
 
@@ -619,7 +620,7 @@ router.get('/api/payapps/:id/pdf', async (req,res) => {
   const readImgB64 = filename => {
     if (!filename) return null;
     try {
-      const fp = path.join(__dirname, '..', 'uploads', filename);
+      const fp = path.join(__dirname, '..', '..', 'uploads', filename);
       if (!fs.existsSync(fp)) return null;
       const buf = fs.readFileSync(fp);
       return `data:${imgMime(buf)};base64,${buf.toString('base64')}`;
@@ -636,7 +637,7 @@ router.get('/api/payapps/:id/pdf', async (req,res) => {
   const photoAttachments = photoAttsRes.rows.map(a => {
     const b64 = readImgB64(a.filename);
     if (!b64) return null;
-    return { base64: b64, name: a.original_name || a.filename, filePath: path.join(__dirname, '..', 'uploads', a.filename) };
+    return { base64: b64, name: a.original_name || a.filename, filePath: path.join(__dirname, '..', '..', 'uploads', a.filename) };
   }).filter(Boolean);
 
   // ── Load PDF document attachments ─────
@@ -649,13 +650,68 @@ router.get('/api/payapps/:id/pdf', async (req,res) => {
   if (!pa.logo_filename) {
     console.log(`[PDF] No logo_filename for user_id=${decoded.id} (pay_app=${req.params.id})`);
   } else {
-    const lp = path.join(__dirname, '..', 'uploads', pa.logo_filename);
+    const lp = path.join(__dirname, '..', '..', 'uploads', pa.logo_filename);
     if (!fs.existsSync(lp)) console.log(`[PDF] Logo file missing: ${lp}`);
   }
 
   const totals = { tComp, tRet, tPrevCert, tCO, contract, earned, due };
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="PayApp_${pa.app_number}_${(pa.pname||'').replace(/\s+/g,'_')}.pdf"`);
+
+  // ── Helper: find or auto-generate lien waiver, return PDF buffer ────────
+  const getLienWaiverBuffer = async () => {
+    try {
+      const lienRes = await pool.query(
+        'SELECT * FROM lien_documents WHERE project_id=$1 AND pay_app_id=$2 ORDER BY created_at DESC LIMIT 1',
+        [pa.project_id, req.params.id]
+      );
+      let lienDoc = lienRes.rows[0];
+      // Auto-generate conditional waiver if none exists
+      if (!lienDoc && due > 0 && (pa.contact_name || pa.company_name)) {
+        const crypto = require('crypto');
+        const lienFilename = `lien_${crypto.randomBytes(8).toString('hex')}.pdf`;
+        const fpath = path.join(__dirname, '..', '..', 'uploads', lienFilename);
+        const today = new Date().toLocaleDateString('en-US');
+        await generateLienDocPDF({
+          fpath, doc_type: 'conditional_waiver',
+          project_name: pa.pname || '', owner_name: pa.owner || '',
+          claimant_name: pa.contact_name || pa.company_name || pa.contractor || '',
+          through_date: today, amount: due,
+        });
+        const insertRes = await pool.query(
+          `INSERT INTO lien_documents(project_id,pay_app_id,user_id,doc_type,status,amount,filename,through_date,claimant_name,owner_name)
+           VALUES($1,$2,$3,'conditional_waiver','draft',$4,$5,$6,$7,$8) RETURNING *`,
+          [pa.project_id, req.params.id, decoded.id, due, lienFilename, today,
+           pa.contact_name || pa.company_name || pa.contractor || '', pa.owner || '']
+        );
+        lienDoc = insertRes.rows[0];
+        console.log('[PDF] Auto-generated conditional lien waiver:', lienFilename);
+      }
+      if (lienDoc && lienDoc.filename) {
+        const lienPath = path.join(__dirname, '..', '..', 'uploads', lienDoc.filename);
+        if (fs.existsSync(lienPath)) return fs.readFileSync(lienPath);
+      }
+    } catch(e) { console.error('[PDF] Lien waiver error:', e.message); }
+    return null;
+  };
+
+  // ── Helper: merge two PDF buffers into one ──────────────────────────────
+  const mergePDFs = async (mainBuf, lienBuf) => {
+    if (!lienBuf) return mainBuf;
+    try {
+      const merged = await PDFLibDocument.create();
+      const mainDoc = await PDFLibDocument.load(mainBuf);
+      const lienDoc = await PDFLibDocument.load(lienBuf);
+      const mainPages = await merged.copyPages(mainDoc, mainDoc.getPageIndices());
+      mainPages.forEach(p => merged.addPage(p));
+      const lienPages = await merged.copyPages(lienDoc, lienDoc.getPageIndices());
+      lienPages.forEach(p => merged.addPage(p));
+      return Buffer.from(await merged.save());
+    } catch(e) {
+      console.error('[PDF] Merge error:', e.message);
+      return mainBuf; // fallback: return pay app only
+    }
+  };
 
   // ── Puppeteer: pixel-perfect PDF matching the on-screen preview ──────────
   if (puppeteer) {
@@ -672,7 +728,10 @@ router.get('/api/payapps/:id/pdf', async (req,res) => {
         printBackground: true,
         margin: { top: '0.5in', right: '0.45in', bottom: '0.5in', left: '0.45in' }
       });
-      res.send(pdfBuffer);
+      // Bundle lien waiver
+      const lienBuf = await getLienWaiverBuffer();
+      const finalPdf = await mergePDFs(pdfBuffer, lienBuf);
+      res.send(finalPdf);
       return;
     } catch(puppErr) {
       console.error('[PDF] Puppeteer error, falling back to PDFKit:', puppErr.message);
@@ -681,9 +740,10 @@ router.get('/api/payapps/:id/pdf', async (req,res) => {
     }
   }
 
-  // PDFKit implementation
+  // PDFKit fallback — buffer to memory so we can merge with lien waiver
   const doc=new PDFDocument({size:'LETTER',margin:45});
-  doc.pipe(res);
+  const chunks = [];
+  doc.on('data', c => chunks.push(c));
 
   doc.fontSize(15).font('Helvetica-Bold').text('Document G702',{align:'center'});
   doc.fontSize(10).font('Helvetica').text('Application and Certificate for Payment',{align:'center'});
@@ -768,7 +828,15 @@ router.get('/api/payapps/:id/pdf', async (req,res) => {
   ['','GRAND TOTAL',fmt(tSV2),fmt(tPrev2),'',fmt(tThis2),fmt(tComp2),'',fmt(tRet2),fmt(tSV2-tComp2)]
     .forEach((v,i)=>doc.text(v,cx[i],ty,{width:cw[i],align:i>1?'right':'left'}));
 
-  doc.end();
+  await new Promise((resolve, reject) => {
+    doc.on('end', resolve);
+    doc.on('error', reject);
+    doc.end();
+  });
+  const payAppBuf = Buffer.concat(chunks);
+  const lienBuf = await getLienWaiverBuffer();
+  const finalPdf = await mergePDFs(payAppBuf, lienBuf);
+  res.send(finalPdf);
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -898,7 +966,7 @@ router.post('/api/payapps/:id/email', auth, async (req, res) => {
         let browser;
         try {
           const imgMime = buf => { if (buf[0]===0x89 && buf[1]===0x50) return 'image/png'; if (buf[0]===0xFF && buf[1]===0xD8) return 'image/jpeg'; return 'image/png'; };
-          const readImgB64 = filename => { if (!filename) return null; try { const fp = path.join(__dirname, '..', 'uploads', filename); if (!fs.existsSync(fp)) return null; const buf = fs.readFileSync(fp); return `data:${imgMime(buf)};base64,${buf.toString('base64')}`; } catch(e) { return null; } };
+          const readImgB64 = filename => { if (!filename) return null; try { const fp = path.join(__dirname, '..', '..', 'uploads', filename); if (!fs.existsSync(fp)) return null; const buf = fs.readFileSync(fp); return `data:${imgMime(buf)};base64,${buf.toString('base64')}`; } catch(e) { return null; } };
           const logoBase64 = readImgB64(pa.logo_filename);
           const sigBase64  = readImgB64(pa.signature_filename);
           const html = generatePayAppHTML(pa, lines.rows, cos.rows, totals, logoBase64, sigBase64, [], []);
@@ -985,7 +1053,7 @@ router.post('/api/payapps/:id/email', auth, async (req, res) => {
         if (!lienDoc && (pa.contact_name || pa.company_name)) {
           const crypto = require('crypto');
           const lienFilename = `lien_${crypto.randomBytes(8).toString('hex')}.pdf`;
-          const fpath = path.join(__dirname, '..', 'uploads', lienFilename);
+          const fpath = path.join(__dirname, '..', '..', 'uploads', lienFilename);
           const today = new Date().toLocaleDateString('en-US');
           await generateLienDocPDF({
             fpath,
@@ -1008,7 +1076,7 @@ router.post('/api/payapps/:id/email', auth, async (req, res) => {
 
         // Attach lien waiver PDF if available
         if (lienDoc && lienDoc.filename) {
-          const lienPath = path.join(__dirname, '..', 'uploads', lienDoc.filename);
+          const lienPath = path.join(__dirname, '..', '..', 'uploads', lienDoc.filename);
           if (fs.existsSync(lienPath)) {
             const lienBuf = fs.readFileSync(lienPath);
             const lienType = lienDoc.doc_type === 'unconditional_waiver' ? 'Unconditional' : 'Conditional';
