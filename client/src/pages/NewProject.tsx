@@ -480,28 +480,6 @@ export function NewProject() {
             <SOVUpload onParsed={setSovRows} initialRows={sovRows} />
           </Card>
 
-          {/* SOV Preview */}
-          {sovRows.length > 0 && (
-            <Card className="p-8">
-              <h3 className="text-lg font-semibold text-text-primary mb-4">Preview</h3>
-              <div className="space-y-4">
-                <p className="text-sm text-text-secondary">
-                  {sovRows.length} line items found • Total: {formatCurrency(sovRows.reduce((sum, r) => sum + (r.scheduled_value || 0), 0))}
-                </p>
-                <SOVTable
-                  lines={sovRows.map((r, idx) => ({
-                    id: idx,
-                    project_id: 0,
-                    item_id: r.item_id,
-                    description: r.description,
-                    scheduled_value: r.scheduled_value,
-                    sort_order: idx,
-                  }))}
-                />
-              </div>
-            </Card>
-          )}
-
           {/* Navigation */}
           <div className="flex justify-between pt-6">
             <Button
