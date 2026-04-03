@@ -2413,8 +2413,9 @@ app.post('/api/payapps/:id/email', auth, async (req, res) => {
     }
 
     // Attach lien waiver PDF if one is linked and user opted in (default: yes)
+    // Auto-generate conditional waiver if none exists yet
     if (shouldAttachLien) try {
-      const lienRes = await pool.query(
+      let lienRes = await pool.query(
         `SELECT ld.*, p.name, p.owner, p.contractor, p.location, p.city, p.state, p.contact as location_contact,
                 cs.logo_filename, cs.company_name
          FROM lien_documents ld
@@ -2424,6 +2425,41 @@ app.post('/api/payapps/:id/email', auth, async (req, res) => {
          ORDER BY ld.created_at DESC LIMIT 1`,
         [req.params.id, req.user.id]
       );
+      // Auto-generate conditional waiver if none linked and we have enough data
+      if (!lienRes.rows[0] && due > 0 && (pa.contact_name || pa.company_name)) {
+        try {
+          const sigName = pa.contact_name || '';
+          const throughDate = pa.period_end ? new Date(pa.period_end).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+          const projRes = await pool.query('SELECT * FROM projects WHERE id=$1 AND user_id=$2', [pa.project_id, req.user.id]);
+          const proj = projRes.rows[0];
+          if (proj && sigName) {
+            const lienFilename = `lien_${Date.now()}_${req.params.id}.pdf`;
+            const fpath = path.join(__dirname, 'uploads', lienFilename);
+            await generateLienDocPDF({ fpath, doc_type: 'conditional_waiver', project: { name: proj.name, owner: proj.owner, contractor: proj.contractor || pa.company_name, company_name: pa.company_name, location: proj.location, city: proj.city, state: proj.state, logo_filename: pa.logo_filename },
+              through_date: throughDate, amount: due, maker_of_check: proj.owner || '', check_payable_to: proj.contractor || pa.company_name || '',
+              signatory_name: sigName, signatory_title: '', signedAt: new Date(), ip: 'auto-generated', jurisdiction: proj.jurisdiction || 'california',
+              pay_app_ref: `Pay App #${pa.app_number}${pa.period_label ? ' — ' + pa.period_label : ''}` });
+            // Insert into DB
+            await pool.query(
+              `INSERT INTO lien_documents (project_id, pay_app_id, doc_type, through_date, amount, maker_of_check, check_payable_to, signatory_name, signatory_title, signed_at, signatory_ip, jurisdiction, filename)
+               VALUES ($1,$2,'conditional_waiver',$3,$4,$5,$6,$7,'',$8,'auto-generated',$9,$10)`,
+              [pa.project_id, req.params.id, throughDate, due, proj.owner || '', proj.contractor || pa.company_name || '', sigName, new Date(), proj.jurisdiction || 'california', lienFilename]
+            );
+            // Re-query to get the full lien doc
+            lienRes = await pool.query(
+              `SELECT ld.*, p.name, p.owner, p.contractor, p.location, p.city, p.state, p.contact as location_contact,
+                      cs.logo_filename, cs.company_name
+               FROM lien_documents ld
+               JOIN projects p ON p.id=ld.project_id
+               LEFT JOIN company_settings cs ON cs.user_id=p.user_id
+               WHERE ld.pay_app_id=$1 AND p.user_id=$2
+               ORDER BY ld.created_at DESC LIMIT 1`,
+              [req.params.id, req.user.id]
+            );
+            console.log('[Email] Auto-generated conditional waiver for pay app', req.params.id);
+          }
+        } catch(autoLienErr) { console.error('[Email] Auto-gen lien failed:', autoLienErr.message); }
+      }
       if (lienRes.rows[0]) {
         const lien = lienRes.rows[0];
         const lienPath = path.join(__dirname, 'uploads', lien.filename);
@@ -2495,30 +2531,50 @@ app.post('/api/payapps/:id/email', auth, async (req, res) => {
 
     // Build HTML email body
     const safeMsg = (message||'').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+    const fmtEmail = n => '$' + Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
     const payNowBtnHtml = payNowUrl ? `
-        <div style="text-align:center;margin:20px 0 8px">
-          <a href="${payNowUrl}" style="display:inline-block;background:#2563eb;color:#ffffff;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:12pt">Pay Now — $${due.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</a>
+        <div style="text-align:center;margin:24px 0 12px">
+          <a href="${payNowUrl}" style="display:inline-block;background:#16a34a;color:#ffffff;padding:16px 48px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14pt;letter-spacing:0.5px">Pay Now — ${fmtEmail(due)}</a>
         </div>
-        <p style="font-size:9pt;color:#888;text-align:center;margin:4px 0 0">ACH bank transfer or credit card accepted. Secure payment via Stripe.</p>` : '';
-    const emailHtml = `<div style="font-family:sans-serif;max-width:600px;margin:0 auto">
-      <div style="background:#2563eb;padding:18px 24px;color:#fff">
-        <h2 style="margin:0;font-size:16pt">Pay Application #${pa.app_number}</h2>
-        <div style="font-size:10pt;margin-top:4px;opacity:0.9">${pa.pname||''} · ${pa.period_label||''}</div>
+        <p style="font-size:9pt;color:#888;text-align:center;margin:4px 0 16px">ACH bank transfer or credit card accepted. Secure payment via Stripe.</p>` : '';
+    const lienAttachedNote = emailAttachments.length > 1 ? '<span style="color:#16a34a;font-weight:600"> + Lien Waiver</span>' : '';
+    const emailHtml = `<div style="font-family:'Segoe UI',Helvetica,Arial,sans-serif;max-width:640px;margin:0 auto;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
+      <div style="background:linear-gradient(135deg,#1e40af,#2563eb);padding:24px 28px;color:#fff">
+        <h2 style="margin:0;font-size:18pt;font-weight:700">Pay Application #${pa.app_number}</h2>
+        <div style="font-size:11pt;margin-top:6px;opacity:0.9">${pa.pname||''} &middot; ${pa.period_label||''}</div>
       </div>
-      <div style="padding:24px;border:1px solid #ddd;border-top:0">
-        ${safeMsg ? `<p style="margin-top:0">${safeMsg}</p><hr style="border:0;border-top:1px solid #eee;margin:16px 0">` : ''}
-        <table style="width:100%;border-collapse:collapse;font-size:10pt">
-          <tr><td style="padding:5px 8px;color:#555">Project</td><td style="padding:5px 8px;font-weight:bold">${pa.pname||''}</td></tr>
-          <tr style="background:#f7f7f7"><td style="padding:5px 8px;color:#555">Application #</td><td style="padding:5px 8px">${pa.app_number}</td></tr>
-          <tr><td style="padding:5px 8px;color:#555">Period</td><td style="padding:5px 8px">${pa.period_label||''}</td></tr>
-          <tr style="background:#f7f7f7"><td style="padding:5px 8px;color:#555;font-weight:bold">Current Payment Due</td>
-            <td style="padding:5px 8px;font-weight:bold;color:#2563eb;font-size:11pt">$${due.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>
+      <div style="padding:28px;background:#fff">
+        ${safeMsg ? `<div style="margin-bottom:20px;padding:14px 16px;background:#f8fafc;border-left:4px solid #2563eb;border-radius:4px;font-size:10pt;color:#334155;line-height:1.6">${safeMsg}</div>` : '<p style="margin-top:0;margin-bottom:20px;font-size:10pt;color:#334155">Please review the attached payment application.</p>'}
+        <table style="width:100%;border-collapse:collapse;font-size:10pt;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden">
+          <tr><td style="padding:8px 14px;color:#64748b;border-bottom:1px solid #f1f5f9">Project</td><td style="padding:8px 14px;font-weight:600;border-bottom:1px solid #f1f5f9">${pa.pname||''}</td></tr>
+          <tr style="background:#f8fafc"><td style="padding:8px 14px;color:#64748b;border-bottom:1px solid #f1f5f9">Contractor</td><td style="padding:8px 14px;border-bottom:1px solid #f1f5f9">${pa.contractor||''}</td></tr>
+          <tr><td style="padding:8px 14px;color:#64748b;border-bottom:1px solid #f1f5f9">Application #</td><td style="padding:8px 14px;border-bottom:1px solid #f1f5f9">${pa.app_number}</td></tr>
+          <tr style="background:#f8fafc"><td style="padding:8px 14px;color:#64748b;border-bottom:1px solid #f1f5f9">Period</td><td style="padding:8px 14px;border-bottom:1px solid #f1f5f9">${pa.period_label||''}</td></tr>
+          <tr><td style="padding:8px 14px;color:#64748b;border-bottom:1px solid #f1f5f9">Payment Terms</td><td style="padding:8px 14px;border-bottom:1px solid #f1f5f9">${pa.payment_terms||'Due on receipt'}</td></tr>
         </table>
+
+        <div style="margin-top:20px;padding:16px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:8px">
+          <div style="font-size:9pt;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Document G702 — Summary</div>
+          <table style="width:100%;border-collapse:collapse;font-size:9.5pt">
+            <tr><td style="padding:4px 0;color:#334155">A. Original Contract Sum</td><td style="padding:4px 0;text-align:right;font-weight:500">${fmtEmail(pa.original_contract)}</td></tr>
+            <tr><td style="padding:4px 0;color:#334155">B. Net Change by Change Orders</td><td style="padding:4px 0;text-align:right;font-weight:500">${fmtEmail(totals.tCO)}</td></tr>
+            <tr style="border-top:1px solid #93c5fd"><td style="padding:4px 0;color:#334155;font-weight:600">C. Contract Sum to Date</td><td style="padding:4px 0;text-align:right;font-weight:600">${fmtEmail(totals.contract)}</td></tr>
+            <tr><td style="padding:4px 0;color:#334155">D. Total Completed & Stored</td><td style="padding:4px 0;text-align:right;font-weight:500">${fmtEmail(totals.tComp)}</td></tr>
+            <tr><td style="padding:4px 0;color:#334155">E. Retainage</td><td style="padding:4px 0;text-align:right;font-weight:500">${fmtEmail(totals.tRet)}</td></tr>
+            <tr><td style="padding:4px 0;color:#334155">F. Total Earned Less Retainage</td><td style="padding:4px 0;text-align:right;font-weight:500">${fmtEmail(totals.earned)}</td></tr>
+            <tr><td style="padding:4px 0;color:#334155">G. Less Previous Certificates</td><td style="padding:4px 0;text-align:right;font-weight:500">${fmtEmail(totals.tPrevCert)}</td></tr>
+            <tr style="border-top:2px solid #1e40af"><td style="padding:8px 0 4px;color:#1e40af;font-weight:700;font-size:11pt">H. Current Payment Due</td><td style="padding:8px 0 4px;text-align:right;font-weight:700;color:#1e40af;font-size:11pt">${fmtEmail(totals.due)}</td></tr>
+          </table>
+        </div>
+
         ${payNowBtnHtml}
-        ${emailAttachments.length > 0 ? `<p style="margin-top:16px;font-size:9pt;color:#888">Pay application PDF${emailAttachments.length>1?' and lien waiver are':' is'} attached.</p>` : ''}
+
+        ${emailAttachments.length > 0 ? `<div style="margin-top:20px;padding:12px 14px;background:#f1f5f9;border-radius:6px;font-size:9pt;color:#64748b">
+          <strong>Attachments:</strong> G702/G703 Pay Application PDF${lienAttachedNote}${emailAttachments.length > 2 ? ` + ${emailAttachments.length - 2} additional document(s)` : ''}
+        </div>` : ''}
       </div>
-      <div style="padding:10px 24px;font-size:8pt;color:#aaa;text-align:center">
-        Sent via <a href="https://constructinv.varshyl.com" style="color:#aaa">ConstructInvoice AI</a> · Varshyl Inc.
+      <div style="padding:14px 28px;background:#f8fafc;border-top:1px solid #e5e7eb;font-size:8pt;color:#94a3b8;text-align:center">
+        Sent via <a href="https://constructinv.varshyl.com" style="color:#2563eb;text-decoration:none">ConstructInvoice AI</a> &middot; Varshyl Inc.
       </div>
     </div>`;
 
