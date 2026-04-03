@@ -654,19 +654,13 @@ router.get('/api/payapps/:id/pdf', async (req,res) => {
     if (!fs.existsSync(lp)) console.log(`[PDF] Logo file missing: ${lp}`);
   }
 
-  // ── Auto-generate payment link token if GC has Stripe Connect ──────────
+  // ── Auto-generate payment link token (always, so Pay Now appears on every invoice) ──
   if (!pa.payment_link_token && due > 0) {
     try {
-      const acctCheck = (await pool.query(
-        'SELECT stripe_account_id FROM connected_accounts WHERE user_id=$1 AND charges_enabled=TRUE',
-        [decoded.id]
-      )).rows[0];
-      if (acctCheck) {
-        const payToken = generatePaymentToken();
-        await pool.query('UPDATE pay_apps SET payment_link_token=$1 WHERE id=$2', [payToken, req.params.id]);
-        pa.payment_link_token = payToken;
-        console.log('[PDF] Auto-generated payment link token for pay app', req.params.id);
-      }
+      const payToken = generatePaymentToken();
+      await pool.query('UPDATE pay_apps SET payment_link_token=$1 WHERE id=$2', [payToken, req.params.id]);
+      pa.payment_link_token = payToken;
+      console.log('[PDF] Auto-generated payment link token for pay app', req.params.id);
     } catch(e) { console.error('[PDF] Payment token gen error:', e.message); }
   }
 
@@ -904,23 +898,17 @@ router.post('/api/payapps/:id/email', auth, async (req, res) => {
     const due=Math.max(0,earned-tPrevCert);
     const totals={tComp,tRet,tPrevCert,tCO,contract,earned,due};
 
-    // Auto-generate payment link if GC has Stripe Connect and pay app doesn't have one yet
+    // Auto-generate payment link (always — pay page handles Stripe status gracefully)
     const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
     let payNowUrl = null;
-    if (shouldIncludePayLink) {
+    if (shouldIncludePayLink && due > 0) {
       try {
-        const acctCheck = (await pool.query(
-          'SELECT stripe_account_id FROM connected_accounts WHERE user_id=$1 AND charges_enabled=TRUE',
-          [req.user.id]
-        )).rows[0];
-        if (acctCheck && due > 0) {
-          let payToken = pa.payment_link_token;
-          if (!payToken) {
-            payToken = generatePaymentToken();
-            await pool.query('UPDATE pay_apps SET payment_link_token=$1 WHERE id=$2', [payToken, req.params.id]);
-          }
-          payNowUrl = `${baseUrl}/pay/${payToken}`;
+        let payToken = pa.payment_link_token;
+        if (!payToken) {
+          payToken = generatePaymentToken();
+          await pool.query('UPDATE pay_apps SET payment_link_token=$1 WHERE id=$2', [payToken, req.params.id]);
         }
+        payNowUrl = `${baseUrl}/pay/${payToken}`;
       } catch(payLinkErr) { console.error('[Email] Payment link gen error:', payLinkErr.message); }
     }
 
