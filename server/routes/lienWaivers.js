@@ -505,17 +505,24 @@ function renderLienWaiverContent(doc, {
     }
   }
 
-  if (!sigImagePlaced) {
+  if (sigImagePlaced) {
+    // Signature image present — just show the date below it (no name/company overlap)
+    doc.fontSize(7.5).font('Helvetica').fillColor('#333333').text(
+      `Date: ${signedAt.toLocaleDateString('en-US', {month: 'long', day: 'numeric', year: 'numeric'})}`,
+      L + 6, sigBoxY + 48, {width: sigColW - 12}
+    );
+  } else {
+    // No signature image — show signature line + name + company + date
     doc.moveTo(L + 6, sigBoxY + 32).lineTo(L + sigColW - 8, sigBoxY + 32).lineWidth(0.5).stroke('#999999');
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000')
+      .text(signatory_name || '', L + 6, sigBoxY + 35, {width: sigColW - 12});
+    doc.fontSize(7.5).font('Helvetica').fillColor('#333333')
+      .text((signatory_title ? signatory_title + '  ·  ' : '') + contractorName, L + 6, sigBoxY + 50, {width: sigColW - 12});
+    doc.fontSize(7.5).text(
+      `Date: ${signedAt.toLocaleDateString('en-US', {month: 'long', day: 'numeric', year: 'numeric'})}`,
+      L + 6, sigBoxY + 65, {width: sigColW - 12}
+    );
   }
-  doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000')
-    .text(signatory_name || '', L + 6, sigBoxY + (sigImagePlaced ? 46 : 35), {width: sigColW - 12});
-  doc.fontSize(7.5).font('Helvetica').fillColor('#333333')
-    .text((signatory_title ? signatory_title + '  ·  ' : '') + contractorName, L + 6, sigBoxY + 50, {width: sigColW - 12});
-  doc.fontSize(7.5).text(
-    `Date: ${signedAt.toLocaleDateString('en-US', {month: 'long', day: 'numeric', year: 'numeric'})}`,
-    L + 6, sigBoxY + 65, {width: sigColW - 12}
-  );
 
   const rX = L + sigColW + 6;
   const rW = W - sigColW - 12;

@@ -988,7 +988,12 @@ router.post('/api/payapps/:id/email', auth, async (req, res) => {
           const readImgB64 = filename => { if (!filename) return null; try { const fp = path.join(__dirname, '..', '..', 'uploads', filename); if (!fs.existsSync(fp)) return null; const buf = fs.readFileSync(fp); return `data:${imgMime(buf)};base64,${buf.toString('base64')}`; } catch(e) { return null; } };
           const logoBase64 = readImgB64(pa.logo_filename);
           const sigBase64  = readImgB64(pa.signature_filename);
-          const html = generatePayAppHTML(pa, lines.rows, cos.rows, totals, logoBase64, sigBase64, [], []);
+          // Load photo + doc attachments for this pay app (so site photos appear in email PDF)
+          const emailPhotoAtts = await pool.query(`SELECT filename, original_name FROM attachments WHERE pay_app_id=$1 AND mime_type LIKE 'image/%' ORDER BY uploaded_at`, [req.params.id]);
+          const emailPhotoAttachments = emailPhotoAtts.rows.map(a => { const b64 = readImgB64(a.filename); if (!b64) return null; return { base64: b64, name: a.original_name || a.filename }; }).filter(Boolean);
+          const emailDocAtts = await pool.query(`SELECT filename, original_name FROM attachments WHERE pay_app_id=$1 AND mime_type='application/pdf' ORDER BY uploaded_at`, [req.params.id]);
+          const emailDocAttachments = emailDocAtts.rows.map(a => ({ name: a.original_name || a.filename }));
+          const html = generatePayAppHTML(pa, lines.rows, cos.rows, totals, logoBase64, sigBase64, emailPhotoAttachments, emailDocAttachments);
           browser = await puppeteer.launch({ args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu'] });
           const page = await browser.newPage();
           await page.setContent(html, { waitUntil: 'networkidle0' });
