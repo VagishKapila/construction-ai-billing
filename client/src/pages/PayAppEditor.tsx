@@ -372,40 +372,40 @@ function Step1G703({
               </tr>
             </thead>
             <tbody>
-              {lines.map((line) => (
+              {lines.map((line, idx) => (
                 <tr key={line.sov_line_id} className="border-b border-border hover:bg-gray-50">
-                  <td className="px-3 py-2 text-text-muted text-xs font-medium">{line.id}</td>
+                  <td className="px-3 py-2 text-text-muted text-xs font-medium">{line.item_id || idx + 1}</td>
                   <td className="px-3 py-2 font-medium text-text-primary">{line.description}</td>
                   <td className="px-3 py-2 text-right font-mono tabular-nums">{formatCurrency(line.scheduledValue)}</td>
                   <td className="px-3 py-2 text-right font-mono tabular-nums text-text-secondary">{formatCurrency(line.prevAmount)}</td>
                   <td className="px-3 py-2 text-center font-mono tabular-nums text-text-secondary">{formatPercent(line.prev_pct, 0)}</td>
                   <td className="px-3 py-2 bg-primary-50 border-x border-primary-200">
-                    <Input
+                    <input
                       type="number"
-                      min="0"
-                      max="100"
-                      step="1"
-                      value={line.this_pct}
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={Number(line.this_pct) || 0}
                       onChange={(e) => {
                         const pct = parseFloat(e.target.value) || 0
                         onLinePercentChange(line.sov_line_id, Math.max(0, Math.min(100, pct)))
                       }}
-                      className="w-16 mx-auto text-center text-sm font-mono"
+                      className="w-20 px-2 py-1 text-center text-sm font-mono border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
                     />
                   </td>
                   <td className="px-3 py-2 text-right font-mono tabular-nums font-medium">{formatCurrency(line.thisAmount)}</td>
                   <td className="px-3 py-2">
-                    <Input
+                    <input
                       type="number"
-                      min="0"
-                      max="100"
-                      step="0.5"
-                      value={line.retainage_pct}
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      value={Number(line.retainage_pct) || 0}
                       onChange={(e) => {
                         const pct = parseFloat(e.target.value) || 0
                         onLineRetainageChange(line.sov_line_id, Math.max(0, Math.min(100, pct)))
                       }}
-                      className="w-14 mx-auto text-center text-xs font-mono"
+                      className="w-16 px-1 py-1 text-center text-xs font-mono border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
                     />
                   </td>
                   <td className="px-3 py-2 text-right font-mono tabular-nums text-text-secondary">{formatCurrency(line.retainageHeld)}</td>
@@ -1259,7 +1259,7 @@ function Step6Preview({
 
                   return (
                     <tr key={line.id || idx} style={isZero ? { background: '#f9f9f9' } : undefined}>
-                      <td style={{ border: '1px solid #999', padding: '2px 4px' }}>{idx + 1}</td>
+                      <td style={{ border: '1px solid #999', padding: '2px 4px' }}>{line.item_id || idx + 1}</td>
                       <td style={{ border: '1px solid #999', padding: '2px 4px' }}>
                         {line.description || '—'}
                         {isZero && <span style={{ color: '#999', fontStyle: 'italic', marginLeft: 4 }}>(Included)</span>}

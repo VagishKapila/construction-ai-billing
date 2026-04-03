@@ -24,7 +24,8 @@ export function computeLine(
   line: PayAppLine,
   scheduledValue: number,
   description: string,
-  prevCertificates: number
+  prevCertificates: number,
+  itemId: string = '',
 ): PayAppLineComputed {
   // Column A: Scheduled Value (from SOV) — coerce from potential string
   const scheduledVal = Number(scheduledValue) || 0
@@ -62,6 +63,7 @@ export function computeLine(
     ...line,
     scheduledValue: scheduledVal,
     description,
+    item_id: itemId,
     prevAmount,
     thisAmount,
     totalCompleted,

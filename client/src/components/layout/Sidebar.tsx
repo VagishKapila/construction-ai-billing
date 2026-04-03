@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -8,8 +8,11 @@ import {
   HelpCircle,
   Shield,
   ChevronRight,
+  ChevronDown,
+  FolderOpen,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useProjects } from '@/hooks/useProjects'
 import { cn } from '@/lib/cn'
 import type { ReactNode } from 'react'
 
@@ -30,6 +33,8 @@ interface NavItem {
 export function Sidebar({ isCollapsed = false }: { isCollapsed?: boolean }) {
   const location = useLocation()
   const { isAdmin } = useAuth()
+  const { projects } = useProjects()
+  const [projectsExpanded, setProjectsExpanded] = useState(true)
 
   /**
    * Navigation items
@@ -156,9 +161,50 @@ export function Sidebar({ isCollapsed = false }: { isCollapsed?: boolean }) {
         })}
       </nav>
 
-      {/* Footer section (optional — can be expanded for user profile or additional actions) */}
-      <div className="border-t border-[#e8e8f0] pt-4 px-2">
-        {/* Placeholder for future user profile mini widget */}
+      {/* Project List — expandable, matching old app.html sidebar */}
+      {!isCollapsed && projects.length > 0 && (
+        <div className="border-t border-[#e8e8f0] pt-3 px-2 overflow-y-auto flex-shrink min-h-0" style={{ maxHeight: '40vh' }}>
+          <button
+            onClick={() => setProjectsExpanded(!projectsExpanded)}
+            className="flex items-center gap-1 px-3 py-1 text-[10px] font-semibold text-[#888] uppercase tracking-wider w-full hover:text-[#555]"
+          >
+            {projectsExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            Projects ({projects.length})
+          </button>
+          {projectsExpanded && (
+            <div className="mt-1 space-y-0.5">
+              {projects.slice(0, 15).map((project) => {
+                const projActive = location.pathname.includes(`/projects/${project.id}`)
+                return (
+                  <Link
+                    key={project.id}
+                    to={`/projects/${project.id}`}
+                    className={cn(
+                      'flex items-center gap-2 px-3 py-1.5 rounded text-xs transition-colors truncate',
+                      projActive
+                        ? 'bg-[#eef2ff] text-[#6366f1] font-medium'
+                        : 'text-[#666] hover:bg-[#fafafe] hover:text-[#333]',
+                    )}
+                    title={project.name}
+                  >
+                    <FolderOpen size={14} className="flex-shrink-0" />
+                    <span className="truncate">{project.name}</span>
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Footer */}
+      <div className="border-t border-[#e8e8f0] pt-3 px-2">
+        {/* Version indicator */}
+        {!isCollapsed && (
+          <div className="px-3 py-1 text-[10px] text-[#aaa]">
+            v2.0 — Rev 2
+          </div>
+        )}
       </div>
     </aside>
   )

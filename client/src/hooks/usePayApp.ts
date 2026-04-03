@@ -68,6 +68,7 @@ export function usePayApp(
           ...line,
           scheduledValue: 0,
           description: '',
+          item_id: '',
           prevAmount: 0,
           thisAmount: 0,
           totalCompleted: 0,
@@ -93,6 +94,7 @@ export function usePayApp(
         sovLine.scheduled_value,
         sovLine.description,
         prevCerts,
+        sovLine.item_id || '',
       );
     });
   }, []);

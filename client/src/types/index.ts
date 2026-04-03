@@ -170,6 +170,7 @@ export interface PayAppLineComputed extends PayAppLine {
   // From SOV
   scheduledValue: number; // Col A
   description: string;
+  item_id: string; // SOV item identifier (e.g., "1.0", "2.1")
 
   // Computed columns (G702/G703)
   prevAmount: number; // Col B — Work completed from previous (prev_pct × scheduledValue)
