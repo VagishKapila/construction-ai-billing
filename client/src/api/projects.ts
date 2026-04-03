@@ -142,3 +142,43 @@ export async function parseSOV(file: File): Promise<ApiResponse<SOVParseResponse
 export async function getSOVUploads(projectId: number): Promise<ApiResponse<SOVUpload[]>> {
   return api.get<SOVUpload[]>(`/api/projects/${projectId}/sov/uploads`);
 }
+
+// ============================================================================
+// RECONCILIATION
+// ============================================================================
+
+export interface ReconciliationInvoice {
+  app_number: number;
+  period_label: string;
+  status: string;
+  is_retainage_release: boolean;
+  amount_due: number;
+  retention_held: number;
+  amount_paid: number;
+  payment_status: string;
+  submitted_at: string | null;
+}
+
+export interface ReconciliationReport {
+  project_name: string;
+  original_contract: number;
+  total_change_orders: number;
+  adjusted_contract: number;
+  invoices: ReconciliationInvoice[];
+  summary: {
+    total_billed: number;
+    total_retainage_held: number;
+    total_retainage_released: number;
+    total_paid: number;
+    total_outstanding: number;
+    variance: number;
+    is_fully_reconciled: boolean;
+  };
+}
+
+/**
+ * Get full billing reconciliation report for a project
+ */
+export async function getProjectReconciliation(projectId: number): Promise<ApiResponse<ReconciliationReport>> {
+  return api.get<ReconciliationReport>(`/api/projects/${projectId}/reconciliation`);
+}

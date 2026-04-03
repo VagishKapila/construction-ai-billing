@@ -412,6 +412,9 @@ async function initDB() {
     ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS qb_invoice_id VARCHAR(100);
     ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS qb_payment_id VARCHAR(100);
     ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS qb_sync_status VARCHAR(50) DEFAULT 'not_synced';
+
+    -- Final retainage release tracking
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS is_retainage_release BOOLEAN DEFAULT FALSE;
   `);
   console.log('Database ready');
 }

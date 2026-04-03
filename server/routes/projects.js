@@ -410,4 +410,88 @@ function extractContractFields(text) {
   return fields;
 }
 
+// GET /api/projects/:id/reconciliation — Full billing reconciliation report
+router.get('/api/projects/:id/reconciliation', auth, async (req, res) => {
+  try {
+    const proj = await pool.query('SELECT * FROM projects WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+    if (!proj.rows[0]) return res.status(404).json({ error: 'Project not found' });
+    const project = proj.rows[0];
+
+    // Get all pay apps (non-deleted) ordered by app_number
+    const payApps = await pool.query(
+      `SELECT id, app_number, period_label, status, amount_due, retention_held, is_retainage_release, submitted_at, payment_status, amount_paid
+       FROM pay_apps WHERE project_id=$1 AND deleted_at IS NULL ORDER BY app_number`,
+      [req.params.id]
+    );
+
+    // Get all change orders
+    const cos = await pool.query(
+      `SELECT co.* FROM change_orders co
+       JOIN pay_apps pa ON pa.id = co.pay_app_id
+       WHERE pa.project_id=$1 AND pa.deleted_at IS NULL`,
+      [req.params.id]
+    );
+    const totalChangeOrders = cos.rows.reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+
+    // Calculate totals
+    const originalContract = parseFloat(project.original_contract || 0);
+    const adjustedContract = originalContract + totalChangeOrders;
+
+    let totalBilled = 0;
+    let totalRetainageHeld = 0;
+    let totalRetainageReleased = 0;
+    let totalPaid = 0;
+
+    const invoices = payApps.rows.map(pa => {
+      const amountDue = parseFloat(pa.amount_due || 0);
+      const retHeld = parseFloat(pa.retention_held || 0);
+      const amountPaid = parseFloat(pa.amount_paid || 0);
+
+      if (pa.is_retainage_release) {
+        totalRetainageReleased += amountDue;
+      }
+      totalBilled += amountDue;
+      totalRetainageHeld += retHeld;
+      totalPaid += amountPaid;
+
+      return {
+        app_number: pa.app_number,
+        period_label: pa.period_label,
+        status: pa.status,
+        is_retainage_release: pa.is_retainage_release || false,
+        amount_due: amountDue,
+        retention_held: retHeld,
+        amount_paid: amountPaid,
+        payment_status: pa.payment_status,
+        submitted_at: pa.submitted_at,
+      };
+    });
+
+    // The variance should be $0 when everything is billed correctly
+    // Total billed (including retainage release) should equal adjusted contract
+    const variance = adjustedContract - totalBilled;
+    const isFullyReconciled = Math.abs(variance) < 0.01;
+
+    res.json({
+      project_name: project.name,
+      original_contract: originalContract,
+      total_change_orders: totalChangeOrders,
+      adjusted_contract: adjustedContract,
+      invoices,
+      summary: {
+        total_billed: totalBilled,
+        total_retainage_held: totalRetainageHeld,
+        total_retainage_released: totalRetainageReleased,
+        total_paid: totalPaid,
+        total_outstanding: totalBilled - totalPaid,
+        variance,
+        is_fully_reconciled: isFullyReconciled,
+      }
+    });
+  } catch (err) {
+    console.error('[Reconciliation]', err.message);
+    res.status(500).json({ error: 'Failed to generate reconciliation report' });
+  }
+});
+
 module.exports = router;

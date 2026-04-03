@@ -141,6 +141,9 @@ export interface PayApp {
   payment_link_token?: string;
   payment_due_date?: string; // ISO 8601
 
+  // Retainage release
+  is_retainage_release?: boolean;
+
   // Timestamps
   submitted_at?: string; // ISO 8601
   created_at: string; // ISO 8601

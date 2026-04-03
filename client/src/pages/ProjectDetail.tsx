@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { Upload, FileText, ChevronRight, Paperclip } from 'lucide-react'
+import { Upload, FileText, ChevronRight, Paperclip, CheckCircle2, AlertTriangle } from 'lucide-react'
 import type { PayApp, SOVLine } from '@/types'
 import { useProject } from '@/hooks/useProject'
 import { useTrial } from '@/hooks/useTrial'
 import { createPayApp } from '@/api/payApps'
+import { getProjectReconciliation, type ReconciliationReport } from '@/api/projects'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -23,6 +24,7 @@ const TABS: TabConfig[] = [
   { id: 'sov', label: 'Schedule of Values' },
   { id: 'changeorders', label: 'Change Orders' },
   { id: 'documents', label: 'Documents' },
+  { id: 'reconciliation', label: 'Reconciliation' },
 ]
 
 function TabBar({
@@ -76,13 +78,20 @@ function PayAppRow({ payApp, projectId }: PayAppRowProps) {
     >
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-base sm:text-lg font-semibold text-text-primary">
-              Pay Application #{payApp.app_number}
+              {payApp.is_retainage_release
+                ? 'Final Retainage Release'
+                : `Pay Application #${payApp.app_number}`}
             </h3>
             <Badge variant={statusVariantMap[payApp.status] || 'default'}>
               {payApp.status.charAt(0).toUpperCase() + payApp.status.slice(1)}
             </Badge>
+            {payApp.is_retainage_release && (
+              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">
+                Retainage Release
+              </Badge>
+            )}
           </div>
           <div className="mt-2 grid grid-cols-2 sm:flex sm:gap-6 text-sm">
             <div>
@@ -189,10 +198,23 @@ export function ProjectDetail() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('payapps')
   const [isCreatingPayApp, setIsCreatingPayApp] = useState(false)
+  const [reconciliation, setReconciliation] = useState<ReconciliationReport | null>(null)
+  const [reconLoading, setReconLoading] = useState(false)
 
   const { project, sovLines, payApps, changeOrders, attachments, isLoading, error } =
     useProject(projectId)
   const { isTrialGated } = useTrial()
+
+  // Load reconciliation when tab is active
+  useEffect(() => {
+    if (activeTab === 'reconciliation' && projectId && !reconciliation) {
+      setReconLoading(true)
+      getProjectReconciliation(projectId)
+        .then(res => { if (res.data) setReconciliation(res.data) })
+        .catch(() => {})
+        .finally(() => setReconLoading(false))
+    }
+  }, [activeTab, projectId, reconciliation])
 
   /**
    * Create a new pay app and navigate to it
@@ -461,6 +483,121 @@ export function ProjectDetail() {
                 ))}
               </div>
             </Card>
+          )
+        )}
+
+        {activeTab === 'reconciliation' && (
+          reconLoading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 rounded-lg" />)}
+            </div>
+          ) : !reconciliation ? (
+            <Card className="p-6">
+              <EmptyState
+                icon={FileText}
+                title="No billing data"
+                description="Submit pay applications to see reconciliation"
+              />
+            </Card>
+          ) : (
+            <div className="space-y-6">
+              {/* Reconciliation Status */}
+              <Card className={`p-4 border-2 ${reconciliation.summary.is_fully_reconciled ? 'border-emerald-300 bg-emerald-50' : 'border-amber-300 bg-amber-50'}`}>
+                <div className="flex items-center gap-3">
+                  {reconciliation.summary.is_fully_reconciled ? (
+                    <CheckCircle2 className="w-6 h-6 text-emerald-600 flex-shrink-0" />
+                  ) : (
+                    <AlertTriangle className="w-6 h-6 text-amber-600 flex-shrink-0" />
+                  )}
+                  <div>
+                    <p className={`font-semibold ${reconciliation.summary.is_fully_reconciled ? 'text-emerald-800' : 'text-amber-800'}`}>
+                      {reconciliation.summary.is_fully_reconciled
+                        ? 'Fully Reconciled — All invoices add up to the contract amount'
+                        : `Variance: ${formatCurrency(Math.abs(reconciliation.summary.variance))} remaining to bill`}
+                    </p>
+                    <p className={`text-sm mt-0.5 ${reconciliation.summary.is_fully_reconciled ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      Contract: {formatCurrency(reconciliation.adjusted_contract)} | Billed: {formatCurrency(reconciliation.summary.total_billed)}
+                    </p>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Contract Summary */}
+              <Card className="p-6">
+                <h3 className="text-lg font-semibold text-text-primary mb-4">Contract Summary</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-xs text-text-muted uppercase tracking-wide">Original Contract</p>
+                    <p className="text-lg font-mono font-semibold text-text-primary">{formatCurrency(reconciliation.original_contract)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-muted uppercase tracking-wide">Change Orders</p>
+                    <p className="text-lg font-mono font-semibold text-text-primary">{formatCurrency(reconciliation.total_change_orders)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-muted uppercase tracking-wide">Adjusted Contract</p>
+                    <p className="text-lg font-mono font-semibold text-primary-600">{formatCurrency(reconciliation.adjusted_contract)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-muted uppercase tracking-wide">Total Paid</p>
+                    <p className="text-lg font-mono font-semibold text-emerald-600">{formatCurrency(reconciliation.summary.total_paid)}</p>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Invoice Breakdown */}
+              <Card className="p-6">
+                <h3 className="text-lg font-semibold text-text-primary mb-4">Invoice Breakdown</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b-2 border-border">
+                        <th className="text-left py-3 px-3 font-semibold text-text-primary">#</th>
+                        <th className="text-left py-3 px-3 font-semibold text-text-primary">Period</th>
+                        <th className="text-left py-3 px-3 font-semibold text-text-primary">Status</th>
+                        <th className="text-right py-3 px-3 font-semibold text-text-primary">Amount Due</th>
+                        <th className="text-right py-3 px-3 font-semibold text-text-primary">Retainage Held</th>
+                        <th className="text-right py-3 px-3 font-semibold text-text-primary">Paid</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reconciliation.invoices.map((inv) => (
+                        <tr key={inv.app_number} className={`border-b border-border ${inv.is_retainage_release ? 'bg-emerald-50' : 'hover:bg-primary-50'}`}>
+                          <td className="py-3 px-3 text-text-secondary">
+                            {inv.is_retainage_release ? 'RR' : inv.app_number}
+                          </td>
+                          <td className="py-3 px-3 text-text-primary font-medium">
+                            {inv.period_label || '—'}
+                            {inv.is_retainage_release && (
+                              <span className="ml-2 text-xs text-emerald-600 font-semibold">RETAINAGE RELEASE</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3">
+                            <Badge variant={inv.status === 'submitted' ? 'default' : inv.status === 'paid' ? 'success' : 'warning'}>
+                              {inv.status}
+                            </Badge>
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono tabular-nums">{formatCurrency(inv.amount_due)}</td>
+                          <td className="py-3 px-3 text-right font-mono tabular-nums">{formatCurrency(inv.retention_held)}</td>
+                          <td className="py-3 px-3 text-right font-mono tabular-nums text-emerald-600">{formatCurrency(inv.amount_paid)}</td>
+                        </tr>
+                      ))}
+                      <tr className="font-semibold bg-primary-50 border-t-2 border-primary-200">
+                        <td colSpan={3} className="py-3 px-3 text-text-primary">Totals</td>
+                        <td className="py-3 px-3 text-right font-mono tabular-nums">{formatCurrency(reconciliation.summary.total_billed)}</td>
+                        <td className="py-3 px-3 text-right font-mono tabular-nums">{formatCurrency(reconciliation.summary.total_retainage_held)}</td>
+                        <td className="py-3 px-3 text-right font-mono tabular-nums text-emerald-600">{formatCurrency(reconciliation.summary.total_paid)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                {reconciliation.summary.total_outstanding > 0 && (
+                  <p className="mt-3 text-sm text-amber-600 font-medium">
+                    Outstanding balance: {formatCurrency(reconciliation.summary.total_outstanding)}
+                  </p>
+                )}
+              </Card>
+            </div>
           )
         )}
       </div>
