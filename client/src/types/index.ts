@@ -183,6 +183,16 @@ export interface PayAppLineComputed extends PayAppLine {
   balanceToFinish: number; // Col I — Balance to finish (scheduledValue - totalEarned)
 }
 
+export interface Attachment {
+  id: number;
+  pay_app_id: number;
+  filename: string;
+  original_name: string;
+  file_size: number;
+  mime_type: string;
+  uploaded_at: string; // ISO 8601
+}
+
 export interface ChangeOrder {
   id: number;
   pay_app_id: number;

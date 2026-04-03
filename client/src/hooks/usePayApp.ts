@@ -9,6 +9,7 @@ import type {
   PayAppLine,
   PayAppLineComputed,
   ChangeOrder,
+  Attachment,
   Project,
   SOVLine,
 } from '@/types';
@@ -20,6 +21,7 @@ export interface UsePayAppReturn {
   payApp: PayApp | null;
   computedLines: PayAppLineComputed[];
   changeOrders: ChangeOrder[];
+  attachments: Attachment[];
   project: Project | null;
   totals: PayAppTotals | null;
   isLoading: boolean;
@@ -44,6 +46,7 @@ export function usePayApp(
   const [payApp, setPayApp] = useState<PayApp | null>(null);
   const [lines, setLines] = useState<PayAppLine[]>([]);
   const [changeOrders, setChangeOrders] = useState<ChangeOrder[]>([]);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [project, setProject] = useState<Project | null>(null);
   const [sovLines, setSovLines] = useState<SOVLine[]>([]);
   const [computedLines, setComputedLines] = useState<PayAppLineComputed[]>([]);
@@ -123,6 +126,7 @@ export function usePayApp(
         const raw = response.data as Record<string, unknown>;
         const lineItems = (raw.lines || []) as PayAppLine[];
         const cos = (raw.change_orders || raw.changeOrders || []) as ChangeOrder[];
+        const atts = (raw.attachments || []) as Attachment[];
 
         // Extract pay app fields (everything except lines/change_orders/attachments)
         const { lines: _l, change_orders: _co, attachments: _a, ...paFields } = raw;
@@ -161,6 +165,7 @@ export function usePayApp(
         setPayApp(pa);
         setLines(lineItems);
         setChangeOrders(cos);
+        setAttachments(atts);
         setProject(proj);
         setSovLines(sols);
 
@@ -450,6 +455,7 @@ export function usePayApp(
     payApp,
     computedLines,
     changeOrders,
+    attachments,
     project,
     totals,
     isLoading,

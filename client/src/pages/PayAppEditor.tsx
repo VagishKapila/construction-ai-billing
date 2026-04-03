@@ -24,9 +24,10 @@ import {
   Paperclip,
   Shield,
 } from 'lucide-react'
-import type { PayAppLineComputed, ChangeOrder, LienDocument } from '@/types'
+import type { PayAppLineComputed, ChangeOrder, LienDocument, Attachment } from '@/types'
 import { usePayApp } from '@/hooks/usePayApp'
 import { getLienDocs, createLienDoc, downloadLienDocPDF } from '@/api/lienWaivers'
+import { uploadAttachment, deleteAttachment as deleteAttachmentApi } from '@/api/attachments'
 import { useTrial } from '@/hooks/useTrial'
 import { formatCurrency, formatPercent, formatDate } from '@/lib/formatters'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -529,20 +530,125 @@ function Step2ChangeOrders({
 }
 
 // ============================================================================
-// STEP 3: ATTACHMENTS (placeholder for now — functional in old UI)
+// STEP 3: ATTACHMENTS — File upload, list, and delete
 // ============================================================================
 
-function Step3Attachments() {
+function Step3Attachments({
+  payAppId,
+  attachments,
+  onRefresh,
+}: {
+  payAppId: number
+  attachments: Attachment[]
+  onRefresh: () => Promise<void>
+}) {
+  const [isUploading, setIsUploading] = useState(false)
+  const [isDragOver, setIsDragOver] = useState(false)
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    setIsUploading(true)
+    try {
+      for (const file of Array.from(files)) {
+        await uploadAttachment(payAppId, file)
+      }
+      await onRefresh()
+    } catch (err) {
+      alert('Upload error: ' + (err instanceof Error ? err.message : 'Unknown error'))
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleDelete = async (attachmentId: number) => {
+    if (!confirm('Remove this attachment?')) return
+    try {
+      await deleteAttachmentApi(attachmentId)
+      await onRefresh()
+    } catch (err) {
+      alert('Delete error: ' + (err instanceof Error ? err.message : 'Unknown error'))
+    }
+  }
+
+  const getExtBadge = (name: string) => {
+    const ext = (name || '').split('.').pop()?.toUpperCase().slice(0, 4) || '?'
+    return ext
+  }
+
   return (
     <Card className="p-6">
       <h3 className="text-lg font-semibold text-text-primary mb-4">Attachments</h3>
-      <div className="border-2 border-dashed border-border rounded-lg p-12 text-center">
-        <Paperclip className="w-10 h-10 text-text-muted mx-auto mb-3" />
-        <p className="text-text-secondary mb-1">
-          Click to attach photos, signed docs, lien waivers, change order backups
-        </p>
-        <p className="text-xs text-text-muted">PDF, JPG, PNG, DOCX supported</p>
-      </div>
+
+      {/* Upload Zone */}
+      <label
+        className={`block border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all mb-4 ${
+          isDragOver
+            ? 'border-primary-400 bg-primary-50 shadow-inner'
+            : 'border-border hover:border-primary-300 hover:bg-gray-50'
+        }`}
+        onDragOver={(e) => { e.preventDefault(); setIsDragOver(true) }}
+        onDragLeave={() => setIsDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault()
+          setIsDragOver(false)
+          handleFiles(e.dataTransfer.files)
+        }}
+      >
+        <input
+          type="file"
+          multiple
+          className="hidden"
+          accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.xls,.xlsx,.csv,.txt"
+          onChange={(e) => handleFiles(e.target.files)}
+        />
+        {isUploading ? (
+          <div className="flex items-center justify-center gap-2">
+            <div className="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm text-primary-600">Uploading...</span>
+          </div>
+        ) : (
+          <>
+            <Paperclip className="w-8 h-8 text-text-muted mx-auto mb-2" />
+            <p className="text-text-secondary text-sm mb-1">
+              Click to attach photos, signed docs, lien waivers, change order backups
+            </p>
+            <p className="text-xs text-text-muted">PDF, JPG, PNG, DOCX supported &bull; Max 25MB per file</p>
+          </>
+        )}
+      </label>
+
+      {/* Attachment List */}
+      {attachments.length > 0 ? (
+        <div className="space-y-2">
+          {attachments.map((att) => (
+            <div
+              key={att.id}
+              className="flex items-center gap-3 p-2.5 bg-gray-50 rounded-lg border border-border"
+            >
+              {/* Extension badge */}
+              <div className="w-7 h-7 rounded bg-primary-100 text-primary-700 flex items-center justify-center text-[9px] font-bold flex-shrink-0">
+                {getExtBadge(att.original_name)}
+              </div>
+              {/* Filename */}
+              <span className="flex-1 text-sm text-text-primary truncate">{att.original_name}</span>
+              {/* Size */}
+              <span className="text-xs text-text-muted flex-shrink-0">
+                {att.file_size ? Math.round(att.file_size / 1024) + ' KB' : ''}
+              </span>
+              {/* Delete */}
+              <button
+                onClick={() => handleDelete(att.id)}
+                className="text-red-500 hover:text-red-700 p-1 flex-shrink-0"
+                title="Remove attachment"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-text-muted">No attachments yet.</p>
+      )}
     </Card>
   )
 }
@@ -1352,6 +1458,8 @@ export function PayAppEditor() {
     updatePayApp,
     addChangeOrder,
     deleteChangeOrder,
+    attachments,
+    refresh,
   } = usePayApp(payAppId)
 
   const { isTrialGated } = useTrial()
@@ -1565,7 +1673,13 @@ export function PayAppEditor() {
           />
         )}
 
-        {currentStep === 3 && <Step3Attachments />}
+        {currentStep === 3 && (
+          <Step3Attachments
+            payAppId={payAppId}
+            attachments={attachments}
+            onRefresh={refresh}
+          />
+        )}
 
         {currentStep === 4 && (
           <Step4Summary
