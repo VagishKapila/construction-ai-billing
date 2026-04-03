@@ -276,14 +276,6 @@ export function ProjectDetail() {
       <PageHeader
         title={project.name}
         description={`Contract Amount: ${formatCurrency(project.original_contract)}`}
-        actions={
-          <Button
-            disabled={isTrialGated || isCreatingPayApp}
-            onClick={handleCreatePayApp}
-          >
-            {isCreatingPayApp ? 'Creating...' : 'New Pay Application'}
-          </Button>
-        }
       />
 
       {/* Project Info Bar */}
@@ -342,19 +334,27 @@ export function ProjectDetail() {
       <div>
         {activeTab === 'payapps' && (
           <div className="space-y-4">
+            {/* Create next pay app button — always visible above list */}
+            {!isTrialGated && (
+              <div className="flex justify-end">
+                <Button
+                  disabled={isCreatingPayApp}
+                  onClick={handleCreatePayApp}
+                >
+                  {isCreatingPayApp
+                    ? 'Creating...'
+                    : sortedPayApps.length === 0
+                      ? 'Create Pay Application #1'
+                      : `Create Pay Application #${Math.max(...payApps.map(p => p.app_number)) + 1}`}
+                </Button>
+              </div>
+            )}
+
             {sortedPayApps.length === 0 ? (
               <EmptyState
                 icon={FileText}
-                title="No pay applications"
+                title="No pay applications yet"
                 description="Create your first pay application to track progress on this project"
-                actions={
-                  <Button
-                    disabled={isTrialGated || isCreatingPayApp}
-                    onClick={handleCreatePayApp}
-                  >
-                    {isCreatingPayApp ? 'Creating...' : 'Create Pay Application'}
-                  </Button>
-                }
               />
             ) : (
               <div className="space-y-4">

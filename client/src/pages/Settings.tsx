@@ -56,7 +56,7 @@ interface Toast {
 export function Settings() {
   const { user } = useAuth()
   const { settings, saveSettings, uploadLogo, uploadSignature } = useSettings()
-  const { daysRemaining, isExpired, isPro } = useTrial()
+  const { daysRemaining, isExpired, isPro, trialEndDate } = useTrial()
 
   // Profile form state
   const [profileForm, setProfileForm] = useState<ProfileFormState>({
@@ -718,8 +718,15 @@ export function Settings() {
                     <div>
                       <p className="text-sm font-medium text-indigo-900">Free Trial</p>
                       <p className="text-xs text-indigo-700 mt-1">
-                        {daysRemaining} days remaining
+                        {daysRemaining !== null
+                          ? `${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} remaining`
+                          : 'Trial active'}
                       </p>
+                      {trialEndDate && (
+                        <p className="text-xs text-indigo-500 mt-0.5">
+                          Ends {new Date(trialEndDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                        </p>
+                      )}
                     </div>
                     <Badge className="bg-indigo-100 text-indigo-800">Active</Badge>
                   </div>
