@@ -197,7 +197,31 @@ export function usePayApp(
   }, [id, refresh]);
 
   /**
-   * Update a line's this period percentage
+   * Auto-recompute computedLines and totals whenever lines or sovLines change.
+   * This fixes the stale closure bug where "Apply to All" called updateLinePercent
+   * for each line in a loop, but each call used the old `lines` from closure,
+   * so only the last line's recomputation survived.
+   */
+  useEffect(() => {
+    if (lines.length === 0 || sovLines.length === 0) return;
+
+    const sovMap = sovLines.reduce(
+      (acc, sol) => {
+        acc[sol.id] = sol;
+        return acc;
+      },
+      {} as Record<number, SOVLine>,
+    );
+
+    const computed = computePayAppLines(lines, sovMap);
+    setComputedLines(computed);
+    setTotals(computePayAppTotals(computed));
+  }, [lines, sovLines, computePayAppLines]);
+
+  /**
+   * Update a line's this period percentage.
+   * Only updates `lines` state — the useEffect auto-recomputes computedLines & totals.
+   * This avoids the stale closure bug when "Apply to All" calls this in a loop.
    */
   const updateLinePercent = useCallback((sovLineId: number, thisPct: number): void => {
     setLines((prev) =>
@@ -207,30 +231,12 @@ export function usePayApp(
           : line,
       ),
     );
-
-    // Recompute lines and totals
-    const sovMap = sovLines.reduce(
-      (acc, sol) => {
-        acc[sol.id] = sol;
-        return acc;
-      },
-      {} as Record<number, SOVLine>,
-    );
-
-    const updatedLines = lines.map((line) =>
-      line.sov_line_id === sovLineId
-        ? { ...line, this_pct: thisPct }
-        : line,
-    );
-
-    const computed = computePayAppLines(updatedLines, sovMap);
-    setComputedLines(computed);
-    setTotals(computePayAppTotals(computed));
     setIsDirty(true);
-  }, [lines, sovLines, computePayAppLines]);
+  }, []);
 
   /**
-   * Update a line's retainage percentage
+   * Update a line's retainage percentage.
+   * Only updates `lines` state — the useEffect auto-recomputes computedLines & totals.
    */
   const updateLineRetainage = useCallback((sovLineId: number, retainagePct: number): void => {
     setLines((prev) =>
@@ -240,27 +246,8 @@ export function usePayApp(
           : line,
       ),
     );
-
-    // Recompute
-    const sovMap = sovLines.reduce(
-      (acc, sol) => {
-        acc[sol.id] = sol;
-        return acc;
-      },
-      {} as Record<number, SOVLine>,
-    );
-
-    const updatedLines = lines.map((line) =>
-      line.sov_line_id === sovLineId
-        ? { ...line, retainage_pct: retainagePct }
-        : line,
-    );
-
-    const computed = computePayAppLines(updatedLines, sovMap);
-    setComputedLines(computed);
-    setTotals(computePayAppTotals(computed));
     setIsDirty(true);
-  }, [lines, sovLines, computePayAppLines]);
+  }, []);
 
   /**
    * Update stored materials amount

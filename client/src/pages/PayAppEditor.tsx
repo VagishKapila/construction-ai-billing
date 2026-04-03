@@ -926,6 +926,8 @@ function Step6Preview({
   payApp,
   project,
   totals,
+  computedLines,
+  changeOrders,
   onDownloadPDF,
   onOpenEmail,
   isTrialGated,
@@ -933,21 +935,38 @@ function Step6Preview({
   payApp: any
   project: any
   totals: any
+  computedLines: PayAppLineComputed[]
+  changeOrders: ChangeOrder[]
   onDownloadPDF: () => void
   onOpenEmail: () => void
   isTrialGated: boolean
 }) {
+  // Compute G702 fields A-I
+  const originalContract = Number(project?.original_contract) || 0
+  const netChangeOrders = changeOrders
+    .filter((co) => co.status === 'approved')
+    .reduce((sum, co) => sum + Number(co.amount), 0)
+  const contractSumToDate = originalContract + netChangeOrders
+  const totalCompleted = totals?.totalCompleted || 0
+  const retainageToDate = totals?.totalRetainage || 0
+  const earnedLessRetainage = totals?.totalEarned || 0
+  const prevCertificates = totals?.totalPrevCertificates || 0
+  const currentPaymentDue = totals?.totalCurrentDue || 0
+  const balanceToFinish = contractSumToDate - totalCompleted + retainageToDate
+
+  const showRetainage = project?.include_retainage !== false
+
   return (
     <div className="space-y-6">
       {/* Action buttons */}
       <div className="flex flex-wrap gap-3">
         <Button onClick={onDownloadPDF} disabled={isTrialGated} className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
           <Download className="w-4 h-4" />
-          ⬇ Download Pay App PDF
+          Download Pay App PDF
         </Button>
         <Button onClick={onOpenEmail} disabled={isTrialGated} className="gap-2 bg-green-600 hover:bg-green-700 text-white">
           <Mail className="w-4 h-4" />
-          📤 {payApp?.status === 'submitted' ? 'Resend' : 'Send & Mark Submitted'}
+          {payApp?.status === 'submitted' ? 'Resend' : 'Send & Mark Submitted'}
         </Button>
         {payApp?.payment_link_token && (
           <Button
@@ -959,69 +978,349 @@ function Step6Preview({
               alert('Payment link copied to clipboard!')
             }}
           >
-            🔗 Copy Payment Link
+            Copy Payment Link
           </Button>
         )}
       </div>
 
-      {/* Invoice Preview */}
-      <Card className="overflow-hidden">
-        <div className="bg-primary-600 text-white p-4">
-          <h3 className="text-lg font-semibold">Application and Certificate for Payment</h3>
-          <p className="text-primary-200 text-sm">Document G702 — AIA Format</p>
+      {/* ================================================================
+          AIA G702/G703 DOCUMENT PREVIEW
+          Matches the professional AIA format from the original app.html
+          ================================================================ */}
+      <div
+        style={{
+          background: '#fff',
+          border: '1px solid #ccc',
+          borderRadius: 4,
+          padding: 20,
+          fontFamily: "'Times New Roman', serif",
+          fontSize: '9pt',
+          color: '#000',
+          maxWidth: 800,
+          margin: '0 auto',
+        }}
+      >
+        {/* === G702 HEADER === */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '120px 1fr 180px',
+            gap: 10,
+            alignItems: 'start',
+            borderBottom: '2px solid #000',
+            paddingBottom: 8,
+            marginBottom: 8,
+          }}
+        >
+          {/* Logo */}
+          <div
+            style={{
+              width: 110,
+              height: 60,
+              border: '1px dashed #ccc',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: 4,
+              overflow: 'hidden',
+            }}
+          >
+            <img
+              src="/varshyl-logo.png"
+              alt="Logo"
+              style={{ maxHeight: 56, maxWidth: 106, objectFit: 'contain' }}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+            />
+          </div>
+
+          {/* Title */}
+          <div style={{ textAlign: 'center' }}>
+            <h1 style={{ fontSize: '13pt', fontWeight: 'bold', marginBottom: 2, fontFamily: "'Times New Roman', serif" }}>
+              Application and Certificate for Payment
+            </h1>
+            <h2 style={{ fontSize: '10pt', fontWeight: 'normal', fontFamily: "'Times New Roman', serif", margin: 0 }}>
+              Document G702
+            </h2>
+            <p style={{ fontSize: '8pt', color: '#555', margin: '2px 0 0' }}>
+              TO OWNER: {project?.owner || '—'} &nbsp;&nbsp; PROJECT: {project?.name || '—'}
+            </p>
+            <p style={{ fontSize: '8pt', color: '#555', margin: 0 }}>
+              FROM CONTRACTOR: {project?.contractor || '—'}
+              {project?.include_architect !== false && (
+                <> &nbsp;&nbsp; ARCHITECT: {project?.architect || '—'}</>
+              )}
+            </p>
+          </div>
+
+          {/* App Number */}
+          <div style={{ textAlign: 'right', fontSize: '9pt' }}>
+            Application #<strong style={{ fontSize: '11pt' }}>{payApp?.app_number}</strong>
+            <div style={{ fontSize: '8pt', marginTop: 4 }}>Period: {payApp?.period_label || '—'}</div>
+            <div style={{ fontSize: '8pt' }}>Contract date: {formatDate(project?.contract_date)}</div>
+            {payApp?.po_number && (
+              <div style={{ fontSize: '7pt', marginTop: 2, overflowWrap: 'break-word', wordBreak: 'break-word' }}>
+                PO #: <span style={{ fontWeight: 600 }}>{payApp.po_number}</span>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="text-text-muted text-xs uppercase tracking-wide">Project</span>
-              <p className="font-medium text-text-primary">{project?.name}</p>
-            </div>
-            <div>
-              <span className="text-text-muted text-xs uppercase tracking-wide">Application #</span>
-              <p className="font-medium text-text-primary">{payApp?.app_number}</p>
-            </div>
-            <div>
-              <span className="text-text-muted text-xs uppercase tracking-wide">Owner</span>
-              <p className="font-medium text-text-primary">{project?.owner || '—'}</p>
-            </div>
-            <div>
-              <span className="text-text-muted text-xs uppercase tracking-wide">Contractor</span>
-              <p className="font-medium text-text-primary">{project?.contractor || '—'}</p>
-            </div>
-            <div>
-              <span className="text-text-muted text-xs uppercase tracking-wide">Period</span>
-              <p className="font-medium text-text-primary">{payApp?.period_label || '—'}</p>
-            </div>
-            <div>
-              <span className="text-text-muted text-xs uppercase tracking-wide">Contract Date</span>
-              <p className="font-medium text-text-primary">{formatDate(project?.contract_date)}</p>
-            </div>
+        {/* Payment Terms Banner */}
+        {project?.payment_terms && (
+          <div
+            style={{
+              fontSize: '8pt',
+              padding: '4px 8px',
+              background: '#fffbe6',
+              border: '1px solid #e6d800',
+              borderRadius: 3,
+              marginBottom: 6,
+            }}
+          >
+            Payment Terms: {project.payment_terms}
+            {payApp?.payment_due_date && (
+              <> &nbsp;|&nbsp; Due: {formatDate(payApp.payment_due_date)}</>
+            )}
+          </div>
+        )}
+
+        {/* === G702 SUMMARY GRID (A-I) === */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 0,
+            border: '1px solid #000',
+            marginBottom: 6,
+          }}
+        >
+          {/* Row 1: A | F */}
+          <div style={{ padding: '4px 8px', borderRight: '1px solid #000', borderBottom: '1px solid #000', fontSize: '8.5pt' }}>
+            <span style={{ fontSize: '7pt', color: '#555', display: 'block', marginBottom: 1 }}>A. Original Contract Sum</span>
+            <span style={{ fontWeight: 'bold' }}>{formatCurrency(originalContract)}</span>
+          </div>
+          <div style={{ padding: '4px 8px', borderBottom: '1px solid #000', fontSize: '8.5pt' }}>
+            <span style={{ fontSize: '7pt', color: '#555', display: 'block', marginBottom: 1 }}>F. Total Earned Less Retainage (D-E)</span>
+            <span style={{ fontWeight: 'bold' }}>{formatCurrency(earnedLessRetainage)}</span>
           </div>
 
-          <hr className="border-border" />
-
-          {/* Financial summary */}
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between"><span>Total Completed & Stored to Date</span><span className="font-mono font-medium">{formatCurrency(totals?.totalCompleted || 0)}</span></div>
-            <div className="flex justify-between"><span>Less Retainage</span><span className="font-mono font-medium">{formatCurrency(totals?.totalRetainage || 0)}</span></div>
-            <div className="flex justify-between"><span>Total Earned Less Retainage</span><span className="font-mono font-medium">{formatCurrency(totals?.totalEarned || 0)}</span></div>
-            <div className="flex justify-between"><span>Less Previous Certificates</span><span className="font-mono font-medium">{formatCurrency(totals?.totalPrevCertificates || 0)}</span></div>
+          {/* Row 2: B | G */}
+          <div style={{ padding: '4px 8px', borderRight: '1px solid #000', borderBottom: '1px solid #000', fontSize: '8.5pt' }}>
+            <span style={{ fontSize: '7pt', color: '#555', display: 'block', marginBottom: 1 }}>B. Net Change by Change Orders</span>
+            <span style={{ fontWeight: 'bold' }}>{formatCurrency(netChangeOrders)}</span>
+          </div>
+          <div style={{ padding: '4px 8px', borderBottom: '1px solid #000', fontSize: '8.5pt' }}>
+            <span style={{ fontSize: '7pt', color: '#555', display: 'block', marginBottom: 1 }}>G. Less Previous Certificates for Payment</span>
+            <span style={{ fontWeight: 'bold' }}>{formatCurrency(prevCertificates)}</span>
           </div>
 
-          <div className="bg-primary-50 border-2 border-primary-300 rounded-lg p-4">
-            <div className="flex justify-between items-center">
-              <span className="font-bold text-lg text-text-primary">CURRENT PAYMENT DUE</span>
-              <span className="text-3xl font-bold text-primary-600 font-mono tabular-nums">
-                {formatCurrency(totals?.totalCurrentDue || 0)}
-              </span>
+          {/* Row 3: C | H (highlighted) */}
+          <div style={{ padding: '4px 8px', borderRight: '1px solid #000', borderBottom: '1px solid #000', fontSize: '8.5pt' }}>
+            <span style={{ fontSize: '7pt', color: '#555', display: 'block', marginBottom: 1 }}>C. Contract Sum to Date (A+B)</span>
+            <span style={{ fontWeight: 'bold' }}>{formatCurrency(contractSumToDate)}</span>
+          </div>
+          <div style={{ padding: '4px 8px', borderBottom: '1px solid #000', fontSize: '8.5pt', background: '#fffbe6' }}>
+            <span style={{ fontSize: '7pt', color: '#555', display: 'block', marginBottom: 1 }}>H. CURRENT PAYMENT DUE</span>
+            <span style={{ fontWeight: 'bold', fontSize: '13pt', color: '#2563eb' }}>{formatCurrency(currentPaymentDue)}</span>
+          </div>
+
+          {/* Row 4: D | I */}
+          <div style={{ padding: '4px 8px', borderRight: '1px solid #000', borderBottom: '1px solid #000', fontSize: '8.5pt' }}>
+            <span style={{ fontSize: '7pt', color: '#555', display: 'block', marginBottom: 1 }}>D. Total Completed &amp; Stored to Date</span>
+            <span style={{ fontWeight: 'bold' }}>{formatCurrency(totalCompleted)}</span>
+          </div>
+          <div style={{ padding: '4px 8px', borderBottom: '1px solid #000', fontSize: '8.5pt' }}>
+            <span style={{ fontSize: '7pt', color: '#555', display: 'block', marginBottom: 1 }}>I. Balance to Finish, Plus Retainage</span>
+            <span style={{ fontWeight: 'bold' }}>{formatCurrency(balanceToFinish)}</span>
+          </div>
+
+          {/* Row 5: E | empty */}
+          <div style={{ padding: '4px 8px', borderRight: '1px solid #000', fontSize: '8.5pt' }}>
+            <span style={{ fontSize: '7pt', color: '#555', display: 'block', marginBottom: 1 }}>E. Retainage to Date</span>
+            <span style={{ fontWeight: 'bold' }}>{formatCurrency(retainageToDate)}</span>
+          </div>
+          <div style={{ padding: '4px 8px', fontSize: '8.5pt' }}></div>
+        </div>
+
+        {/* === DISTRIBUTION === */}
+        <div
+          style={{
+            border: '1px solid #000',
+            padding: '6px 10px',
+            marginBottom: 6,
+            fontSize: '8pt',
+          }}
+        >
+          <div style={{ fontWeight: 'bold', fontSize: '8pt', marginBottom: 4, textTransform: 'uppercase' }}>
+            Distribution to:
+          </div>
+          <div style={{ display: 'flex', gap: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ width: 11, height: 11, border: '1px solid #000', background: '#2563eb', flexShrink: 0 }} />
+              <span>Owner</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ width: 11, height: 11, border: '1px solid #000', flexShrink: 0 }} />
+              <span>Architect</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ width: 11, height: 11, border: '1px solid #000', flexShrink: 0 }} />
+              <span>Contractor file</span>
             </div>
           </div>
         </div>
-      </Card>
+
+        {/* === SIGNATURE BOXES === */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 6 }}>
+          {/* Contractor Signature */}
+          <div style={{ border: '1px solid #000', padding: 8, minHeight: 80, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ fontSize: '7pt', fontWeight: 'bold', textTransform: 'uppercase', borderBottom: '0.5px solid #ccc', marginBottom: 4, paddingBottom: 2 }}>
+              Contractor&apos;s Signed Certification
+            </div>
+            <p style={{ fontSize: '7.5pt', color: '#555', marginBottom: 8, margin: '0 0 8px' }}>
+              The undersigned Contractor certifies that to the best of the Contractor&apos;s knowledge,
+              information and belief the Work covered by this Application for Payment has been
+              completed in accordance with the Contract Documents.
+            </p>
+            <div style={{ flex: 1, minHeight: 8 }} />
+            <div style={{ borderBottom: '1px solid #000', marginTop: 4, marginBottom: 3 }} />
+            <div style={{ fontSize: '7pt', color: '#555' }}>
+              Authorized Signature &nbsp;&nbsp;&nbsp; Date: ____________
+            </div>
+          </div>
+
+          {/* Architect Signature */}
+          {project?.include_architect !== false && (
+            <div style={{ border: '1px solid #000', padding: 8, minHeight: 80, display: 'flex', flexDirection: 'column' }}>
+              <div style={{ fontSize: '7pt', fontWeight: 'bold', textTransform: 'uppercase', borderBottom: '0.5px solid #ccc', marginBottom: 4, paddingBottom: 2 }}>
+                Architect&apos;s Certificate for Payment
+              </div>
+              <p style={{ fontSize: '7.5pt', color: '#555', margin: '0 0 4px' }}>
+                In accordance with the Contract Documents, the Architect certifies to the Owner that the
+                Work has progressed to the point indicated and the quality of the Work is in accordance
+                with the Contract Documents.
+              </p>
+              <div style={{ fontSize: '8pt', marginBottom: 4 }}>
+                Amount Certified: <strong>{formatCurrency(currentPaymentDue)}</strong>
+              </div>
+              <div style={{ flex: 1, minHeight: 8 }} />
+              <div style={{ borderBottom: '1px solid #000', marginTop: 4, marginBottom: 3 }} />
+              <div style={{ fontSize: '7pt', color: '#555' }}>
+                Architect Signature &nbsp;&nbsp;&nbsp; Date: ____________
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* === NOTES === */}
+        {payApp?.special_notes && (
+          <div style={{ marginTop: 8, padding: '6px 10px', background: '#fafafa', border: '1px solid #ddd', borderRadius: 4, fontSize: '8pt', color: '#333' }}>
+            <strong>Notes:</strong> <span style={{ whiteSpace: 'pre-line' }}>{payApp.special_notes}</span>
+          </div>
+        )}
+
+        {/* === G703 CONTINUATION SHEET === */}
+        <div style={{ marginTop: 14, borderTop: '2px solid #000', paddingTop: 8 }}>
+          <div style={{ fontSize: '11pt', fontWeight: 'bold', textAlign: 'center', marginBottom: 4, fontFamily: "'Times New Roman', serif" }}>
+            Continuation Sheet — Document G703
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table
+              style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                fontSize: '7.5pt',
+                fontFamily: "'Times New Roman', serif",
+              }}
+            >
+              <thead>
+                <tr style={{ background: '#f0f0f0' }}>
+                  <th style={{ border: '1px solid #999', padding: '3px 4px', textAlign: 'left', width: 55 }}>Item</th>
+                  <th style={{ border: '1px solid #999', padding: '3px 4px', textAlign: 'left' }}>Description of Work</th>
+                  <th style={{ border: '1px solid #999', padding: '3px 4px', textAlign: 'right', width: 80 }}>Scheduled Value</th>
+                  <th style={{ border: '1px solid #999', padding: '3px 4px', textAlign: 'right', width: 75 }}>Work Prev. Billed</th>
+                  <th style={{ border: '1px solid #999', padding: '3px 4px', textAlign: 'right', width: 65 }}>Work This Period</th>
+                  <th style={{ border: '1px solid #999', padding: '3px 4px', textAlign: 'right', width: 65 }}>Total Completed</th>
+                  <th style={{ border: '1px solid #999', padding: '3px 4px', textAlign: 'right', width: 45 }}>% Comp.</th>
+                  {showRetainage && (
+                    <>
+                      <th style={{ border: '1px solid #999', padding: '3px 4px', textAlign: 'right', width: 45 }}>Ret.%</th>
+                      <th style={{ border: '1px solid #999', padding: '3px 4px', textAlign: 'right', width: 70 }}>Retainage $</th>
+                    </>
+                  )}
+                  <th style={{ border: '1px solid #999', padding: '3px 4px', textAlign: 'right', width: 70 }}>Balance to Finish</th>
+                </tr>
+              </thead>
+              <tbody>
+                {computedLines.map((line, idx) => {
+                  const sv = Number(line.scheduledValue) || 0
+                  const isZero = sv === 0
+                  const pctComplete = sv > 0 ? ((Number(line.prevAmount) + Number(line.thisAmount)) / sv * 100) : 0
+
+                  return (
+                    <tr key={line.id || idx} style={isZero ? { background: '#f9f9f9' } : undefined}>
+                      <td style={{ border: '1px solid #999', padding: '2px 4px' }}>{idx + 1}</td>
+                      <td style={{ border: '1px solid #999', padding: '2px 4px' }}>
+                        {line.description || '—'}
+                        {isZero && <span style={{ color: '#999', fontStyle: 'italic', marginLeft: 4 }}>(Included)</span>}
+                      </td>
+                      <td style={{ border: '1px solid #999', padding: '2px 4px', textAlign: 'right' }}>{formatCurrency(sv)}</td>
+                      <td style={{ border: '1px solid #999', padding: '2px 4px', textAlign: 'right' }}>{formatCurrency(line.prevAmount)}</td>
+                      <td style={{ border: '1px solid #999', padding: '2px 4px', textAlign: 'right' }}>{formatCurrency(line.thisAmount)}</td>
+                      <td style={{ border: '1px solid #999', padding: '2px 4px', textAlign: 'right' }}>{formatCurrency(line.totalCompleted)}</td>
+                      <td style={{ border: '1px solid #999', padding: '2px 4px', textAlign: 'right' }}>{pctComplete.toFixed(1)}%</td>
+                      {showRetainage && (
+                        <>
+                          <td style={{ border: '1px solid #999', padding: '2px 4px', textAlign: 'right' }}>{formatPercent(line.retainage_pct)}</td>
+                          <td style={{ border: '1px solid #999', padding: '2px 4px', textAlign: 'right' }}>{formatCurrency(line.retainageHeld)}</td>
+                        </>
+                      )}
+                      <td style={{ border: '1px solid #999', padding: '2px 4px', textAlign: 'right' }}>{formatCurrency(line.balanceToFinish)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: '#f0f0f0', fontWeight: 'bold' }}>
+                  <td style={{ border: '1px solid #999', padding: '3px 4px' }} colSpan={2}>GRAND TOTAL</td>
+                  <td style={{ border: '1px solid #999', padding: '3px 4px', textAlign: 'right' }}>{formatCurrency(totals?.totalScheduled || 0)}</td>
+                  <td style={{ border: '1px solid #999', padding: '3px 4px', textAlign: 'right' }}>{formatCurrency(totals?.totalPrevAmount || 0)}</td>
+                  <td style={{ border: '1px solid #999', padding: '3px 4px', textAlign: 'right' }}>{formatCurrency(totals?.totalThisAmount || 0)}</td>
+                  <td style={{ border: '1px solid #999', padding: '3px 4px', textAlign: 'right' }}>{formatCurrency(totals?.totalCompleted || 0)}</td>
+                  <td style={{ border: '1px solid #999', padding: '3px 4px', textAlign: 'right' }}>
+                    {(totals?.totalScheduled > 0 ? (totals.totalCompleted / totals.totalScheduled * 100) : 0).toFixed(1)}%
+                  </td>
+                  {showRetainage && (
+                    <>
+                      <td style={{ border: '1px solid #999', padding: '3px 4px', textAlign: 'right' }}>—</td>
+                      <td style={{ border: '1px solid #999', padding: '3px 4px', textAlign: 'right' }}>{formatCurrency(totals?.totalRetainage || 0)}</td>
+                    </>
+                  )}
+                  <td style={{ border: '1px solid #999', padding: '3px 4px', textAlign: 'right' }}>{formatCurrency(totals?.totalBalanceToFinish || 0)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        {/* Branding footer */}
+        <div style={{ marginTop: 12, textAlign: 'center', paddingTop: 8, borderTop: '1px solid #eee' }}>
+          <div style={{ fontSize: '11pt', letterSpacing: '0.3px', marginBottom: 3 }}>
+            <span style={{ color: '#6B2FA0', fontWeight: 'bold' }}>Construct</span>
+            <span style={{ color: '#E87722', fontWeight: 'bold' }}>Invoice</span>{' '}
+            <span style={{ color: '#009B8D', fontWeight: 'bold' }}>AI</span>
+          </div>
+          <div style={{ fontSize: '8pt', color: '#777', marginBottom: 3, fontStyle: 'italic' }}>
+            $0 to use — pay it forward instead: feed a child, help a neighbor
+          </div>
+          <a href="https://constructinv.varshyl.com" style={{ fontSize: '8pt', color: '#2563eb', textDecoration: 'none' }}>
+            constructinv.varshyl.com
+          </a>
+        </div>
+      </div>
 
       <p className="text-xs text-text-muted text-center">
-        The client will receive a professional invoice email with the G702/G703 PDF, lien waiver (if attached), and optional "Pay Now" button.
+        The client will receive a professional invoice email with the G702/G703 PDF, lien waiver (if attached), and optional &quot;Pay Now&quot; button.
       </p>
     </div>
   )
@@ -1048,7 +1347,7 @@ export function PayAppEditor() {
     updateLinePercent,
     updateLineRetainage,
     saveLines,
-    downloadPDF,
+    downloadPDF: _downloadPDF,
     emailPayApp,
     updatePayApp,
     addChangeOrder,
@@ -1300,6 +1599,8 @@ export function PayAppEditor() {
             payApp={payApp}
             project={project}
             totals={totals}
+            computedLines={computedLines}
+            changeOrders={changeOrders}
             onDownloadPDF={handleDownloadPDF}
             onOpenEmail={() => setIsEmailModalOpen(true)}
             isTrialGated={isTrialGated}
