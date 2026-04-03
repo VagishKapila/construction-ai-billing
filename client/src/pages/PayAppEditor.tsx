@@ -23,6 +23,10 @@ import {
   Trash2,
   Paperclip,
   Shield,
+  Bold,
+  Italic,
+  Underline,
+  List,
 } from 'lucide-react'
 import type { PayAppLineComputed, ChangeOrder, LienDocument, Attachment } from '@/types'
 import { usePayApp } from '@/hooks/usePayApp'
@@ -36,6 +40,65 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+
+// ── Simple rich text editor for Notes field ─────────────────────────────────
+function RichTextNotes({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const editorRef = useRef<HTMLDivElement>(null)
+  const isInitialized = useRef(false)
+
+  // Initialize content from value on first render or when value changes externally
+  useEffect(() => {
+    if (editorRef.current && !isInitialized.current) {
+      editorRef.current.innerHTML = value || ''
+      isInitialized.current = true
+    }
+  }, [value])
+
+  // Reset when value is cleared (e.g. switching pay apps)
+  useEffect(() => {
+    if (editorRef.current && value === '' && editorRef.current.innerHTML !== '') {
+      editorRef.current.innerHTML = ''
+      isInitialized.current = false
+    }
+  }, [value])
+
+  const execCmd = (cmd: string, val?: string) => {
+    document.execCommand(cmd, false, val)
+    editorRef.current?.focus()
+    if (editorRef.current) onChange(editorRef.current.innerHTML)
+  }
+
+  const ToolBtn = ({ cmd, icon: Icon, label }: { cmd: string; icon: any; label: string }) => (
+    <button
+      type="button"
+      title={label}
+      onMouseDown={(e) => { e.preventDefault(); execCmd(cmd) }}
+      className="p-1.5 rounded hover:bg-gray-200 text-gray-600 hover:text-gray-900 transition-colors"
+    >
+      <Icon className="w-4 h-4" />
+    </button>
+  )
+
+  return (
+    <div className="border border-border rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary-500">
+      <div className="flex items-center gap-0.5 px-2 py-1.5 bg-gray-50 border-b border-border">
+        <ToolBtn cmd="bold" icon={Bold} label="Bold (Ctrl+B)" />
+        <ToolBtn cmd="italic" icon={Italic} label="Italic (Ctrl+I)" />
+        <ToolBtn cmd="underline" icon={Underline} label="Underline (Ctrl+U)" />
+        <span className="w-px h-5 bg-gray-300 mx-1" />
+        <ToolBtn cmd="insertUnorderedList" icon={List} label="Bullet List" />
+      </div>
+      <div
+        ref={editorRef}
+        contentEditable
+        onInput={() => { if (editorRef.current) onChange(editorRef.current.innerHTML) }}
+        className="min-h-[100px] px-3 py-2 text-sm text-text-primary bg-white focus:outline-none"
+        data-placeholder="e.g. ACH info, payment terms, special conditions..."
+        style={{ minHeight: 100 }}
+      />
+    </div>
+  )
+}
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6
 
@@ -708,16 +771,10 @@ function Step4Summary({
         </div>
       </Card>
 
-      {/* Notes */}
+      {/* Notes with formatting toolbar */}
       <Card className="p-6">
         <h3 className="text-lg font-semibold text-text-primary mb-4">Notes</h3>
-        <textarea
-          value={notes}
-          onChange={(e) => onNotesChange(e.target.value)}
-          placeholder="e.g. ACH info, payment terms, special conditions..."
-          rows={4}
-          className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white text-text-primary text-sm"
-        />
+        <RichTextNotes value={notes} onChange={onNotesChange} />
       </Card>
 
       {/* G702 Financial Summary */}
@@ -1398,7 +1455,7 @@ function Step6Preview({
         {/* === NOTES === */}
         {payApp?.special_notes && (
           <div style={{ marginTop: 8, padding: '6px 10px', background: '#fafafa', border: '1px solid #ddd', borderRadius: 4, fontSize: '8pt', color: '#333' }}>
-            <strong>Notes:</strong> <span style={{ whiteSpace: 'pre-line' }}>{payApp.special_notes}</span>
+            <strong>Notes:</strong> <span style={{ whiteSpace: 'pre-line' }} dangerouslySetInnerHTML={{ __html: payApp.special_notes }} />
           </div>
         )}
 
@@ -1550,10 +1607,18 @@ export function PayAppEditor() {
   const [periodLabel, setPeriodLabel] = useState('')
   const [periodStart, setPeriodStart] = useState('')
   const [periodEnd, setPeriodEnd] = useState('')
+  const [formDirty, setFormDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false)
   const [isEmailLoading, setIsEmailLoading] = useState(false)
+
+  // Wrapped setters that mark form as dirty
+  const handleNotesChange = useCallback((v: string) => { setNotes(v); setFormDirty(true) }, [])
+  const handlePoChange = useCallback((v: string) => { setPoNumber(v); setFormDirty(true) }, [])
+  const handlePeriodLabelChange = useCallback((v: string) => { setPeriodLabel(v); setFormDirty(true) }, [])
+  const handlePeriodStartChange = useCallback((v: string) => { setPeriodStart(v); setFormDirty(true) }, [])
+  const handlePeriodEndChange = useCallback((v: string) => { setPeriodEnd(v); setFormDirty(true) }, [])
 
   // Sync from payApp
   useEffect(() => {
@@ -1563,10 +1628,11 @@ export function PayAppEditor() {
       setPeriodLabel(payApp.period_label || '')
       setPeriodStart(payApp.period_start ? payApp.period_start.split('T')[0] : '')
       setPeriodEnd(payApp.period_end ? payApp.period_end.split('T')[0] : '')
+      setFormDirty(false)
     }
   }, [payApp])
 
-  // Save handler
+  // Save handler — saves both line items and form fields (notes, PO, dates)
   const handleSave = useCallback(async () => {
     if (isTrialGated) {
       alert('Your trial has ended. Please upgrade to continue.')
@@ -1582,6 +1648,7 @@ export function PayAppEditor() {
         period_start: periodStart || undefined,
         period_end: periodEnd || undefined,
       } as any)
+      setFormDirty(false)
     } finally {
       setIsSaving(false)
     }
@@ -1726,12 +1793,10 @@ export function PayAppEditor() {
             <Badge className={statusColor}>{payApp.status}</Badge>
           </div>
           <div className="flex gap-2">
-            {payApp.status === 'draft' && (
-              <Button onClick={handleSave} disabled={!isDirty || isSaving} size="sm" variant="outline" className="gap-1">
-                <Save className="w-4 h-4" />
-                {isSaving ? 'Saving...' : 'Save'}
-              </Button>
-            )}
+            <Button onClick={handleSave} disabled={(!isDirty && !formDirty) || isSaving} size="sm" variant="outline" className="gap-1">
+              <Save className="w-4 h-4" />
+              {isSaving ? 'Saving...' : 'Save'}
+            </Button>
             <Button onClick={handleDownloadPDF} disabled={isDownloading} size="sm" variant="outline" className="gap-1">
               {isDownloading ? (
                 <><span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" /> Generating...</>
@@ -1790,11 +1855,11 @@ export function PayAppEditor() {
             periodLabel={periodLabel}
             periodStart={periodStart}
             periodEnd={periodEnd}
-            onNotesChange={setNotes}
-            onPoChange={setPoNumber}
-            onPeriodLabelChange={setPeriodLabel}
-            onPeriodStartChange={setPeriodStart}
-            onPeriodEndChange={setPeriodEnd}
+            onNotesChange={handleNotesChange}
+            onPoChange={handlePoChange}
+            onPeriodLabelChange={handlePeriodLabelChange}
+            onPeriodStartChange={handlePeriodStartChange}
+            onPeriodEndChange={handlePeriodEndChange}
           />
         )}
 
