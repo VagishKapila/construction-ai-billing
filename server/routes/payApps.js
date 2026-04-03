@@ -11,6 +11,7 @@ const { fmt } = require('../lib/format');
 const PDFDocument = require('pdfkit');
 const { generateLienDocPDF } = require('./lienWaivers');
 const { generatePaymentToken } = require('../services/stripe');
+const { generatePayAppHTML } = require('../lib/generatePayAppHTML');
 
 // PDF generation via Puppeteer (fallback to PDFKit if unavailable)
 let puppeteer = null;
@@ -491,6 +492,76 @@ router.delete('/api/attachments/:id', auth, async (req,res) => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
+// HTML PREVIEW — Professional AIA G702/G703 with auto-print dialog
+// ──────────────────────────────────────────────────────────────────────────────
+
+router.get('/api/payapps/:id/html', async (req,res) => {
+  const token = req.query.token || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
+  let decoded;
+  try { decoded = jwt.verify(token, JWT_SECRET); } catch(e) { return res.status(401).json({error:'Invalid token'}); }
+
+  const paRes = await pool.query(
+    `SELECT pa.*,p.name as pname,p.owner,p.contractor,p.architect,p.original_contract,
+            p.number as pnum,p.payment_terms,p.contract_date,
+            p.include_architect,p.include_retainage,
+            cs.logo_filename,cs.signature_filename,cs.default_payment_terms,
+            cs.contact_name,cs.company_name
+     FROM pay_apps pa
+     JOIN projects p ON p.id=pa.project_id
+     LEFT JOIN company_settings cs ON cs.user_id=p.user_id
+     WHERE pa.id=$1 AND p.user_id=$2`,
+    [req.params.id, decoded.id]
+  );
+  const pa = paRes.rows[0];
+  if(!pa) return res.status(404).json({error:'Not found'});
+  await logEvent(decoded.id, 'pdf_previewed', { pay_app_id: parseInt(req.params.id) });
+  const lines = await pool.query(
+    'SELECT pal.*,sl.item_id,sl.description,sl.scheduled_value FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id WHERE pal.pay_app_id=$1 ORDER BY sl.sort_order',
+    [req.params.id]
+  );
+  const cos = await pool.query('SELECT * FROM change_orders WHERE pay_app_id=$1',[req.params.id]);
+
+  let tComp=0,tRet=0,tPrevCert=0;
+  lines.rows.forEach(r=>{
+    const sv=parseFloat(r.scheduled_value);
+    const retPct=parseFloat(r.retainage_pct)/100;
+    const prev=sv*parseFloat(r.prev_pct)/100;
+    const thisPer=sv*parseFloat(r.this_pct)/100;
+    const comp=prev+thisPer+parseFloat(r.stored_materials||0);
+    tComp+=comp; tRet+=comp*retPct; tPrevCert+=prev*(1-retPct);
+  });
+  const tCO=cos.rows.reduce((s,c)=>s+parseFloat(c.amount||0),0);
+  const contract=parseFloat(pa.original_contract)+tCO;
+  const earned=tComp-tRet;
+  const due=Math.max(0,earned-tPrevCert);
+
+  const imgMime = buf => { if (buf[0]===0x89 && buf[1]===0x50) return 'image/png'; if (buf[0]===0xFF && buf[1]===0xD8) return 'image/jpeg'; return 'image/png'; };
+  const readImgB64 = filename => { if (!filename) return null; try { const fp = path.join(__dirname, '..', 'uploads', filename); if (!fs.existsSync(fp)) return null; const buf = fs.readFileSync(fp); return `data:${imgMime(buf)};base64,${buf.toString('base64')}`; } catch(e) { return null; } };
+  const logoBase64 = readImgB64(pa.logo_filename);
+  const sigBase64  = readImgB64(pa.signature_filename);
+
+  const photoAttsRes = await pool.query(`SELECT filename, original_name FROM attachments WHERE pay_app_id=$1 AND mime_type LIKE 'image/%' ORDER BY uploaded_at`, [req.params.id]);
+  const photoAttachments = photoAttsRes.rows.map(a => { const b64 = readImgB64(a.filename); if (!b64) return null; return { base64: b64, name: a.original_name || a.filename }; }).filter(Boolean);
+  const docAttsRes = await pool.query(`SELECT filename, original_name FROM attachments WHERE pay_app_id=$1 AND mime_type='application/pdf' ORDER BY uploaded_at`, [req.params.id]);
+  const docAttachments = docAttsRes.rows.map(a => ({ name: a.original_name || a.filename }));
+
+  const totals = { tComp, tRet, tPrevCert, tCO, contract, earned, due };
+  const html = generatePayAppHTML(pa, lines.rows, cos.rows, totals, logoBase64, sigBase64, photoAttachments, docAttachments);
+
+  // Wrap with print-friendly auto-print script
+  const printableHtml = html.replace('</body>', `
+<script>
+  window.onload = function() {
+    setTimeout(function() { window.print(); }, 500);
+  };
+</script>
+</body>`);
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(printableHtml);
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
 // PDF GENERATION
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -590,8 +661,6 @@ router.get('/api/payapps/:id/pdf', async (req,res) => {
   if (puppeteer) {
     let browser;
     try {
-      const { generatePayAppHTML } = getServerHelpers();
-      if (!generatePayAppHTML) throw new Error('generatePayAppHTML not available');
       const html = generatePayAppHTML(pa, lines.rows, cos.rows, totals, logoBase64, sigBase64, photoAttachments, docAttachments);
       browser = await puppeteer.launch({
         args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu']
@@ -770,68 +839,189 @@ router.post('/api/payapps/:id/email', auth, async (req, res) => {
       } catch(payLinkErr) { console.error('[Email] Payment link gen error:', payLinkErr.message); }
     }
 
+    const fmtD = n => '$' + parseFloat(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
     const safeMsg = (message||'').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
     const payNowBtnHtml = payNowUrl ? `
-        <div style="text-align:center;margin:20px 0 8px">
-          <a href="${payNowUrl}" style="display:inline-block;background:#2563eb;color:#ffffff;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:12pt">Pay Now — $${due.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</a>
+        <div style="text-align:center;margin:24px 0 8px">
+          <a href="${payNowUrl}" style="display:inline-block;background:#16a34a;color:#ffffff;padding:16px 48px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14pt;letter-spacing:0.5px">Pay Now — ${fmtD(due)}</a>
         </div>
-        <p style="font-size:9pt;color:#888;text-align:center;margin:4px 0 0">ACH bank transfer or credit card accepted. Secure payment via Stripe.</p>` : '';
-    const emailHtml = `<div style="font-family:sans-serif;max-width:600px;margin:0 auto">
-      <div style="background:#2563eb;padding:18px 24px;color:#fff">
-        <h2 style="margin:0;font-size:16pt">Pay Application #${pa.app_number}</h2>
-        <div style="font-size:10pt;margin-top:4px;opacity:0.9">${pa.pname||''} · ${pa.period_label||''}</div>
+        <p style="font-size:9pt;color:#888;text-align:center;margin:6px 0 0">ACH bank transfer or credit card accepted. Secure payment via Stripe.</p>` : '';
+
+    // Professional G702 email template with full A-H summary
+    const emailHtml = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:620px;margin:0 auto;background:#fff">
+      <div style="background:linear-gradient(135deg,#1e40af 0%,#2563eb 50%,#3b82f6 100%);padding:28px 32px;color:#fff;border-radius:8px 8px 0 0">
+        <div style="font-size:10pt;opacity:0.85;margin-bottom:4px">${pa.contractor||'Contractor'}</div>
+        <h2 style="margin:0;font-size:20pt;font-weight:700;letter-spacing:-0.3px">Pay Application #${pa.app_number}</h2>
+        <div style="font-size:11pt;margin-top:6px;opacity:0.9">${pa.pname||''}</div>
+        <div style="font-size:9pt;margin-top:3px;opacity:0.7">${pa.period_label||''}</div>
       </div>
-      <div style="padding:24px;border:1px solid #ddd;border-top:0">
-        ${safeMsg ? `<p style="margin-top:0">${safeMsg}</p><hr style="border:0;border-top:1px solid #eee;margin:16px 0">` : ''}
-        <table style="width:100%;border-collapse:collapse;font-size:10pt">
-          <tr><td style="padding:5px 8px;color:#555">Project</td><td style="padding:5px 8px;font-weight:bold">${pa.pname||''}</td></tr>
-          <tr style="background:#f7f7f7"><td style="padding:5px 8px;color:#555">Application #</td><td style="padding:5px 8px">${pa.app_number}</td></tr>
-          <tr><td style="padding:5px 8px;color:#555">Period</td><td style="padding:5px 8px">${pa.period_label||''}</td></tr>
-          <tr style="background:#f7f7f7"><td style="padding:5px 8px;color:#555;font-weight:bold">Current Payment Due</td>
-            <td style="padding:5px 8px;font-weight:bold;color:#2563eb;font-size:11pt">$${due.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>
+      <div style="padding:28px 32px;border:1px solid #e5e7eb;border-top:0">
+        ${safeMsg ? `<div style="margin-bottom:20px;padding:14px 16px;background:#f8fafc;border-left:3px solid #2563eb;border-radius:0 6px 6px 0;font-size:10pt;color:#334155;line-height:1.5">${safeMsg}</div>` : ''}
+        <div style="background:#f0f4ff;border:1.5px solid #bfdbfe;border-radius:8px;padding:20px 24px;margin-bottom:20px">
+          <div style="font-size:8pt;text-transform:uppercase;letter-spacing:1px;color:#6b7280;margin-bottom:12px;font-weight:600">G702 Summary</div>
+          <table style="width:100%;border-collapse:collapse;font-size:9.5pt">
+            <tr><td style="padding:5px 0;color:#64748b">A. Original Contract Sum</td><td style="padding:5px 0;text-align:right;font-weight:600">${fmtD(pa.original_contract)}</td></tr>
+            <tr><td style="padding:5px 0;color:#64748b">B. Net Change by Change Orders</td><td style="padding:5px 0;text-align:right;font-weight:600">${fmtD(tCO)}</td></tr>
+            <tr style="border-top:1px solid #dbeafe"><td style="padding:5px 0;color:#64748b">C. Contract Sum to Date (A+B)</td><td style="padding:5px 0;text-align:right;font-weight:600">${fmtD(contract)}</td></tr>
+            <tr><td style="padding:5px 0;color:#64748b">D. Total Completed & Stored</td><td style="padding:5px 0;text-align:right;font-weight:600">${fmtD(tComp)}</td></tr>
+            <tr><td style="padding:5px 0;color:#64748b">E. Retainage</td><td style="padding:5px 0;text-align:right;font-weight:600">${fmtD(tRet)}</td></tr>
+            <tr style="border-top:1px solid #dbeafe"><td style="padding:5px 0;color:#64748b">F. Total Earned Less Retainage</td><td style="padding:5px 0;text-align:right;font-weight:600">${fmtD(earned)}</td></tr>
+            <tr><td style="padding:5px 0;color:#64748b">G. Less Previous Certificates</td><td style="padding:5px 0;text-align:right;font-weight:600">${fmtD(tPrevCert)}</td></tr>
+          </table>
+          <div style="margin-top:14px;padding-top:14px;border-top:2px solid #2563eb;display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:11pt;font-weight:700;color:#1e293b">H. CURRENT PAYMENT DUE</span>
+            <span style="font-size:18pt;font-weight:800;color:#2563eb">${fmtD(due)}</span>
+          </div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:9pt;margin-bottom:16px">
+          <tr><td style="padding:4px 0;color:#94a3b8;width:130px">Contractor</td><td style="padding:4px 0;color:#334155">${pa.contractor||'—'}</td></tr>
+          <tr><td style="padding:4px 0;color:#94a3b8">Owner</td><td style="padding:4px 0;color:#334155">${pa.owner||'—'}</td></tr>
+          <tr><td style="padding:4px 0;color:#94a3b8">Payment Terms</td><td style="padding:4px 0;color:#334155">${pa.payment_terms || pa.default_payment_terms || 'Due on receipt'}</td></tr>
+          ${pa.po_number ? `<tr><td style="padding:4px 0;color:#94a3b8">PO Number</td><td style="padding:4px 0;color:#334155">${pa.po_number}</td></tr>` : ''}
         </table>
         ${payNowBtnHtml}
       </div>
-      <div style="padding:10px 24px;font-size:8pt;color:#aaa;text-align:center">
-        Sent via <a href="https://constructinv.varshyl.com" style="color:#aaa">ConstructInvoice AI</a> · Varshyl Inc.
+      <div style="padding:14px 32px;font-size:8pt;color:#9ca3af;text-align:center;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 8px 8px;background:#fafafa">
+        PDF attached${shouldAttachLien ? ' with lien waiver' : ''} &nbsp;|&nbsp; Sent via <a href="https://constructinv.varshyl.com" style="color:#9ca3af">ConstructInvoice AI</a> &nbsp;|&nbsp; Varshyl Inc.
       </div>
     </div>`;
 
     const pdfFilename = `PayApp_${pa.app_number}_${(pa.pname||'').replace(/\s+/g,'_')}.pdf`;
     const emailAttachments = [];
 
+    // ── Generate professional PDF attachment using Puppeteer (fallback to PDFKit) ──
     try {
-      const pdfDoc = new PDFDocument({ size: 'LETTER', margin: 45 });
-      const chunks = [];
-      pdfDoc.on('data', c => chunks.push(c));
-      await new Promise((resolve, reject) => {
-        pdfDoc.on('end', resolve);
-        pdfDoc.on('error', reject);
-        pdfDoc.fontSize(15).font('Helvetica-Bold').text('Document G702', { align: 'center' });
-        pdfDoc.fontSize(10).font('Helvetica').text('Application and Certificate for Payment', { align: 'center' });
-        pdfDoc.moveDown(0.5);
-        pdfDoc.fontSize(11).font('Helvetica-Bold').text(pa.pname || 'Pay Application');
-        pdfDoc.fontSize(9).font('Helvetica').text(`Application #${pa.app_number}  ·  ${pa.period_label || ''}`);
-        if (pa.po_number) pdfDoc.text(`PO #: ${pa.po_number}`);
-        pdfDoc.moveDown(0.4);
-        pdfDoc.fontSize(9).text(`Original Contract Sum: $${Number(totals.contract || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
-        pdfDoc.text(`Net Change by Change Orders: $${Number(totals.tCO || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
-        pdfDoc.text(`Total Completed & Stored to Date: $${Number(totals.tComp || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
-        pdfDoc.text(`Retainage: $${Number(totals.tRet || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
-        pdfDoc.text(`Total Earned Less Retainage: $${Number(totals.earned || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
-        pdfDoc.text(`Less Previous Certificates: $${Number(totals.tPrevCert || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
-        pdfDoc.moveDown(0.3);
-        pdfDoc.font('Helvetica-Bold').text(`Current Payment Due: $${Number(totals.due || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
-        if (pa.special_notes) { const pn=pa.special_notes.replace(/<br\s*\/?>/gi,'\n').replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' '); pdfDoc.moveDown(0.5); pdfDoc.font('Helvetica-Bold').fontSize(8).text('Notes:',{continued:true}); pdfDoc.font('Helvetica').text(' '+pn); }
-        pdfDoc.moveDown(1);
-        pdfDoc.fontSize(8).font('Helvetica').fillColor('#888').text('Generated by ConstructInvoice AI · Full PDF available in app', { align: 'center' });
-        pdfDoc.end();
-      });
-      const pdfBuf = Buffer.concat(chunks);
+      let pdfBuf = null;
+
+      // Try Puppeteer first for pixel-perfect PDF matching the on-screen preview
+      if (puppeteer) {
+        let browser;
+        try {
+          const imgMime = buf => { if (buf[0]===0x89 && buf[1]===0x50) return 'image/png'; if (buf[0]===0xFF && buf[1]===0xD8) return 'image/jpeg'; return 'image/png'; };
+          const readImgB64 = filename => { if (!filename) return null; try { const fp = path.join(__dirname, '..', 'uploads', filename); if (!fs.existsSync(fp)) return null; const buf = fs.readFileSync(fp); return `data:${imgMime(buf)};base64,${buf.toString('base64')}`; } catch(e) { return null; } };
+          const logoBase64 = readImgB64(pa.logo_filename);
+          const sigBase64  = readImgB64(pa.signature_filename);
+          const html = generatePayAppHTML(pa, lines.rows, cos.rows, totals, logoBase64, sigBase64, [], []);
+          browser = await puppeteer.launch({ args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu'] });
+          const page = await browser.newPage();
+          await page.setContent(html, { waitUntil: 'networkidle0' });
+          pdfBuf = await page.pdf({ format: 'Letter', printBackground: true, margin: { top: '0.5in', right: '0.45in', bottom: '0.5in', left: '0.45in' } });
+          console.log('[Email PDF] Puppeteer generated', pdfBuf.length, 'bytes');
+        } catch(puppErr) {
+          console.error('[Email PDF] Puppeteer error, falling back to PDFKit:', puppErr.message);
+        } finally {
+          if (browser) await browser.close().catch(()=>{});
+        }
+      }
+
+      // Fallback: PDFKit with improved G702 summary layout
+      if (!pdfBuf) {
+        const pdfDoc = new PDFDocument({ size: 'LETTER', margin: 45 });
+        const chunks = [];
+        pdfDoc.on('data', c => chunks.push(c));
+        await new Promise((resolve, reject) => {
+          pdfDoc.on('end', resolve);
+          pdfDoc.on('error', reject);
+          pdfDoc.fontSize(15).font('Helvetica-Bold').text('Document G702', { align: 'center' });
+          pdfDoc.fontSize(10).font('Helvetica').text('Application and Certificate for Payment', { align: 'center' });
+          pdfDoc.moveDown(0.5);
+          pdfDoc.fontSize(11).font('Helvetica-Bold').text(pa.pname || 'Pay Application');
+          pdfDoc.fontSize(9).font('Helvetica');
+          pdfDoc.text(`Application #${pa.app_number}  |  ${pa.period_label || ''}`);
+          pdfDoc.text(`Owner: ${pa.owner||'—'}  |  Contractor: ${pa.contractor||'—'}`);
+          if (pa.po_number) pdfDoc.text(`PO #: ${pa.po_number}`);
+          pdfDoc.moveDown(0.6);
+          pdfDoc.moveTo(45,pdfDoc.y).lineTo(567,pdfDoc.y).lineWidth(0.5).stroke();
+          pdfDoc.moveDown(0.4);
+          pdfDoc.fontSize(10).font('Helvetica-Bold').text('G702 Summary');
+          pdfDoc.moveDown(0.3);
+          pdfDoc.fontSize(9).font('Helvetica');
+          const items = [
+            ['A. Original Contract Sum', fmtD(pa.original_contract)],
+            ['B. Net Change by Change Orders', fmtD(tCO)],
+            ['C. Contract Sum to Date (A+B)', fmtD(contract)],
+            ['D. Total Completed & Stored to Date', fmtD(tComp)],
+            ['E. Retainage', fmtD(tRet)],
+            ['F. Total Earned Less Retainage (D-E)', fmtD(earned)],
+            ['G. Less Previous Certificates', fmtD(tPrevCert)],
+          ];
+          items.forEach(([label, val]) => {
+            const y = pdfDoc.y;
+            pdfDoc.text(label, 55, y, { width: 300 });
+            pdfDoc.text(val, 400, y, { width: 150, align: 'right' });
+          });
+          pdfDoc.moveDown(0.4);
+          pdfDoc.moveTo(45,pdfDoc.y).lineTo(567,pdfDoc.y).lineWidth(1).stroke();
+          pdfDoc.moveDown(0.3);
+          const hY = pdfDoc.y;
+          pdfDoc.font('Helvetica-Bold').fontSize(11).text('H. CURRENT PAYMENT DUE', 55, hY, { width: 300 });
+          pdfDoc.fillColor('#2563eb').fontSize(14).text(fmtD(due), 350, hY-2, { width: 200, align: 'right' });
+          pdfDoc.fillColor('#000');
+          if (pa.special_notes) { const pn=pa.special_notes.replace(/<br\s*\/?>/gi,'\n').replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' '); pdfDoc.moveDown(1); pdfDoc.font('Helvetica-Bold').fontSize(8).text('Notes:',{continued:true}); pdfDoc.font('Helvetica').text(' '+pn); }
+          pdfDoc.moveDown(2);
+          pdfDoc.fontSize(8).font('Helvetica').fillColor('#888').text('Generated by ConstructInvoice AI', { align: 'center' });
+          pdfDoc.text('Full G702/G703 with line items available in app', { align: 'center' });
+          pdfDoc.end();
+        });
+        pdfBuf = Buffer.concat(chunks);
+        console.log('[Email PDF] PDFKit generated', pdfBuf.length, 'bytes');
+      }
+
       emailAttachments.push({ filename: pdfFilename, content: pdfBuf.toString('base64') });
-      console.log('[Email PDF] Generated', pdfBuf.length, 'bytes');
     } catch(pdfErr) {
       console.error('[Email PDF] Failed:', pdfErr.message);
+    }
+
+    // ── Auto-generate lien waiver if none exists and attach it ──
+    if (shouldAttachLien && due > 0) {
+      try {
+        const lienRes = await pool.query(
+          'SELECT ld.* FROM lien_documents ld WHERE ld.project_id=$1 AND ld.pay_app_id=$2 ORDER BY ld.created_at DESC LIMIT 1',
+          [pa.project_id, req.params.id]
+        );
+        let lienDoc = lienRes.rows[0];
+
+        // Auto-generate conditional waiver if none exists
+        if (!lienDoc && (pa.contact_name || pa.company_name)) {
+          const crypto = require('crypto');
+          const lienFilename = `lien_${crypto.randomBytes(8).toString('hex')}.pdf`;
+          const fpath = path.join(__dirname, '..', 'uploads', lienFilename);
+          const today = new Date().toLocaleDateString('en-US');
+          await generateLienDocPDF({
+            fpath,
+            doc_type: 'conditional_waiver',
+            project_name: pa.pname || '',
+            owner_name: pa.owner || '',
+            claimant_name: pa.contact_name || pa.company_name || pa.contractor || '',
+            through_date: today,
+            amount: due,
+          });
+          const insertRes = await pool.query(
+            `INSERT INTO lien_documents(project_id,pay_app_id,user_id,doc_type,status,amount,filename,through_date,claimant_name,owner_name)
+             VALUES($1,$2,$3,'conditional_waiver','draft',$4,$5,$6,$7,$8) RETURNING *`,
+            [pa.project_id, req.params.id, req.user.id, due, lienFilename, today,
+             pa.contact_name || pa.company_name || pa.contractor || '', pa.owner || '']
+          );
+          lienDoc = insertRes.rows[0];
+          console.log('[Email] Auto-generated conditional lien waiver:', lienFilename);
+        }
+
+        // Attach lien waiver PDF if available
+        if (lienDoc && lienDoc.filename) {
+          const lienPath = path.join(__dirname, '..', 'uploads', lienDoc.filename);
+          if (fs.existsSync(lienPath)) {
+            const lienBuf = fs.readFileSync(lienPath);
+            const lienType = lienDoc.doc_type === 'unconditional_waiver' ? 'Unconditional' : 'Conditional';
+            emailAttachments.push({
+              filename: `${lienType}_Lien_Waiver_${(pa.pname||'').replace(/\s+/g,'_')}.pdf`,
+              content: lienBuf.toString('base64')
+            });
+            console.log('[Email] Attached lien waiver:', lienDoc.filename);
+          }
+        }
+      } catch(lienErr) {
+        console.error('[Email] Lien waiver error:', lienErr.message);
+      }
     }
 
     const fromEmail = process.env.FROM_EMAIL || 'billing@varshyl.com';
