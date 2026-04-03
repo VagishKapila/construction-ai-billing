@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { Upload, FileText, ChevronRight } from 'lucide-react'
+import { Upload, FileText, ChevronRight, Paperclip } from 'lucide-react'
 import type { PayApp, SOVLine } from '@/types'
 import { useProject } from '@/hooks/useProject'
 import { useTrial } from '@/hooks/useTrial'
@@ -190,7 +190,7 @@ export function ProjectDetail() {
   const [activeTab, setActiveTab] = useState('payapps')
   const [isCreatingPayApp, setIsCreatingPayApp] = useState(false)
 
-  const { project, sovLines, payApps, isLoading, error } =
+  const { project, sovLines, payApps, changeOrders, attachments, isLoading, error } =
     useProject(projectId)
   const { isTrialGated } = useTrial()
 
@@ -375,23 +375,93 @@ export function ProjectDetail() {
         )}
 
         {activeTab === 'changeorders' && (
-          <Card className="p-6">
-            <EmptyState
-              icon={FileText}
-              title="No change orders"
-              description="Change orders from pay applications will appear here"
-            />
-          </Card>
+          changeOrders.length === 0 ? (
+            <Card className="p-6">
+              <EmptyState
+                icon={FileText}
+                title="No change orders"
+                description="Change orders from pay applications will appear here"
+              />
+            </Card>
+          ) : (
+            <Card className="p-6">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b-2 border-border">
+                      <th className="text-left py-3 px-4 font-semibold text-text-primary">CO #</th>
+                      <th className="text-left py-3 px-4 font-semibold text-text-primary">Description</th>
+                      <th className="text-left py-3 px-4 font-semibold text-text-primary">Pay App</th>
+                      <th className="text-left py-3 px-4 font-semibold text-text-primary">Status</th>
+                      <th className="text-right py-3 px-4 font-semibold text-text-primary">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {changeOrders.map((co: any) => (
+                      <tr key={co.id} className="border-b border-border hover:bg-primary-50">
+                        <td className="py-3 px-4 text-text-secondary">{co.co_number || '—'}</td>
+                        <td className="py-3 px-4 text-text-primary font-medium">{co.description}</td>
+                        <td className="py-3 px-4 text-text-secondary">#{co.app_number}</td>
+                        <td className="py-3 px-4">
+                          <Badge variant={co.status === 'approved' ? 'success' : 'warning'}>
+                            {co.status || 'pending'}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-4 text-right text-text-primary font-mono tabular-nums">
+                          {formatCurrency(Number(co.amount) || 0)}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="font-semibold bg-primary-50 border-t-2 border-primary-200">
+                      <td colSpan={4} className="py-3 px-4 text-text-primary">Total Change Orders</td>
+                      <td className="py-3 px-4 text-right text-text-primary font-mono tabular-nums">
+                        {formatCurrency(changeOrders.reduce((s: number, co: any) => s + (Number(co.amount) || 0), 0))}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )
         )}
 
         {activeTab === 'documents' && (
-          <Card className="p-6">
-            <EmptyState
-              icon={FileText}
-              title="No documents"
-              description="Uploaded documents and lien waivers will appear here"
-            />
-          </Card>
+          attachments.length === 0 ? (
+            <Card className="p-6">
+              <EmptyState
+                icon={FileText}
+                title="No documents"
+                description="Uploaded documents and lien waivers will appear here"
+              />
+            </Card>
+          ) : (
+            <Card className="p-6">
+              <div className="space-y-3">
+                {attachments.map((att: any) => (
+                  <div key={att.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
+                    <div className="flex items-center gap-3">
+                      <Paperclip className="w-4 h-4 text-text-muted" />
+                      <div>
+                        <p className="text-sm font-medium text-text-primary">{att.original_name || att.filename}</p>
+                        <p className="text-xs text-text-muted">
+                          Pay App #{att.app_number}
+                          {att.file_size ? ` • ${(att.file_size / 1024).toFixed(0)} KB` : ''}
+                        </p>
+                      </div>
+                    </div>
+                    <a
+                      href={`/uploads/${att.filename}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+                    >
+                      View
+                    </a>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )
         )}
       </div>
     </div>

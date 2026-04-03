@@ -11,6 +11,8 @@ export interface UseProjectReturn {
   project: Project | null;
   sovLines: SOVLine[];
   payApps: PayApp[];
+  changeOrders: any[];
+  attachments: any[];
   isLoading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -23,6 +25,8 @@ export function useProject(
   const [project, setProject] = useState<Project | null>(null);
   const [sovLines, setSovLines] = useState<SOVLine[]>([]);
   const [payApps, setPayApps] = useState<PayApp[]>([]);
+  const [changeOrders, setChangeOrders] = useState<any[]>([]);
+  const [attachments, setAttachments] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,11 +61,15 @@ export function useProject(
         if (foundProject) {
           setProject(foundProject);
 
-          // Fetch pay apps for this project
-          const payAppsRes = await payAppsApi.getPayApps(id);
-          if (payAppsRes.data) {
-            setPayApps(payAppsRes.data);
-          }
+          // Fetch pay apps, change orders, and attachments for this project
+          const [payAppsRes, cosRes, attsRes] = await Promise.all([
+            payAppsApi.getPayApps(id),
+            projectApi.getProjectChangeOrders(id),
+            projectApi.getProjectAttachments(id),
+          ]);
+          if (payAppsRes.data) setPayApps(payAppsRes.data);
+          if (cosRes.data) setChangeOrders(cosRes.data);
+          if (attsRes.data) setAttachments(attsRes.data);
         } else {
           setError('Project not found');
         }
@@ -113,6 +121,8 @@ export function useProject(
     project,
     sovLines,
     payApps,
+    changeOrders,
+    attachments,
     isLoading,
     error,
     refresh,

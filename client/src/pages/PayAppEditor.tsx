@@ -1598,8 +1598,17 @@ export function PayAppEditor() {
 
   const { isTrialGated } = useTrial()
 
-  // Step state
+  // Step state — submitted/paid apps open at Preview (Step 6), drafts at Step 1
   const [currentStep, setCurrentStep] = useState<Step>(1)
+  const initialStepSet = useRef(false)
+  useEffect(() => {
+    if (payApp && !initialStepSet.current) {
+      initialStepSet.current = true
+      if (payApp.status === 'submitted' || payApp.status === 'paid') {
+        setCurrentStep(6)
+      }
+    }
+  }, [payApp])
 
   // Form state
   const [notes, setNotes] = useState('')
@@ -1654,6 +1663,13 @@ export function PayAppEditor() {
     }
   }, [saveLines, updatePayApp, notes, poNumber, periodLabel, periodStart, periodEnd, isTrialGated])
 
+  // Auto-save if form is dirty, then do callback
+  const autoSaveIfNeeded = useCallback(async () => {
+    if (isDirty || formDirty) {
+      await handleSave()
+    }
+  }, [isDirty, formDirty, handleSave])
+
   // Save & advance to next step
   const handleSaveAndNext = useCallback(async () => {
     await handleSave()
@@ -1662,7 +1678,15 @@ export function PayAppEditor() {
     }
   }, [handleSave, currentStep])
 
-  // Download PDF — fetch blob then trigger download (no blank tab)
+  // Step change — auto-save when leaving a step with unsaved changes
+  const handleStepChange = useCallback(async (step: Step) => {
+    if (isDirty || formDirty) {
+      await handleSave()
+    }
+    setCurrentStep(step)
+  }, [isDirty, formDirty, handleSave])
+
+  // Download PDF — auto-save first, then fetch blob (no blank tab)
   const handleDownloadPDF = useCallback(async () => {
     if (isTrialGated) {
       alert('Your trial has ended. Please upgrade to continue.')
@@ -1670,6 +1694,8 @@ export function PayAppEditor() {
     }
     setIsDownloading(true)
     try {
+      // Auto-save notes/PO/dates before generating PDF
+      await autoSaveIfNeeded()
       const token = localStorage.getItem('ci_token')
       const res = await fetch(`/api/payapps/${payAppId}/pdf?token=${encodeURIComponent(token || '')}`)
       if (!res.ok) throw new Error('PDF generation failed')
@@ -1693,7 +1719,7 @@ export function PayAppEditor() {
     } finally {
       setIsDownloading(false)
     }
-  }, [payAppId, payApp?.status, payApp?.app_number, project, updatePayApp, isTrialGated])
+  }, [payAppId, payApp?.status, payApp?.app_number, project, updatePayApp, isTrialGated, autoSaveIfNeeded])
 
   // Email submit
   const handleEmailSubmit = useCallback(
@@ -1810,7 +1836,7 @@ export function PayAppEditor() {
       </motion.div>
 
       {/* Step Tabs */}
-      <StepTabs currentStep={currentStep} onStepChange={setCurrentStep} />
+      <StepTabs currentStep={currentStep} onStepChange={handleStepChange} />
 
       {/* Step Content */}
       <motion.div

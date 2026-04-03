@@ -103,6 +103,20 @@ export async function getSOVLines(projectId: number): Promise<ApiResponse<SOVLin
 }
 
 /**
+ * Get all change orders across all pay apps for a project
+ */
+export async function getProjectChangeOrders(projectId: number): Promise<ApiResponse<any[]>> {
+  return api.get<any[]>(`/api/projects/${projectId}/change-orders`);
+}
+
+/**
+ * Get all attachments across all pay apps for a project
+ */
+export async function getProjectAttachments(projectId: number): Promise<ApiResponse<any[]>> {
+  return api.get<any[]>(`/api/projects/${projectId}/attachments`);
+}
+
+/**
  * Save SOV lines for a project
  */
 export async function saveSOVLines(

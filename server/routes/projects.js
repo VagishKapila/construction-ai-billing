@@ -85,6 +85,38 @@ router.delete('/api/projects/:id', auth, async (req, res) => {
   res.json({ ok: true });
 });
 
+// GET /api/projects/:id/change-orders — All change orders across all pay apps in this project
+router.get('/api/projects/:id/change-orders', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT co.*, pa.app_number
+       FROM change_orders co
+       JOIN pay_apps pa ON pa.id = co.pay_app_id
+       JOIN projects p ON p.id = pa.project_id
+       WHERE p.id = $1 AND p.user_id = $2 AND pa.deleted_at IS NULL
+       ORDER BY co.co_number`,
+      [req.params.id, req.user.id]
+    );
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/projects/:id/attachments — All attachments across all pay apps in this project
+router.get('/api/projects/:id/attachments', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT a.*, pa.app_number
+       FROM attachments a
+       JOIN pay_apps pa ON pa.id = a.pay_app_id
+       JOIN projects p ON p.id = pa.project_id
+       WHERE p.id = $1 AND p.user_id = $2 AND pa.deleted_at IS NULL
+       ORDER BY a.uploaded_at DESC`,
+      [req.params.id, req.user.id]
+    );
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/projects/:id/sov — Get Schedule of Values lines
 router.get('/api/projects/:id/sov', auth, async (req, res) => {
   const r = await pool.query(
