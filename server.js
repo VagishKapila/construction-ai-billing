@@ -1997,6 +1997,77 @@ ${docAttachments.length ? `
 </body></html>`;
 }
 
+// HTML Preview — serves the same professional AIA G702/G703 HTML used by Puppeteer PDF
+// This is the RELIABLE path: works even when Puppeteer is unavailable.
+// Browser opens this in a new tab → user can Save as PDF from browser's print dialog.
+app.get('/api/payapps/:id/html', async (req,res) => {
+  const token = req.query.token || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
+  let decoded;
+  try { decoded = jwt.verify(token, JWT_SECRET); } catch(e) { return res.status(401).json({error:'Invalid token'}); }
+
+  const paRes = await pool.query(
+    `SELECT pa.*,p.name as pname,p.owner,p.contractor,p.architect,p.original_contract,
+            p.number as pnum,p.payment_terms,p.contract_date,
+            p.include_architect,p.include_retainage,
+            cs.logo_filename,cs.signature_filename,cs.default_payment_terms,
+            cs.contact_name,cs.company_name
+     FROM pay_apps pa
+     JOIN projects p ON p.id=pa.project_id
+     LEFT JOIN company_settings cs ON cs.user_id=p.user_id
+     WHERE pa.id=$1 AND p.user_id=$2`,
+    [req.params.id, decoded.id]
+  );
+  const pa = paRes.rows[0];
+  if(!pa) return res.status(404).json({error:'Not found'});
+  await logEvent(decoded.id, 'pdf_previewed', { pay_app_id: parseInt(req.params.id) });
+  const lines = await pool.query(
+    'SELECT pal.*,sl.item_id,sl.description,sl.scheduled_value FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id WHERE pal.pay_app_id=$1 ORDER BY sl.sort_order',
+    [req.params.id]
+  );
+  const cos = await pool.query('SELECT * FROM change_orders WHERE pay_app_id=$1',[req.params.id]);
+
+  let tComp=0,tRet=0,tThis=0,tPrev=0,tPrevCert=0;
+  lines.rows.forEach(r=>{
+    const sv=parseFloat(r.scheduled_value);
+    const retPct=parseFloat(r.retainage_pct)/100;
+    const prev=sv*parseFloat(r.prev_pct)/100;
+    const thisPer=sv*parseFloat(r.this_pct)/100;
+    const comp=prev+thisPer+parseFloat(r.stored_materials||0);
+    tComp+=comp; tRet+=comp*retPct; tPrevCert+=prev*(1-retPct);
+  });
+  const tCO=cos.rows.reduce((s,c)=>s+parseFloat(c.amount||0),0);
+  const contract=parseFloat(pa.original_contract)+tCO;
+  const earned=tComp-tRet;
+  const due=Math.max(0,earned-tPrevCert);
+
+  const imgMimeH = buf => { if (buf[0]===0x89 && buf[1]===0x50) return 'image/png'; if (buf[0]===0xFF && buf[1]===0xD8) return 'image/jpeg'; return 'image/png'; };
+  const readImgB64H = filename => { if (!filename) return null; try { const fp = path.join(__dirname, 'uploads', filename); if (!fs.existsSync(fp)) return null; const buf = fs.readFileSync(fp); return `data:${imgMimeH(buf)};base64,${buf.toString('base64')}`; } catch(e) { return null; } };
+  const logoBase64 = readImgB64H(pa.logo_filename);
+  const sigBase64  = readImgB64H(pa.signature_filename);
+
+  const photoAttsRes = await pool.query(`SELECT filename, original_name FROM attachments WHERE pay_app_id=$1 AND mime_type LIKE 'image/%' ORDER BY uploaded_at`, [req.params.id]);
+  const photoAttachments = photoAttsRes.rows.map(a => { const b64 = readImgB64H(a.filename); if (!b64) return null; return { base64: b64, name: a.original_name || a.filename }; }).filter(Boolean);
+  const docAttsRes = await pool.query(`SELECT filename, original_name FROM attachments WHERE pay_app_id=$1 AND mime_type='application/pdf' ORDER BY uploaded_at`, [req.params.id]);
+  const docAttachments = docAttsRes.rows.map(a => ({ name: a.original_name || a.filename }));
+
+  const totals = { tComp, tRet, tPrevCert, tCO, contract, earned, due };
+  const html = generatePayAppHTML(pa, lines.rows, cos.rows, totals, logoBase64, sigBase64, photoAttachments, docAttachments);
+
+  // Wrap with print-friendly auto-print script
+  const printableHtml = html.replace('</body>', `
+<script>
+  // Auto-trigger print dialog when page loads
+  window.onload = function() {
+    // Small delay so the page renders fully first
+    setTimeout(function() { window.print(); }, 500);
+  };
+</script>
+</body>`);
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(printableHtml);
+});
+
 // PDF
 app.get('/api/payapps/:id/pdf', async (req,res) => {
   const token = req.query.token || (req.headers.authorization && req.headers.authorization.split(' ')[1]);

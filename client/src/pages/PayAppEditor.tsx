@@ -1589,15 +1589,16 @@ export function PayAppEditor() {
     }
   }, [handleSave, currentStep])
 
-  // Download PDF
+  // Download PDF — opens the professional AIA G702/G703 HTML preview with auto-print dialog
   const handleDownloadPDF = useCallback(async () => {
     if (isTrialGated) {
       alert('Your trial has ended. Please upgrade to continue.')
       return
     }
-    // Open PDF in new tab (matching old app.html behavior) + auto-mark as submitted
     const token = localStorage.getItem('ci_token')
-    window.open(`/api/payapps/${payAppId}/pdf?token=${encodeURIComponent(token || '')}`, '_blank')
+    // Use /html endpoint which serves the beautiful AIA template directly
+    // Browser print dialog opens automatically → user saves as PDF
+    window.open(`/api/payapps/${payAppId}/html?token=${encodeURIComponent(token || '')}`, '_blank')
     if (payApp?.status === 'draft') {
       try {
         await updatePayApp({ status: 'submitted' } as any)
