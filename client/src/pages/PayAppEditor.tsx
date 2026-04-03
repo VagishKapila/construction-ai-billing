@@ -1064,6 +1064,7 @@ function Step6Preview({
   onDownloadPDF,
   onOpenEmail,
   isTrialGated,
+  isDownloading = false,
 }: {
   payApp: any
   project: any
@@ -1073,6 +1074,7 @@ function Step6Preview({
   onDownloadPDF: () => void
   onOpenEmail: () => void
   isTrialGated: boolean
+  isDownloading?: boolean
 }) {
   // Lien waiver state for "Download + Lien Waiver" button
   const [linkedLienDocId, setLinkedLienDocId] = useState<number | null>(null)
@@ -1132,9 +1134,12 @@ function Step6Preview({
 
       {/* Action buttons */}
       <div className="flex flex-wrap gap-3">
-        <Button onClick={onDownloadPDF} disabled={isTrialGated} className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
-          <Download className="w-4 h-4" />
-          Download Pay App PDF
+        <Button onClick={onDownloadPDF} disabled={isTrialGated || isDownloading} className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
+          {isDownloading ? (
+            <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" /> Generating PDF...</>
+          ) : (
+            <><Download className="w-4 h-4" /> Download Pay App PDF</>
+          )}
         </Button>
         {linkedLienDocId && (
           <Button onClick={handleDownloadWithLien} disabled={isTrialGated} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
@@ -1509,7 +1514,7 @@ function Step6Preview({
 // ============================================================================
 
 export function PayAppEditor() {
-  const { projectId, appId } = useParams<{ projectId: string; appId: string }>()
+  const { id: projectId, appId } = useParams<{ id: string; appId: string }>()
   const navigate = useNavigate()
   const payAppId = appId ? Number(appId) : 0
 
@@ -1546,6 +1551,7 @@ export function PayAppEditor() {
   const [periodStart, setPeriodStart] = useState('')
   const [periodEnd, setPeriodEnd] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false)
   const [isEmailLoading, setIsEmailLoading] = useState(false)
 
@@ -1589,21 +1595,38 @@ export function PayAppEditor() {
     }
   }, [handleSave, currentStep])
 
-  // Download PDF — direct PDF download via Puppeteer (pixel-perfect AIA G702/G703)
+  // Download PDF — fetch blob then trigger download (no blank tab)
   const handleDownloadPDF = useCallback(async () => {
     if (isTrialGated) {
       alert('Your trial has ended. Please upgrade to continue.')
       return
     }
-    const token = localStorage.getItem('ci_token')
-    // Use /pdf endpoint which generates a real PDF file via Puppeteer
-    window.open(`/api/payapps/${payAppId}/pdf?token=${encodeURIComponent(token || '')}`, '_blank')
-    if (payApp?.status === 'draft') {
-      try {
-        await updatePayApp({ status: 'submitted' } as any)
-      } catch { /* auto-submit is best-effort */ }
+    setIsDownloading(true)
+    try {
+      const token = localStorage.getItem('ci_token')
+      const res = await fetch(`/api/payapps/${payAppId}/pdf?token=${encodeURIComponent(token || '')}`)
+      if (!res.ok) throw new Error('PDF generation failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const projectName = (project as any)?.name?.replace(/\s+/g, '_') || 'Project'
+      a.download = `PayApp_${payApp?.app_number || ''}_${projectName}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      if (payApp?.status === 'draft') {
+        try {
+          await updatePayApp({ status: 'submitted' } as any)
+        } catch { /* auto-submit is best-effort */ }
+      }
+    } catch (err) {
+      alert('Failed to download PDF. Please try again.')
+    } finally {
+      setIsDownloading(false)
     }
-  }, [payAppId, payApp?.status, updatePayApp, isTrialGated])
+  }, [payAppId, payApp?.status, payApp?.app_number, project, updatePayApp, isTrialGated])
 
   // Email submit
   const handleEmailSubmit = useCallback(
@@ -1709,9 +1732,12 @@ export function PayAppEditor() {
                 {isSaving ? 'Saving...' : 'Save'}
               </Button>
             )}
-            <Button onClick={handleDownloadPDF} size="sm" variant="outline" className="gap-1">
-              <Download className="w-4 h-4" />
-              PDF
+            <Button onClick={handleDownloadPDF} disabled={isDownloading} size="sm" variant="outline" className="gap-1">
+              {isDownloading ? (
+                <><span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" /> Generating...</>
+              ) : (
+                <><Download className="w-4 h-4" /> PDF</>
+              )}
             </Button>
           </div>
         </div>
@@ -1790,6 +1816,7 @@ export function PayAppEditor() {
             onDownloadPDF={handleDownloadPDF}
             onOpenEmail={() => setIsEmailModalOpen(true)}
             isTrialGated={isTrialGated}
+            isDownloading={isDownloading}
           />
         )}
       </motion.div>

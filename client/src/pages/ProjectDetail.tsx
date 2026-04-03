@@ -59,14 +59,21 @@ interface PayAppRowProps {
 }
 
 function PayAppRow({ payApp, projectId }: PayAppRowProps) {
+  const navigate = useNavigate()
   const statusVariantMap: Record<string, 'default' | 'success' | 'warning'> = {
     draft: 'warning',
     submitted: 'default',
     paid: 'success',
   }
 
+  const payAppUrl = `/projects/${projectId}/pay-app/${payApp.id}`
+
   return (
-    <Card interactive className="p-4 sm:p-6">
+    <Card
+      interactive
+      className="p-4 sm:p-6 cursor-pointer transition-colors hover:bg-gray-50"
+      onClick={() => navigate(payAppUrl)}
+    >
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -94,12 +101,10 @@ function PayAppRow({ payApp, projectId }: PayAppRowProps) {
         </div>
 
         <div className="flex gap-2 flex-shrink-0">
-          <Link to={`/projects/${projectId}/pay-app/${payApp.id}`}>
-            <Button variant="outline" size="sm">
-              {payApp.status === 'draft' ? 'Edit' : 'View'}
-              <ChevronRight className="w-4 h-4 ml-2" />
-            </Button>
-          </Link>
+          <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); navigate(payAppUrl) }}>
+            {payApp.status === 'draft' ? 'Edit' : 'View'}
+            <ChevronRight className="w-4 h-4 ml-2" />
+          </Button>
         </div>
       </div>
     </Card>

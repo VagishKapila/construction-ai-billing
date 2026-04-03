@@ -676,17 +676,31 @@ router.get('/api/payapps/:id/pdf', async (req,res) => {
         [pa.project_id, req.params.id]
       );
       let lienDoc = lienRes.rows[0];
+      const today = new Date().toLocaleDateString('en-US');
+      const sigName = pa.contact_name || pa.company_name || pa.contractor || '';
+      const lienProject = { name: pa.pname, owner: pa.owner, contractor: pa.contractor, company_name: pa.company_name, logo_filename: pa.logo_filename, signature_filename: pa.signature_filename };
+
+      // Always regenerate the PDF to ensure latest signature/logo are embedded
+      if (lienDoc && lienDoc.filename && due > 0) {
+        const existingPath = path.join(__dirname, '..', '..', 'uploads', lienDoc.filename);
+        try {
+          await generateLienDocPDF({
+            fpath: existingPath, doc_type: lienDoc.doc_type || 'conditional_waiver',
+            project: lienProject, through_date: lienDoc.through_date || today, amount: lienDoc.amount || due,
+            maker_of_check: pa.owner || '', check_payable_to: sigName,
+            signatory_name: sigName, signedAt: new Date(lienDoc.signed_at || Date.now()), ip: 'auto-regen',
+          });
+          console.log('[PDF] Regenerated lien waiver with current signature:', lienDoc.filename);
+        } catch(regenErr) { console.error('[PDF] Lien regen error:', regenErr.message); }
+      }
       // Auto-generate conditional waiver if none exists
       if (!lienDoc && due > 0 && (pa.contact_name || pa.company_name)) {
         const crypto = require('crypto');
         const lienFilename = `lien_${crypto.randomBytes(8).toString('hex')}.pdf`;
         const fpath = path.join(__dirname, '..', '..', 'uploads', lienFilename);
-        const today = new Date().toLocaleDateString('en-US');
-        const sigName = pa.contact_name || pa.company_name || pa.contractor || '';
         await generateLienDocPDF({
           fpath, doc_type: 'conditional_waiver',
-          project: { name: pa.pname, owner: pa.owner, contractor: pa.contractor, company_name: pa.company_name, logo_filename: pa.logo_filename, signature_filename: pa.signature_filename },
-          through_date: today, amount: due,
+          project: lienProject, through_date: today, amount: due,
           maker_of_check: pa.owner || '', check_payable_to: sigName,
           signatory_name: sigName, signedAt: new Date(), ip: 'auto-gen',
         });
