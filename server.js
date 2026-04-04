@@ -5594,6 +5594,112 @@ app.get('/api/admin/feedback', adminAuth, async (req, res) => {
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// ── Admin: recalculate all pay app snapshots for a project ──────────────────
+// Fixes stale amount_due / retention_held values on pay apps created before billing fixes.
+app.post('/api/admin/recalculate-project/:projectId', adminAuth, async (req, res) => {
+  const projectId = parseInt(req.params.projectId);
+  if (isNaN(projectId)) return res.status(400).json({ error: 'Invalid project ID' });
+
+  try {
+    const projCheck = await pool.query('SELECT id, name FROM projects WHERE id=$1', [projectId]);
+    if (!projCheck.rows[0]) return res.status(404).json({ error: 'Project not found' });
+
+    const payApps = await pool.query(
+      `SELECT id, app_number, status, is_retainage_release, amount_due, retention_held, period_label
+       FROM pay_apps WHERE project_id=$1 AND deleted_at IS NULL ORDER BY app_number`,
+      [projectId]
+    );
+
+    const results = [];
+
+    for (const pa of payApps.rows) {
+      const oldAmountDue = parseFloat(pa.amount_due || 0);
+      const oldRetention = parseFloat(pa.retention_held || 0);
+
+      if (pa.is_retainage_release) {
+        // Retainage release: amount_due = total retainage held across all prior standard pay apps
+        const retainageSnap = await pool.query(`
+          SELECT COALESCE(SUM(retention_held), 0) as total_retainage
+          FROM pay_apps
+          WHERE project_id=$1 AND deleted_at IS NULL
+            AND is_retainage_release IS NOT TRUE
+            AND id != $2`, [projectId, pa.id]);
+        const totalRetainage = parseFloat(retainageSnap.rows[0]?.total_retainage || 0);
+
+        await pool.query(
+          'UPDATE pay_apps SET amount_due=$1, retention_held=0 WHERE id=$2',
+          [totalRetainage, pa.id]
+        );
+
+        // Fix period label to include exact date if missing
+        if (pa.period_label && !pa.period_label.match(/\d{1,2},/)) {
+          const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+          const now = new Date();
+          const newLabel = `${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()} — Final Retainage Release`;
+          await pool.query('UPDATE pay_apps SET period_label=$1 WHERE id=$2', [newLabel, pa.id]);
+        }
+
+        results.push({
+          pay_app_id: pa.id, app_number: pa.app_number, type: 'retainage_release',
+          old_amount_due: oldAmountDue, new_amount_due: totalRetainage,
+          old_retention: oldRetention, new_retention: 0,
+          fixed: Math.abs(oldAmountDue - totalRetainage) > 0.01
+        });
+
+      } else {
+        // Standard pay app: recalculate from SOV lines + change orders
+        const snap = await pool.query(`
+          SELECT
+            SUM(sl.scheduled_value * pal.this_pct / 100
+                - sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100
+                + sl.scheduled_value * pal.prev_pct / 100 * pal.retainage_pct / 100) AS amount_due,
+            SUM(sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100) AS retention_held
+          FROM pay_app_lines pal
+          JOIN sov_lines sl ON sl.id = pal.sov_line_id
+          WHERE pal.pay_app_id=$1`, [pa.id]);
+
+        const coSnap = await pool.query(
+          'SELECT COALESCE(SUM(amount), 0) as co_total FROM change_orders WHERE pay_app_id=$1',
+          [pa.id]
+        );
+
+        const lineAmountDue = parseFloat(snap.rows[0]?.amount_due || 0);
+        const coTotal = parseFloat(coSnap.rows[0]?.co_total || 0);
+        const totalAmountDue = lineAmountDue + coTotal;
+        const retentionHeld = parseFloat(snap.rows[0]?.retention_held || 0);
+
+        await pool.query(
+          'UPDATE pay_apps SET amount_due=$1, retention_held=$2 WHERE id=$3',
+          [totalAmountDue, retentionHeld, pa.id]
+        );
+
+        results.push({
+          pay_app_id: pa.id, app_number: pa.app_number, type: 'standard', status: pa.status,
+          change_orders: coTotal,
+          old_amount_due: oldAmountDue, new_amount_due: totalAmountDue,
+          old_retention: oldRetention, new_retention: retentionHeld,
+          fixed: Math.abs(oldAmountDue - totalAmountDue) > 0.01 || Math.abs(oldRetention - retentionHeld) > 0.01
+        });
+      }
+    }
+
+    const fixedCount = results.filter(r => r.fixed).length;
+    console.log(`[Admin] Recalculated ${payApps.rows.length} pay apps for project ${projectId} (${projCheck.rows[0].name}). Fixed: ${fixedCount}`);
+
+    res.json({
+      project: projCheck.rows[0].name,
+      project_id: projectId,
+      total_pay_apps: payApps.rows.length,
+      fixed_count: fixedCount,
+      details: results
+    });
+
+  } catch(e) {
+    console.error('[Admin Recalculate]', e.message);
+    res.status(500).json({ error: 'Recalculation failed: ' + e.message });
+  }
+});
+
 // ── Weekly feedback digest — every Monday at 7am, only if new items exist ──
 let lastWeeklyDigestDate = null;
 setInterval(async () => {
