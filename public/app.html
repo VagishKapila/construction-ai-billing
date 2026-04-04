@@ -512,6 +512,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
   .lp-coming-item p{font-size:13px}
 
   /* WHO IT'S FOR */
+  #lp-who > div[style*="grid-template-columns"]{grid-template-columns:1fr !important;gap:16px !important}
   .lp-for-list{grid-template-columns:1fr;gap:10px;margin-top:22px}
   .lp-for-item{padding:13px 15px}
   .lp-for-item p{font-size:13px}
@@ -721,128 +722,118 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
     <div class="lp-nav-right" id="lp-nav-btns">
       <!-- Filled dynamically: Sign in + Get Started, OR Go to Dashboard if already logged in -->
       <button class="lp-btn lp-btn-ghost" onclick="showAuthFromLanding('login')">Sign in</button>
-      <button class="lp-btn lp-btn-primary" onclick="showAuthFromLanding('register')">Get started free</button>
+      <button class="lp-btn lp-btn-primary" onclick="showAuthFromLanding('register')">Get Started</button>
     </div>
   </nav>
 
   <!-- HERO -->
   <section class="lp-hero" id="lp-top">
-    <h1>Stop Doing G702/G703 Billing<br><em>by Hand.</em></h1>
-    <p>Construction AI Billing automates your G702/G703 pay applications — from Schedule of Values to a signed, print-ready PDF — in minutes, not hours.</p>
+    <h1>Remove Cash Flow Issues<br><em>with AI</em></h1>
+    <p style="font-size:clamp(17px,2.2vw,22px);font-weight:500;margin-bottom:8px">Reduce Receivables. Billed Right.</p>
+    <p style="font-size:clamp(13px,1.5vw,16px);font-style:italic;opacity:0.7;margin-bottom:36px">AI is here to stay — let's make the best of it.</p>
     <div class="lp-hero-cta" id="lp-hero-cta">
-      <button class="lp-btn lp-btn-lg" style="background:#fff;color:#022c22;border:none;font-weight:600" onclick="token&&currentUser?resumeSession():showAuthFromLanding('register')">Get Started Free →</button>
+      <button class="lp-btn lp-btn-lg" style="background:#fff;color:#022c22;border:none;font-weight:600" onclick="token&&currentUser?resumeSession():showAuthFromLanding('register')">Get Started →</button>
       <button class="lp-btn lp-btn-lg" style="color:#fff;border:1.5px solid rgba(255,255,255,0.5);background:rgba(255,255,255,0.1)" onclick="token&&currentUser?resumeSession():showAuthFromLanding('login')">Sign In</button>
     </div>
-    <div class="lp-hero-note">No credit card. No strings. Just scroll down first.</div>
   </section>
 
-  <!-- PROBLEM -->
+  <!-- THE PROBLEM -->
   <div class="lp-section">
-    <div class="lp-problem">
-      <strong>Sound familiar?</strong> It's the end of the month. You've done the work. Your crew showed up. The job is moving.
-      And now you're staring at a billing spreadsheet at 10pm, rechecking formulas, hoping the retainage math is right.
-      One wrong number. One missed change order. One transposed digit — and your payment is delayed by weeks.
-      <br><br><strong>That's not how it should work. You already did the hard part.</strong>
+    <div style="max-width:680px;margin:0 auto;text-align:center">
+      <h2 class="lp-h2" style="font-size:clamp(24px,3.5vw,40px);margin-bottom:20px">You keep showing up.</h2>
+      <p style="font-size:18px;color:#555;line-height:1.7;margin-bottom:28px">Make sure you keep getting paid.</p>
+      <div class="lp-problem" style="text-align:left">
+        Most contractors finish a project still chasing 2 or 3 invoices. By then the GC has no urgency. The leverage is gone. And you're hoping — not collecting.
+        <br><br>
+        <strong>82% of businesses that fail cite cash flow as the cause.</strong> Not bad work. Not bad people. Just bad billing systems and nobody following up.
+      </div>
     </div>
   </div>
 
-  <!-- HOW IT WORKS -->
+  <!-- WHAT WE DO -->
   <div class="lp-section-wide" id="lp-how">
     <div>
       <div style="text-align:center;margin-bottom:48px">
-        <div class="lp-label">How it works</div>
-        <h2 class="lp-h2">Three steps. Under five minutes.</h2>
+        <div class="lp-label">What we do</div>
+        <h2 class="lp-h2">Billed right. Followed up automatically.<br>Paid — before it becomes a dispute.</h2>
       </div>
       <div class="lp-steps-wrap">
         <div class="lp-steps">
           <div class="lp-step">
             <div class="lp-step-num">1</div>
-            <h3>Upload Your SOV</h3>
-            <p>Excel, PDF, CSV, or Word. Our AI maps your line items automatically — no reformatting required.</p>
+            <h3>We Bill Right</h3>
+            <p>Upload your bid, proposal, SOV, or any document. AI generates a perfect, error-free billing document in under 5 minutes. No spreadsheets. No formulas. No Sunday night errors.</p>
           </div>
           <div class="lp-step">
             <div class="lp-step-num">2</div>
-            <h3>Enter This Period's Progress</h3>
-            <p>Enter % complete per line — individually or bulk apply across all. Retainage and math calculate live as you type.</p>
+            <h3>We Follow Up Automatically</h3>
+            <p>AI sends follow-ups on every unpaid invoice. Automatically. On schedule. Until money hits your account. You focus on the work. We focus on getting you paid.</p>
           </div>
           <div class="lp-step">
             <div class="lp-step-num">3</div>
-            <h3>Export &amp; Submit</h3>
-            <p>Download a perfect, print-ready G702/G703 PDF. Every number verified. Ready to sign and submit.</p>
+            <h3>We Protect Your Leverage</h3>
+            <p>AI flags when you're working on Phase 2 while Phase 1 is unpaid. That's your leverage window. We catch it before it closes.</p>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- FEATURES -->
+  <!-- SOLUTION / FEATURES -->
   <div class="lp-section" id="lp-features">
     <div style="text-align:center;margin-bottom:48px">
-      <div class="lp-label">Features</div>
-      <h2 class="lp-h2">Everything You Need. Nothing You Don't.</h2>
+      <div class="lp-label">The Solution</div>
+      <h2 class="lp-h2">Billed Right. Followed Up Automatically.</h2>
+      <p class="lp-sub">Paid — before it becomes a dispute.</p>
     </div>
     <div class="lp-grid">
+      <div class="lp-feature">
+        <div class="lp-feature-icon">📄</div>
+        <h3>Upload Any Document</h3>
+        <p>Bid, proposal, SOV, Excel, PDF, CSV, or Word. AI maps your line items and generates a perfect billing document in under 5 minutes.</p>
+      </div>
       <div class="lp-feature">
         <div class="lp-feature-icon">🧮</div>
         <h3>Exact Billing Math</h3>
         <p>G702/G703 computed line by line. Previous certified, this period, stored materials, retainage — all automatic and correct every time.</p>
       </div>
       <div class="lp-feature">
-        <div class="lp-feature-icon">📂</div>
-        <h3>Any Format SOV</h3>
-        <p>Upload your Schedule of Values as Excel, PDF, CSV, or Word. AI maps your line items. No reformatting, no retyping.</p>
+        <div class="lp-feature-icon">🔔</div>
+        <h3>Automated Follow-Up</h3>
+        <p>AI sends follow-ups on every unpaid invoice. Automatically. On schedule. Until money hits your account. You focus on the work.</p>
       </div>
       <div class="lp-feature">
-        <div class="lp-feature-icon">📄</div>
-        <h3>Print-Ready PDF</h3>
-        <p>Download a properly formatted G702/G703 with your logo and signature. Ready to submit to the GC or owner.</p>
+        <div class="lp-feature-icon">🛡️</div>
+        <h3>Leverage Protection</h3>
+        <p>AI flags when Phase 1 is unpaid and Phase 2 is starting. That's your leverage window — we catch it before it closes.</p>
+      </div>
+      <div class="lp-feature">
+        <div class="lp-feature-icon">💰</div>
+        <h3>Reduce Receivables</h3>
+        <p>Faster billing plus automated follow-up means less money sitting in someone else's account. Less disputes. Healthier cash flow.</p>
       </div>
       <div class="lp-feature">
         <div class="lp-feature-icon">🔒</div>
-        <h3>Tamper-Proof Records</h3>
-        <p>Submitted pay apps are locked with a complete audit trail. Protects you in disputes and keeps every billing period documented.</p>
-      </div>
-      <div class="lp-feature">
-        <div class="lp-feature-icon">🔄</div>
-        <h3>Change Orders</h3>
-        <p>Track change orders with full net contract adjustment across all billing periods. No lost money from missed COs.</p>
-      </div>
-      <div class="lp-feature">
-        <div class="lp-feature-icon">☁️</div>
-        <h3>Cloud Access</h3>
-        <p>All your projects, secure and accessible from any device, any time. No installs, no IT headaches.</p>
+        <h3>Audit-Ready Records</h3>
+        <p>Every pay app is locked with a complete audit trail. Protects you in disputes and keeps every billing period documented.</p>
       </div>
     </div>
   </div>
 
-  <!-- PRICING / PAY IT FORWARD -->
-  <div class="lp-section-dark">
-    <div style="text-align:center">
+  <!-- PRICING -->
+  <div class="lp-section-dark" id="lp-pricing">
+    <div style="text-align:center;max-width:540px;margin:0 auto">
       <div class="lp-label">Pricing</div>
-      <h2 class="lp-h2" style="color:#fff">This Software Is Free.</h2>
-      <p class="lp-sub">Here's what we ask instead.</p>
-      <div class="lp-pfwd">
-        <h3>We want to be honest with you.</h3>
-        <p>We built this because we saw hardworking contractors wasting hours on billing paperwork that should take minutes. We don't need your money to feel good about building this.</p>
-        <p>Hosting servers, protecting your data, and keeping things running — those things do cost us something. And that's okay. We're blessed. We can carry that.</p>
-        <div class="lp-pfwd-deal">
-          <h4>So here's the deal:</h4>
-          <div class="lp-pfwd-item">
-            <div class="lp-pfwd-emoji">🍔</div>
-            <div><strong>Feed someone in need.</strong> Buy a meal, a bag of groceries, or sit with someone who's struggling. $30 or whatever you can.</div>
-          </div>
-          <div class="lp-pfwd-item">
-            <div class="lp-pfwd-emoji">🤝</div>
-            <div><strong>Donate to a nonprofit.</strong> Any cause you believe in. $30 to a shelter, a food bank, a community org — your choice.</div>
-          </div>
-          <div class="lp-pfwd-item">
-            <div class="lp-pfwd-emoji">📱</div>
-            <div><strong>Post it on social media.</strong> Share what you did. Tag us. Let it inspire someone else to do the same.</div>
-          </div>
+      <h2 class="lp-h2" style="color:#fff;font-size:clamp(36px,5vw,56px);margin-bottom:12px">$64<span style="font-size:0.4em;font-weight:400;opacity:0.7">/month</span></h2>
+      <p class="lp-sub" style="margin-bottom:32px">One invoice we help you collect covers years of this tool.</p>
+      <div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:16px;padding:28px 32px;text-align:left">
+        <p style="color:rgba(255,255,255,0.9);font-size:15px;line-height:1.7;margin:0 0 16px">Upload your documents. Enter this period's work. Export and submit. Then our AI follows up until money is in your account.</p>
+        <div style="border-top:1px solid rgba(255,255,255,0.1);padding-top:16px;margin-top:8px">
+          <p style="color:#10b981;font-weight:600;font-size:15px;margin:0 0 6px">Need help?</p>
+          <p style="color:rgba(255,255,255,0.7);font-size:14px;margin:0;line-height:1.6">Whether you're a subcontractor just getting started, a growing contractor, or an established operation — <a href="mailto:vaakapila@gmail.com" style="color:#10b981;text-decoration:underline">reach out</a>. We'll figure it out together.</p>
         </div>
-        <p style="font-size:15px;font-weight:600;color:#022c22">Then send us a photo or a screenshot. That's it. You're in.</p>
-        <div class="lp-pfwd-closing">We're not building this to get rich. We're building this because we can, and because this industry deserves better tools. If we can feed somebody while we do it — that's the whole point. And when the day comes that we build transaction features and invoicing tools that save you real money — we hope you'll think of us. That's how we grow. Together.</div>
       </div>
+      <button class="lp-btn lp-btn-primary lp-btn-lg" style="background:#fff;color:#10b981;margin-top:28px" onclick="showAuthFromLanding('register')">Get Started →</button>
     </div>
   </div>
 
@@ -878,34 +869,49 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
   <!-- WHO IT'S FOR -->
   <div class="lp-section" id="lp-who">
     <div class="lp-label">Who it's for</div>
-    <h2 class="lp-h2">Built for Contractors Who Build Real Things</h2>
-    <div class="lp-for-list">
-      <div class="lp-for-item"><div class="lp-for-check">✓</div><p><strong>Subcontractors</strong> — electrical, mechanical, plumbing, structural, finishes — billing monthly to a GC</p></div>
-      <div class="lp-for-item"><div class="lp-for-check">✓</div><p><strong>General contractors</strong> coordinating billing across multiple subs</p></div>
-      <div class="lp-for-item"><div class="lp-for-check">✓</div><p><strong>Specialty trades</strong> who want accurate, dispute-proof pay application records</p></div>
-      <div class="lp-for-item"><div class="lp-for-check">✓</div><p><strong>Project managers</strong> tired of reformatting spreadsheets every billing cycle</p></div>
-      <div class="lp-for-item"><div class="lp-for-check">✓</div><p><strong>Any contractor</strong> working on G702/G703 commercial construction contracts in the US</p></div>
+    <h2 class="lp-h2">Any Business Where People Go to the Work</h2>
+    <p class="lp-sub" style="margin-bottom:36px">If your money is tied to completed work in the field — this is for you.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px;max-width:860px;margin:0 auto">
+      <div style="background:#ecfdf5;border:1px solid rgba(16,185,129,0.15);border-radius:14px;padding:24px 22px">
+        <h3 style="color:#064e3b;font-size:16px;margin:0 0 14px">Construction — Market 1</h3>
+        <div class="lp-for-list" style="margin:0">
+          <div class="lp-for-item"><div class="lp-for-check">✓</div><p><strong>Subcontractors</strong> — monthly billing without spreadsheet chaos</p></div>
+          <div class="lp-for-item"><div class="lp-for-check">✓</div><p><strong>General contractors</strong> — standardized billing across every trade and project</p></div>
+          <div class="lp-for-item"><div class="lp-for-check">✓</div><p><strong>Project managers</strong> — audit-ready documentation every billing cycle</p></div>
+          <div class="lp-for-item"><div class="lp-for-check">✓</div><p><strong>Office staff</strong> — clean numbers without manual reconciliation</p></div>
+        </div>
+      </div>
+      <div style="background:#f0fdf4;border:1px solid rgba(16,185,129,0.12);border-radius:14px;padding:24px 22px">
+        <h3 style="color:#064e3b;font-size:16px;margin:0 0 14px">Service Industry — Market 2</h3>
+        <div class="lp-for-list" style="margin:0">
+          <div class="lp-for-item"><div class="lp-for-check">✓</div><p><strong>Electricians & plumbers</strong> — same cash flow pain, solved</p></div>
+          <div class="lp-for-item"><div class="lp-for-check">✓</div><p><strong>HVAC & roofing</strong> — automated billing and follow-up</p></div>
+          <div class="lp-for-item"><div class="lp-for-check">✓</div><p><strong>Landscaping & field services</strong> — less outstanding money, fewer disputes</p></div>
+          <div class="lp-for-item"><div class="lp-for-check">✓</div><p><strong>Any field-based business</strong> — if you do the work and wait to get paid</p></div>
+        </div>
+      </div>
     </div>
   </div>
 
   <!-- FINAL CTA -->
   <div class="lp-cta-band">
-    <h2>Ready to Get Your Time Back?</h2>
-    <p>Set up in under 5 minutes. No credit card. Just do some good in the world.</p>
+    <p style="font-size:clamp(14px,1.8vw,18px);font-weight:500;opacity:0.8;margin-bottom:8px">Cash flow positive. That's not a hope.</p>
+    <h2>That's What We Deliver.</h2>
+    <p style="margin-bottom:28px">Upload your documents. Enter this period's work. Export and submit.<br>Then our AI follows up until money is in your account.</p>
     <div class="lp-cta-btns" style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
-      <button class="lp-btn lp-btn-primary lp-btn-lg" style="background:#fff;color:#10b981" onclick="showAuthFromLanding('register')">Start Free →</button>
+      <button class="lp-btn lp-btn-primary lp-btn-lg" style="background:#fff;color:#10b981" onclick="showAuthFromLanding('register')">Get Started →</button>
       <button class="lp-btn lp-btn-lg" style="color:#fff;border:1.5px solid rgba(255,255,255,0.4);background:transparent" onclick="showAuthFromLanding('login')">Sign In</button>
     </div>
-    <p style="margin-top:18px;font-size:13px;color:rgba(255,255,255,0.5)">Have a photo to share? Email us at <a href="mailto:vaakapila@gmail.com" style="color:rgba(255,255,255,0.7)">vaakapila@gmail.com</a></p>
   </div>
 
   <!-- FOOTER -->
   <footer class="lp-footer" role="contentinfo" id="lp-contact">
     <div class="lp-footer-logo">
-      <img src="/varshyl-logo.png" alt="Varshyl Inc." onerror="this.style.display='none'">
-      <div class="lp-footer-brand">Construction <span>AI</span> Billing</div>
+      <img src="/varshyl-logo.png" alt="ConstructInvoice AI" onerror="this.style.display='none'">
+      <div class="lp-footer-brand">ConstructInvoice <span>AI</span></div>
     </div>
-    <p style="margin-bottom:8px">A product of <strong style="color:rgba(255,255,255,0.85)">Varshyl Inc.</strong> &nbsp;·&nbsp; San Jose, CA</p>
+    <p style="font-style:italic;opacity:0.6;font-size:13px;margin-bottom:12px">AI is here to stay. Let's make the best of it.</p>
+    <p style="margin-bottom:8px">A product of <strong style="color:rgba(255,255,255,0.85)">Varshyl Inc.</strong> &nbsp;·&nbsp; San Jose, California</p>
     <p><a href="mailto:vaakapila@gmail.com">vaakapila@gmail.com</a> &nbsp;·&nbsp; Questions? We're real people and we actually respond.</p>
     <p style="margin-top:14px;font-size:12px">
       <a href="/privacy.html">Privacy Policy</a> &nbsp;·&nbsp;
@@ -1069,7 +1075,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
       <h2 style="font-size:22px;font-weight:700;color:#1a1a2e;margin-bottom:8px">Your 90-day trial has ended</h2>
       <p style="color:#4a5568;font-size:14px;line-height:1.6;margin-bottom:20px">Thanks for trying ConstructInvoice AI! To continue creating pay applications, generating PDFs, and sending invoices, upgrade to Pro.</p>
       <p style="color:#4a5568;font-size:13px;margin-bottom:20px">All your projects, pay applications, and data are safe — they'll be right here when you're ready.</p>
-      <button onclick="showUpgradeModal()" style="background:linear-gradient(135deg,#d97706,#f59e0b);color:#fff;border:none;padding:14px 32px;border-radius:50px;font-size:16px;font-weight:700;cursor:pointer;width:100%;margin-bottom:12px">Continue — $40/month</button>
+      <button onclick="showUpgradeModal()" style="background:linear-gradient(135deg,#d97706,#f59e0b);color:#fff;border:none;padding:14px 32px;border-radius:50px;font-size:16px;font-weight:700;cursor:pointer;width:100%;margin-bottom:12px">Continue — $64/month</button>
       <p style="font-size:12px;color:#94a3b8;margin-bottom:12px">Cancel anytime. No contracts.</p>
       <p style="font-size:12px;color:#64748b;line-height:1.5">Startup, small company, or going through a tough stretch?<br>Email <a href="mailto:vaakapila@gmail.com" style="color:#0369a1">vaakapila@gmail.com</a> — we'll waive your fee until you're making money.</p>
       <div style="margin-top:16px"><a onclick="dismissTrialExpired()" style="color:#94a3b8;font-size:12px;cursor:pointer;text-decoration:underline">Continue in read-only mode</a></div>
@@ -2330,7 +2336,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
             <!-- Branding footer — print only -->
             <div class="print-branding">
               <div style="font-size:11pt;letter-spacing:0.3px;margin-bottom:3px"><span style="color:#6B2FA0;font-weight:bold">Construct</span><span style="color:#E87722;font-weight:bold">Invoice</span> <span style="color:#009B8D;font-weight:bold">AI</span></div>
-              <div style="font-size:8pt;color:#777;margin-bottom:3px;font-style:italic">$0 to use — pay it forward instead: feed a child, help a neighbor 🙏</div>
+              <div style="font-size:8pt;color:#777;margin-bottom:3px;font-style:italic">AI-powered billing · $64/month · constructinv.varshyl.com</div>
               <a href="https://constructinv.varshyl.com" style="font-size:8pt;color:#10b981;text-decoration:none">constructinv.varshyl.com</a>
             </div>
           </div>
@@ -2518,7 +2524,7 @@ function updateLandingNav(){
   } else {
     navBtns.innerHTML = `
       <button class="lp-btn lp-btn-ghost" onclick="showAuthFromLanding('login')">Sign in</button>
-      <button class="lp-btn lp-btn-primary" onclick="showAuthFromLanding('register')">Get started free</button>`;
+      <button class="lp-btn lp-btn-primary" onclick="showAuthFromLanding('register')">Get Started</button>`;
   }
 }
 
@@ -2752,9 +2758,9 @@ async function checkTrialStatus(){
         bannerEl.style.background='linear-gradient(135deg,#fef3c7,#fffbeb)';
         bannerEl.style.borderColor='#fbbf24';
         bannerEl.style.color='#92400e';
-        textEl.innerHTML=`⚠️ Your free trial ends in <strong>${s.days_left} day${s.days_left!==1?'s':''}</strong>. Upgrade to Pro ($40/month) to keep all features.`;
+        textEl.innerHTML=`⚠️ Your free trial ends in <strong>${s.days_left} day${s.days_left!==1?'s':''}</strong>. Upgrade to Pro ($64/month) to keep all features.`;
       } else {
-        textEl.innerHTML=`You have <strong>${s.days_left} days</strong> left in your free trial. Enjoying ConstructInvoice AI? <a onclick="showUpgradeModal()" style="color:#0369a1;cursor:pointer;text-decoration:underline">Go Pro — $40/month</a>`;
+        textEl.innerHTML=`You have <strong>${s.days_left} days</strong> left in your free trial. Enjoying ConstructInvoice AI? <a onclick="showUpgradeModal()" style="color:#0369a1;cursor:pointer;text-decoration:underline">Go Pro — $64/month</a>`;
       }
       bannerEl.classList.remove('hidden');
     }
@@ -2780,7 +2786,7 @@ async function showUpgradeModal(){
     }else{
       alert('Could not start checkout: '+(e.message||'Unknown error')+'. Please email vaakapila@gmail.com for help.');
     }
-    if(event?.target){event.target.disabled=false;event.target.textContent='Upgrade to Pro — $40/month';}
+    if(event?.target){event.target.disabled=false;event.target.textContent='Upgrade to Pro — $64/month';}
   }
 }
 async function manageSubscription(){
@@ -5235,7 +5241,7 @@ const ARIA_SCRIPTS = [
   {keys:['bug','broken','not working','error','issue','problem','crash','fail'],reply:"Ugh, I'm sorry that's happening! 😔 Please describe what went wrong and I'll send it straight to our engineering team. You can also attach a screenshot with the 📎 button. We usually fix critical bugs within 24 hours."},
   {keys:['feature','idea','suggestion','request','wish','add','missing'],reply:"Love hearing ideas! 💡 Tell me what you're envisioning — even a rough description helps. I'll log it in our product backlog with your account info so the team can follow up. What would make your billing life easier?"},
   {keys:['slow','performance','loading','lag'],reply:"Noticed some sluggishness? Thanks for flagging it. Most slowness happens on large SOV files or when generating multi-page PDFs. Try refreshing, and if it persists please let me know the project size and I'll escalate to our infra team. ⚡"},
-  {keys:['price','pricing','cost','charge','subscription','free','pay','trial','upgrade','pro'],reply:"ConstructInvoice AI is free for 90 days — full features, no credit card required! After that it is $40/month for Pro. If you are a small contractor who cannot afford it, email us at vaakapila@gmail.com and we will waive the fee until you are making money. We want every contractor to have access to great billing tools. 🎉"},
+  {keys:['price','pricing','cost','charge','subscription','pay','trial','upgrade','pro'],reply:"ConstructInvoice AI is $64/month. One invoice we help you collect covers years of this tool. Need help or have questions about pricing? Reach out to us at vaakapila@gmail.com — we'd love to work with you. We'll figure it out together. 💪"},
   {keys:['account','login','password','sign in','register','verify'],reply:"For account issues — login problems, verification emails, or password resets — try the login page first. If you're stuck, describe the issue here and I'll escalate it to our support team right away. 🔐"},
   {keys:['team','invite','member','role','accountant','executive','field'],reply:"You can invite team members from your Settings page — assign roles like Accountant, Executive, PM, or Field. They'll get an email invite. The Accountant role gets access to the Revenue & billing history view. 👥"},
   {keys:['g702','g703','format','standard'],reply:"G702 is the Application and Certificate for Payment cover sheet — it shows your total contract, % complete, and amount due. G703 is the Continuation Sheet with the full Schedule of Values breakdown. We generate both automatically from your SOV. 📐"},
@@ -6296,23 +6302,23 @@ function checkAndShowNudge(payAppCount) {
   if (daysLeft <= 7 && daysLeft > 0) {
     icon = '⏰';
     title = `Your trial ends in ${daysLeft} day${daysLeft===1?'':'s'}`;
-    msg = 'Upgrade to Pro to keep creating pay apps, sending invoices, and generating lien waivers. $40/month — cancel anytime.';
+    msg = 'Upgrade to Pro to keep creating pay apps, sending invoices, and generating lien waivers. $64/month — cancel anytime.';
   } else if (daysLeft === 0) {
     icon = '🔒';
     title = 'Your trial has ended';
-    msg = 'Upgrade to Pro ($40/month) to continue billing. Can\'t afford it? Email vaakapila@gmail.com — we\'ll work something out.';
+    msg = 'Upgrade to Pro ($64/month) to continue billing. Can\'t afford it? Email vaakapila@gmail.com — we\'ll work something out.';
   } else if (show5pa && payAppCount >= 5 && daysSinceStart >= 7) {
     icon = '🎉';
     title = `You've created ${payAppCount} pay applications!`;
-    msg = 'Pro users get advanced reporting, priority AI support, and help keep this free for contractors who need it.';
+    msg = 'Pro users get advanced reporting, priority AI support, and full access to all features.';
   } else if (show60 && daysSinceStart >= 60) {
     icon = '💪';
     title = 'Your trial ends in ' + daysLeft + ' days';
-    msg = 'Want to lock in Pro now? $40/month — cancel anytime. Your support helps other contractors use this for free.';
+    msg = 'Want to lock in Pro now? $64/month — cancel anytime. Your support helps other contractors use this for free.';
   } else if (show30 && daysSinceStart >= 30) {
     icon = '👋';
     title = 'Enjoying ConstructInvoice AI?';
-    msg = 'Going Pro helps us keep this free for contractors who need it most, and helps us cover hosting costs.';
+    msg = 'Going Pro keeps your billing automated, your follow-ups running, and your cash flow healthy.';
   } else {
     container.innerHTML = '';
     return;
@@ -6698,8 +6704,8 @@ function renderSettingsUpgradeCard() {
       <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
           <div class="uc-title">Upgrade to Pro</div>
-          <div class="uc-sub">${daysLeft > 0 ? daysLeft + ' days left in your free trial.' : 'Your trial has ended.'} Your support helps other contractors use this for free and keeps our servers running.</div>
-          <div class="uc-price">$40<span style="font-size:14px;font-weight:400;color:#64748b">/month</span></div>
+          <div class="uc-sub">${daysLeft > 0 ? daysLeft + ' days left in your trial.' : 'Your trial has ended.'} Upgrade to keep your billing automated and your cash flow healthy.</div>
+          <div class="uc-price">$64<span style="font-size:14px;font-weight:400;color:#64748b">/month</span></div>
           <div class="uc-period">Cancel anytime. No contracts.</div>
         </div>
         <div>
@@ -6713,7 +6719,7 @@ function renderSettingsUpgradeCard() {
           </ul>
         </div>
       </div>
-      <button class="nudge-btn-pro" onclick="showUpgradeModal()" style="width:100%;padding:12px;font-size:14px">Upgrade to Pro — $40/month</button>
+      <button class="nudge-btn-pro" onclick="showUpgradeModal()" style="width:100%;padding:12px;font-size:14px">Upgrade to Pro — $64/month</button>
       <p style="font-size:11px;color:#64748b;text-align:center;margin-top:8px">Can't afford it? Email vaakapila@gmail.com — we'll work something out.</p>
     </div>`;
 }

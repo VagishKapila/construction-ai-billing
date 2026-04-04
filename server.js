@@ -1977,7 +1977,7 @@ ${pa.special_notes ? `<div style="margin-top:8px;padding:6px 10px;background:#fa
   </div>` : ''}
   <div class="print-branding">
     <div class="brand-name"><span style="color:#6B2FA0;font-weight:bold">Construct</span><span style="color:#E87722;font-weight:bold">Invoice</span> <span style="color:#009B8D;font-weight:bold">AI</span></div>
-    <div class="brand-tagline">$0 to use — pay it forward instead: feed a child, help a neighbor 🙏</div>
+    <div class="brand-tagline">AI-powered billing · $64/month · constructinv.varshyl.com</div>
     <a href="https://constructinv.varshyl.com" class="brand-link">constructinv.varshyl.com</a>
   </div>
 </div>
@@ -3095,7 +3095,7 @@ app.get('/api/subscription', auth, async (req, res) => {
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// ── Stripe Subscription Billing ($40/month Pro plan) ────────────────────────
+// ── Stripe Subscription Billing ($64/month Pro plan) ────────────────────────
 
 // One-time setup: create the Stripe Product + Price (admin only, idempotent)
 app.post('/api/admin/setup-subscription-product', adminAuth, async (req, res) => {
@@ -3116,10 +3116,10 @@ app.post('/api/admin/setup-subscription-product', adminAuth, async (req, res) =>
       description: 'Full access to ConstructInvoice AI — G702/G703 pay apps, lien waivers, payment collection, AI assistant, and more.',
       metadata: { app: 'constructinvoice', tier: 'pro' }
     });
-    // Create price ($40/month)
+    // Create price ($64/month)
     const price = await stripe.prices.create({
       product: product.id,
-      unit_amount: 4000, // $40.00 in cents
+      unit_amount: 6400, // $64.00 in cents
       currency: 'usd',
       recurring: { interval: 'month' },
       metadata: { app: 'constructinvoice', tier: 'pro' }
@@ -3133,8 +3133,8 @@ app.post('/api/admin/setup-subscription-product', adminAuth, async (req, res) =>
       "INSERT INTO app_settings(key,value) VALUES('subscription_product_id',$1) ON CONFLICT(key) DO UPDATE SET value=$1",
       [product.id]
     );
-    console.log(`[Stripe] Created subscription product ${product.id} with price ${price.id} ($40/month)`);
-    res.json({ message: 'Subscription product created', product_id: product.id, price_id: price.id, amount: 4000, interval: 'month' });
+    console.log(`[Stripe] Created subscription product ${product.id} with price ${price.id} ($64/month)`);
+    res.json({ message: 'Subscription product created', product_id: product.id, price_id: price.id, amount: 6400, interval: 'month' });
   } catch(e) { console.error('[Stripe Setup Error]', e.message); res.status(500).json({ error: e.message }); }
 });
 
@@ -3143,7 +3143,7 @@ app.get('/api/subscription/price', auth, async (req, res) => {
   try {
     const r = (await pool.query("SELECT value FROM app_settings WHERE key='subscription_price_id'")).rows[0];
     if (!r?.value) return res.status(404).json({ error: 'Subscription not configured. Admin must run setup first.' });
-    res.json({ price_id: r.value, amount: 4000, currency: 'usd', interval: 'month' });
+    res.json({ price_id: r.value, amount: 6400, currency: 'usd', interval: 'month' });
   } catch(e) { res.status(500).json({ error: 'Internal error' }); }
 });
 
@@ -3816,9 +3816,8 @@ PRODUCT OVERVIEW:
 ConstructInvoice AI generates AIA G702/G703 pay applications for construction projects. Users create projects, upload a Schedule of Values (SOV), then generate pay apps as PDFs.
 
 PRICING:
-- 90-day FREE trial with full features, no credit card required
-- After trial: $40/month Pro plan
-- If a contractor cannot afford it, they can email vaakapila@gmail.com and the team will waive the fee
+- $64/month — one invoice we help you collect covers years of this tool
+- Need help? Email vaakapila@gmail.com — we'll figure it out together
 
 KEY FEATURES & HOW-TO:
 
@@ -5414,7 +5413,7 @@ app.get('/api/revenue/report/pdf', auth, async (req, res) => {
       <thead><tr><th>Job #</th><th>Project</th><th>Pay App</th><th>Period End</th><th style="text-align:right">Contract</th><th style="text-align:right">Invoice Amt</th><th style="text-align:right">Retention</th><th style="text-align:center">Status</th><th style="text-align:center">Paid</th></tr></thead>
       <tbody>${tableRows}</tbody>
     </table>
-    <div class="footer">ConstructInvoice AI · $0 to use — pay it forward instead: feed a child, help a neighbor 🙏</div>
+    <div class="footer">ConstructInvoice AI · $64/month · constructinv.varshyl.com</div>
     </body></html>`;
 
     let pdfBuf;
