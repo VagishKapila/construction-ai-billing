@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
-import { Upload, FileText, ChevronRight, Paperclip, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Upload, FileText, ChevronRight, Paperclip, CheckCircle2, AlertTriangle, ReceiptText, TableProperties, FolderOpen, Scale, X } from 'lucide-react'
 import type { PayApp, SOVLine } from '@/types'
 import { useProject } from '@/hooks/useProject'
 import { useTrial } from '@/hooks/useTrial'
@@ -17,14 +17,16 @@ import { formatCurrency, formatDate } from '@/lib/formatters'
 interface TabConfig {
   id: string
   label: string
+  icon: React.ComponentType<{ className?: string }>
+  accent?: boolean
 }
 
 const TABS: TabConfig[] = [
-  { id: 'payapps', label: 'Pay Applications' },
-  { id: 'sov', label: 'Schedule of Values' },
-  { id: 'changeorders', label: 'Change Orders' },
-  { id: 'documents', label: 'Documents' },
-  { id: 'reconciliation', label: 'Reconciliation' },
+  { id: 'payapps', label: 'Pay Applications', icon: ReceiptText },
+  { id: 'sov', label: 'Schedule of Values', icon: TableProperties },
+  { id: 'changeorders', label: 'Change Orders', icon: FileText },
+  { id: 'documents', label: 'Documents', icon: FolderOpen },
+  { id: 'reconciliation', label: 'Reconciliation', icon: Scale, accent: true },
 ]
 
 function TabBar({
@@ -36,20 +38,28 @@ function TabBar({
 }) {
   return (
     <div className="border-b border-border">
-      <div className="flex gap-6 overflow-x-auto">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => onTabChange(tab.id)}
-            className={`px-1 py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-              activeTab === tab.id
-                ? 'border-primary-500 text-primary-600'
-                : 'border-transparent text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="flex gap-1 sm:gap-4 overflow-x-auto">
+        {TABS.map((tab) => {
+          const Icon = tab.icon
+          const isActive = activeTab === tab.id
+          return (
+            <button
+              key={tab.id}
+              onClick={() => onTabChange(tab.id)}
+              className={`flex items-center gap-1.5 px-3 py-3.5 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+                isActive
+                  ? tab.accent
+                    ? 'border-emerald-500 text-emerald-700 bg-emerald-50/50'
+                    : 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-text-secondary hover:text-text-primary hover:bg-gray-50'
+              }`}
+            >
+              <Icon className={`w-4 h-4 ${isActive && tab.accent ? 'text-emerald-600' : ''}`} />
+              <span className="hidden sm:inline">{tab.label}</span>
+              <span className="sm:hidden">{tab.label.split(' ')[0]}</span>
+            </button>
+          )
+        })}
       </div>
     </div>
   )
@@ -196,14 +206,31 @@ export function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const projectId = Number(id)
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState('payapps')
   const [isCreatingPayApp, setIsCreatingPayApp] = useState(false)
   const [reconciliation, setReconciliation] = useState<ReconciliationReport | null>(null)
   const [reconLoading, setReconLoading] = useState(false)
+  const [successBanner, setSuccessBanner] = useState<string | null>(null)
 
   const { project, sovLines, payApps, changeOrders, attachments, isLoading, error } =
     useProject(projectId)
   const { isTrialGated } = useTrial()
+
+  // Show success banner when redirected from email send
+  useEffect(() => {
+    const sent = searchParams.get('sent')
+    if (sent) {
+      const paNum = sent.replace('pa', '#')
+      setSuccessBanner(`Pay Application ${paNum} sent successfully!`)
+      // Clear the param from URL without navigation
+      searchParams.delete('sent')
+      setSearchParams(searchParams, { replace: true })
+      // Auto-dismiss after 8 seconds
+      const timer = setTimeout(() => setSuccessBanner(null), 8000)
+      return () => clearTimeout(timer)
+    }
+  }, [searchParams, setSearchParams])
 
   // Load reconciliation when tab is active
   useEffect(() => {
@@ -285,6 +312,24 @@ export function ProjectDetail() {
 
   return (
     <div className="space-y-8">
+      {/* Success Banner */}
+      {successBanner && (
+        <div className="rounded-lg bg-emerald-50 border border-emerald-300 p-4 flex items-center justify-between animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-emerald-800">{successBanner}</p>
+              <p className="text-xs text-emerald-600 mt-0.5">
+                Check the <button onClick={() => setActiveTab('reconciliation')} className="underline font-semibold hover:text-emerald-800">Reconciliation</button> tab to verify all invoices add up to the contract total.
+              </p>
+            </div>
+          </div>
+          <button onClick={() => setSuccessBanner(null)} className="text-emerald-400 hover:text-emerald-600 p-1">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Trial Gated Banner */}
       {isTrialGated && (
         <div className="rounded-lg bg-warning-50 border border-warning-200 p-4">

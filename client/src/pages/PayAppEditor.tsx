@@ -27,6 +27,8 @@ import {
   Italic,
   Underline,
   List,
+  CheckCircle2,
+  ArrowRight,
 } from 'lucide-react'
 import type { PayAppLineComputed, ChangeOrder, LienDocument, Attachment } from '@/types'
 import { usePayApp } from '@/hooks/usePayApp'
@@ -294,8 +296,19 @@ function StepTabs({ currentStep, onStepChange }: { currentStep: Step; onStepChan
 }
 
 // ============================================================================
-// STEP NAVIGATION FOOTER
+// STEP NAVIGATION (top + bottom)
 // ============================================================================
+
+interface StepNavProps {
+  currentStep: Step
+  onPrev: () => void
+  onNext: () => void
+  nextLabel?: string
+  onSaveAndNext?: () => void
+  onFinish?: () => void
+  isSaving?: boolean
+  position?: 'top' | 'bottom'
+}
 
 function StepNav({
   currentStep,
@@ -303,21 +316,21 @@ function StepNav({
   onNext,
   nextLabel,
   onSaveAndNext,
+  onFinish,
   isSaving,
-}: {
-  currentStep: Step
-  onPrev: () => void
-  onNext: () => void
-  nextLabel?: string
-  onSaveAndNext?: () => void
-  isSaving?: boolean
-}) {
+  position = 'bottom',
+}: StepNavProps) {
+  const isTop = position === 'top'
   return (
-    <div className="flex justify-between items-center pt-6 border-t border-border mt-6">
+    <div className={`flex justify-between items-center ${
+      isTop
+        ? 'pb-4 border-b border-border mb-4'
+        : 'pt-6 border-t border-border mt-6'
+    }`}>
       {currentStep > 1 ? (
-        <Button onClick={onPrev} variant="outline" className="gap-1">
+        <Button onClick={onPrev} variant="outline" size={isTop ? 'sm' : 'default'} className="gap-1">
           <ChevronLeft className="w-4 h-4" />
-          Back
+          {isTop ? 'Back' : 'Back'}
         </Button>
       ) : (
         <div />
@@ -331,14 +344,115 @@ function StepNav({
         <Button
           onClick={onSaveAndNext || onNext}
           disabled={isSaving}
+          size={isTop ? 'sm' : 'default'}
           className="gap-1 bg-primary-600 hover:bg-primary-700"
         >
           {isSaving ? 'Saving...' : nextLabel || `Next: ${STEP_LABELS[(currentStep + 1) as Step]}`}
           <ChevronRight className="w-4 h-4" />
         </Button>
+      ) : onFinish ? (
+        <Button
+          onClick={onFinish}
+          size={isTop ? 'sm' : 'default'}
+          className="gap-2 bg-primary-600 hover:bg-primary-700"
+        >
+          <CheckCircle2 className="w-4 h-4" />
+          Finish
+        </Button>
       ) : (
         <div />
       )}
+    </div>
+  )
+}
+
+// ============================================================================
+// COMPLETION MODAL — shown when user clicks "Finish"
+// ============================================================================
+
+function CompletionModal({
+  isOpen,
+  payAppNumber,
+  onSendToOwner,
+  onDownloadPDF,
+  onSubmitAndReturn,
+  isSubmitting,
+  isDownloading,
+}: {
+  isOpen: boolean
+  payAppNumber: number
+  onSendToOwner: () => void
+  onDownloadPDF: () => void
+  onSubmitAndReturn: () => void
+  isSubmitting: boolean
+  isDownloading: boolean
+}) {
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+        {/* Header */}
+        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 p-6 text-white text-center">
+          <CheckCircle2 className="w-12 h-12 mx-auto mb-3 opacity-90" />
+          <h2 className="text-xl font-bold">Pay Application #{payAppNumber} Complete</h2>
+          <p className="text-emerald-100 text-sm mt-1">Your invoice is ready. How would you like to proceed?</p>
+        </div>
+
+        {/* Actions */}
+        <div className="p-6 space-y-3">
+          {/* Primary: Send to Owner */}
+          <button
+            onClick={onSendToOwner}
+            className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-green-200 bg-green-50 hover:bg-green-100 hover:border-green-300 transition-all group"
+          >
+            <div className="w-10 h-10 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
+              <Mail className="w-5 h-5 text-white" />
+            </div>
+            <div className="text-left flex-1">
+              <p className="font-semibold text-gray-900">Send to Owner</p>
+              <p className="text-xs text-gray-500">Email the G702/G703 PDF directly</p>
+            </div>
+            <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-green-600 transition-colors" />
+          </button>
+
+          {/* Secondary: Download PDF */}
+          <button
+            onClick={onDownloadPDF}
+            disabled={isDownloading}
+            className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 hover:border-blue-300 transition-all group disabled:opacity-50"
+          >
+            <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
+              <Download className="w-5 h-5 text-white" />
+            </div>
+            <div className="text-left flex-1">
+              <p className="font-semibold text-gray-900">
+                {isDownloading ? 'Generating PDF...' : 'Download PDF'}
+              </p>
+              <p className="text-xs text-gray-500">Save to your computer, submit & return</p>
+            </div>
+            <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-blue-600 transition-colors" />
+          </button>
+
+          {/* Tertiary: Just Submit & Return */}
+          <button
+            onClick={onSubmitAndReturn}
+            disabled={isSubmitting}
+            className="w-full flex items-center gap-4 p-4 rounded-xl border border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition-all group disabled:opacity-50"
+          >
+            <div className="w-10 h-10 rounded-full bg-gray-500 flex items-center justify-center flex-shrink-0">
+              <CheckCircle2 className="w-5 h-5 text-white" />
+            </div>
+            <div className="text-left flex-1">
+              <p className="font-semibold text-gray-900">
+                {isSubmitting ? 'Submitting...' : 'Submit & Return to Project'}
+              </p>
+              <p className="text-xs text-gray-500">Mark as submitted, send later</p>
+            </div>
+            <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition-colors" />
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -1189,37 +1303,68 @@ function Step6Preview({
         </div>
       )}
 
-      {/* Action buttons */}
-      <div className="flex flex-wrap gap-3">
-        <Button onClick={onDownloadPDF} disabled={isTrialGated || isDownloading} className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
-          {isDownloading ? (
-            <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" /> Generating PDF...</>
-          ) : (
-            <><Download className="w-4 h-4" /> Download Pay App PDF</>
-          )}
-        </Button>
-        {linkedLienDocId && (
-          <Button onClick={handleDownloadWithLien} disabled={isTrialGated} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
-            <Download className="w-4 h-4" />
-            Download + Lien Waiver
-          </Button>
-        )}
-        <Button onClick={onOpenEmail} disabled={isTrialGated} className="gap-2 bg-green-600 hover:bg-green-700 text-white">
-          <Mail className="w-4 h-4" />
-          {payApp?.status === 'submitted' ? 'Resend' : 'Send & Mark Submitted'}
-        </Button>
-        {payApp?.payment_link_token && (
+      {/* ── Completion Action Bar ─────────────────────────────────── */}
+      <div className="rounded-xl border-2 border-primary-200 bg-gradient-to-br from-primary-50 to-white p-6 space-y-4">
+        <div className="flex items-center gap-2 mb-1">
+          <CheckCircle2 className="w-5 h-5 text-primary-600" />
+          <h3 className="text-lg font-semibold text-text-primary">Your pay application is ready</h3>
+        </div>
+        <p className="text-sm text-text-secondary">
+          Choose how you'd like to deliver Pay Application #{payApp?.app_number || ''} to the project owner.
+        </p>
+
+        <div className="flex flex-col sm:flex-row gap-3">
+          {/* Primary CTA: Send to Owner */}
           <Button
+            onClick={onOpenEmail}
+            disabled={isTrialGated}
+            className="gap-2 bg-green-600 hover:bg-green-700 text-white flex-1 h-12 text-base font-semibold shadow-md hover:shadow-lg transition-all"
+          >
+            <Mail className="w-5 h-5" />
+            {payApp?.status === 'submitted' ? 'Resend to Owner' : 'Send to Owner'}
+            <ArrowRight className="w-4 h-4 ml-auto opacity-60" />
+          </Button>
+
+          {/* Secondary: Download PDF */}
+          <Button
+            onClick={onDownloadPDF}
+            disabled={isTrialGated || isDownloading}
             variant="outline"
-            className="gap-2"
+            className="gap-2 flex-1 h-12 text-base border-blue-300 text-blue-700 hover:bg-blue-50"
+          >
+            {isDownloading ? (
+              <><span className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin inline-block" /> Generating PDF...</>
+            ) : (
+              <><Download className="w-5 h-5" /> Download PDF</>
+            )}
+          </Button>
+
+          {/* Lien Waiver combo download */}
+          {linkedLienDocId && (
+            <Button
+              onClick={handleDownloadWithLien}
+              disabled={isTrialGated}
+              variant="outline"
+              className="gap-2 h-12 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+            >
+              <Shield className="w-4 h-4" />
+              PDF + Lien Waiver
+            </Button>
+          )}
+        </div>
+
+        {/* Payment link copy */}
+        {payApp?.payment_link_token && (
+          <button
+            className="text-sm text-primary-600 hover:text-primary-700 underline underline-offset-2"
             onClick={() => {
               const url = `${window.location.origin}/pay/${payApp.payment_link_token}`
               navigator.clipboard.writeText(url)
               alert('Payment link copied to clipboard!')
             }}
           >
-            Copy Payment Link
-          </Button>
+            Copy payment link for this invoice
+          </button>
         )}
       </div>
 
@@ -1559,8 +1704,9 @@ function Step6Preview({
         </div>
       </div>
 
-      <p className="text-xs text-text-muted text-center">
-        The client will receive a professional invoice email with the G702/G703 PDF, lien waiver (if attached), and optional &quot;Pay Now&quot; button.
+      <p className="text-xs text-text-muted text-center mt-4">
+        The owner will receive a professional invoice email with the G702/G703 PDF, lien waiver (if attached), and optional &quot;Pay Now&quot; button.
+        After sending, use the <strong>Done — Return to Project</strong> button below to go back to your project dashboard.
       </p>
     </div>
   )
@@ -1749,14 +1895,75 @@ export function PayAppEditor() {
           if (payApp?.status === 'draft') {
             await updatePayApp({ status: 'submitted' } as any)
           }
-          alert('Pay application sent successfully!')
+          // Redirect to project page with success message
+          navigate(`/projects/${projectId}?sent=pa${payApp?.app_number || ''}`)
         }
       } finally {
         setIsEmailLoading(false)
       }
     },
-    [emailPayApp, updatePayApp, payApp, isTrialGated, handleSave],
+    [emailPayApp, updatePayApp, payApp, isTrialGated, handleSave, navigate, projectId],
   )
+
+  // Completion modal state
+  const [isCompletionOpen, setIsCompletionOpen] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Finish — open completion modal (auto-save first)
+  const handleFinish = useCallback(async () => {
+    await autoSaveIfNeeded()
+    setIsCompletionOpen(true)
+  }, [autoSaveIfNeeded])
+
+  // Submit & return to project (from completion modal)
+  const handleSubmitAndReturn = useCallback(async () => {
+    setIsSubmitting(true)
+    try {
+      await handleSave()
+      if (payApp?.status === 'draft') {
+        await updatePayApp({ status: 'submitted' } as any)
+      }
+      navigate(`/projects/${projectId}`)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }, [handleSave, updatePayApp, payApp, navigate, projectId])
+
+  // Download PDF from completion modal — submit, download, then return
+  const handleCompletionDownload = useCallback(async () => {
+    setIsDownloading(true)
+    try {
+      await handleSave()
+      // Mark submitted first so reconciliation is accurate
+      if (payApp?.status === 'draft') {
+        await updatePayApp({ status: 'submitted' } as any)
+      }
+      const token = localStorage.getItem('ci_token')
+      const res = await fetch(`/api/payapps/${payAppId}/pdf?token=${encodeURIComponent(token || '')}`)
+      if (!res.ok) throw new Error('PDF generation failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const projectName = (project as any)?.name?.replace(/\s+/g, '_') || 'Project'
+      a.download = `PayApp_${payApp?.app_number || ''}_${projectName}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      navigate(`/projects/${projectId}`)
+    } catch {
+      alert('Failed to download PDF. Please try again.')
+    } finally {
+      setIsDownloading(false)
+    }
+  }, [handleSave, updatePayApp, payApp, payAppId, project, navigate, projectId])
+
+  // Send to Owner from completion modal — open email modal, close completion
+  const handleCompletionSend = useCallback(() => {
+    setIsCompletionOpen(false)
+    setIsEmailModalOpen(true)
+  }, [])
 
   // Loading
   if (isLoading) {
@@ -1838,6 +2045,18 @@ export function PayAppEditor() {
       {/* Step Tabs */}
       <StepTabs currentStep={currentStep} onStepChange={handleStepChange} />
 
+      {/* Top Step Navigation */}
+      <StepNav
+        currentStep={currentStep}
+        onPrev={() => setCurrentStep((currentStep - 1) as Step)}
+        onNext={() => setCurrentStep((currentStep + 1) as Step)}
+        onSaveAndNext={currentStep === 1 ? handleSaveAndNext : undefined}
+        onFinish={currentStep === 6 ? handleFinish : undefined}
+        nextLabel={currentStep === 1 ? 'Save & Next: Change Orders' : undefined}
+        isSaving={isSaving}
+        position="top"
+      />
+
       {/* Step Content */}
       <motion.div
         key={currentStep}
@@ -1918,6 +2137,7 @@ export function PayAppEditor() {
         onPrev={() => setCurrentStep((currentStep - 1) as Step)}
         onNext={() => setCurrentStep((currentStep + 1) as Step)}
         onSaveAndNext={currentStep === 1 ? handleSaveAndNext : undefined}
+        onFinish={currentStep === 6 ? handleFinish : undefined}
         nextLabel={currentStep === 1 ? 'Save & Next: Change Orders' : undefined}
         isSaving={isSaving}
       />
@@ -1932,6 +2152,17 @@ export function PayAppEditor() {
         defaultCC=""
         payAppNumber={payApp.app_number}
         projectName={project.name}
+      />
+
+      {/* Completion Modal — triggered by "Finish" button */}
+      <CompletionModal
+        isOpen={isCompletionOpen}
+        payAppNumber={payApp.app_number}
+        onSendToOwner={handleCompletionSend}
+        onDownloadPDF={handleCompletionDownload}
+        onSubmitAndReturn={handleSubmitAndReturn}
+        isSubmitting={isSubmitting}
+        isDownloading={isDownloading}
       />
     </div>
   )
