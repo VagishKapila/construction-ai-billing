@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState } from 'react'
+import { Suspense, lazy, useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -65,6 +65,13 @@ const steps = [
 
 export function Landing() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  // Override body background for dark landing page
+  useEffect(() => {
+    const prev = document.body.style.backgroundColor
+    document.body.style.backgroundColor = '#0a0f1a'
+    return () => { document.body.style.backgroundColor = prev }
+  }, [])
 
   const scrollToSection = (id: string): void => {
     const element = document.getElementById(id)
