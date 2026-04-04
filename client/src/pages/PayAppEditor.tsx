@@ -27,6 +27,8 @@ import {
   Italic,
   Underline,
   List,
+  CheckCircle2,
+  ArrowRight,
 } from 'lucide-react'
 import type { PayAppLineComputed, ChangeOrder, LienDocument, Attachment } from '@/types'
 import { usePayApp } from '@/hooks/usePayApp'
@@ -303,6 +305,7 @@ function StepNav({
   onNext,
   nextLabel,
   onSaveAndNext,
+  onFinish,
   isSaving,
 }: {
   currentStep: Step
@@ -310,6 +313,7 @@ function StepNav({
   onNext: () => void
   nextLabel?: string
   onSaveAndNext?: () => void
+  onFinish?: () => void
   isSaving?: boolean
 }) {
   return (
@@ -335,6 +339,14 @@ function StepNav({
         >
           {isSaving ? 'Saving...' : nextLabel || `Next: ${STEP_LABELS[(currentStep + 1) as Step]}`}
           <ChevronRight className="w-4 h-4" />
+        </Button>
+      ) : onFinish ? (
+        <Button
+          onClick={onFinish}
+          className="gap-2 bg-primary-600 hover:bg-primary-700"
+        >
+          <CheckCircle2 className="w-4 h-4" />
+          Done — Return to Project
         </Button>
       ) : (
         <div />
@@ -1189,37 +1201,68 @@ function Step6Preview({
         </div>
       )}
 
-      {/* Action buttons */}
-      <div className="flex flex-wrap gap-3">
-        <Button onClick={onDownloadPDF} disabled={isTrialGated || isDownloading} className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
-          {isDownloading ? (
-            <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" /> Generating PDF...</>
-          ) : (
-            <><Download className="w-4 h-4" /> Download Pay App PDF</>
-          )}
-        </Button>
-        {linkedLienDocId && (
-          <Button onClick={handleDownloadWithLien} disabled={isTrialGated} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
-            <Download className="w-4 h-4" />
-            Download + Lien Waiver
-          </Button>
-        )}
-        <Button onClick={onOpenEmail} disabled={isTrialGated} className="gap-2 bg-green-600 hover:bg-green-700 text-white">
-          <Mail className="w-4 h-4" />
-          {payApp?.status === 'submitted' ? 'Resend' : 'Send & Mark Submitted'}
-        </Button>
-        {payApp?.payment_link_token && (
+      {/* ── Completion Action Bar ─────────────────────────────────── */}
+      <div className="rounded-xl border-2 border-primary-200 bg-gradient-to-br from-primary-50 to-white p-6 space-y-4">
+        <div className="flex items-center gap-2 mb-1">
+          <CheckCircle2 className="w-5 h-5 text-primary-600" />
+          <h3 className="text-lg font-semibold text-text-primary">Your pay application is ready</h3>
+        </div>
+        <p className="text-sm text-text-secondary">
+          Choose how you'd like to deliver Pay Application #{payApp?.app_number || ''} to the project owner.
+        </p>
+
+        <div className="flex flex-col sm:flex-row gap-3">
+          {/* Primary CTA: Send to Owner */}
           <Button
+            onClick={onOpenEmail}
+            disabled={isTrialGated}
+            className="gap-2 bg-green-600 hover:bg-green-700 text-white flex-1 h-12 text-base font-semibold shadow-md hover:shadow-lg transition-all"
+          >
+            <Mail className="w-5 h-5" />
+            {payApp?.status === 'submitted' ? 'Resend to Owner' : 'Send to Owner'}
+            <ArrowRight className="w-4 h-4 ml-auto opacity-60" />
+          </Button>
+
+          {/* Secondary: Download PDF */}
+          <Button
+            onClick={onDownloadPDF}
+            disabled={isTrialGated || isDownloading}
             variant="outline"
-            className="gap-2"
+            className="gap-2 flex-1 h-12 text-base border-blue-300 text-blue-700 hover:bg-blue-50"
+          >
+            {isDownloading ? (
+              <><span className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin inline-block" /> Generating PDF...</>
+            ) : (
+              <><Download className="w-5 h-5" /> Download PDF</>
+            )}
+          </Button>
+
+          {/* Lien Waiver combo download */}
+          {linkedLienDocId && (
+            <Button
+              onClick={handleDownloadWithLien}
+              disabled={isTrialGated}
+              variant="outline"
+              className="gap-2 h-12 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+            >
+              <Shield className="w-4 h-4" />
+              PDF + Lien Waiver
+            </Button>
+          )}
+        </div>
+
+        {/* Payment link copy */}
+        {payApp?.payment_link_token && (
+          <button
+            className="text-sm text-primary-600 hover:text-primary-700 underline underline-offset-2"
             onClick={() => {
               const url = `${window.location.origin}/pay/${payApp.payment_link_token}`
               navigator.clipboard.writeText(url)
               alert('Payment link copied to clipboard!')
             }}
           >
-            Copy Payment Link
-          </Button>
+            Copy payment link for this invoice
+          </button>
         )}
       </div>
 
@@ -1559,8 +1602,9 @@ function Step6Preview({
         </div>
       </div>
 
-      <p className="text-xs text-text-muted text-center">
-        The client will receive a professional invoice email with the G702/G703 PDF, lien waiver (if attached), and optional &quot;Pay Now&quot; button.
+      <p className="text-xs text-text-muted text-center mt-4">
+        The owner will receive a professional invoice email with the G702/G703 PDF, lien waiver (if attached), and optional &quot;Pay Now&quot; button.
+        After sending, use the <strong>Done — Return to Project</strong> button below to go back to your project dashboard.
       </p>
     </div>
   )
@@ -1749,14 +1793,21 @@ export function PayAppEditor() {
           if (payApp?.status === 'draft') {
             await updatePayApp({ status: 'submitted' } as any)
           }
-          alert('Pay application sent successfully!')
+          // Redirect to project page with success message
+          navigate(`/projects/${projectId}?sent=pa${payApp?.app_number || ''}`)
         }
       } finally {
         setIsEmailLoading(false)
       }
     },
-    [emailPayApp, updatePayApp, payApp, isTrialGated, handleSave],
+    [emailPayApp, updatePayApp, payApp, isTrialGated, handleSave, navigate, projectId],
   )
+
+  // Finish — save and return to project
+  const handleFinish = useCallback(async () => {
+    await autoSaveIfNeeded()
+    navigate(`/projects/${projectId}`)
+  }, [autoSaveIfNeeded, navigate, projectId])
 
   // Loading
   if (isLoading) {
@@ -1918,6 +1969,7 @@ export function PayAppEditor() {
         onPrev={() => setCurrentStep((currentStep - 1) as Step)}
         onNext={() => setCurrentStep((currentStep + 1) as Step)}
         onSaveAndNext={currentStep === 1 ? handleSaveAndNext : undefined}
+        onFinish={currentStep === 6 ? handleFinish : undefined}
         nextLabel={currentStep === 1 ? 'Save & Next: Change Orders' : undefined}
         isSaving={isSaving}
       />
