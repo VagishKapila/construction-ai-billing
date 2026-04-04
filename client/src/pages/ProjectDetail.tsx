@@ -227,7 +227,7 @@ export function ProjectDetail() {
       // Auto-generate period label and dates (matching old app.html behavior)
       const now = new Date()
       const months = ['January','February','March','April','May','June','July','August','September','October','November','December']
-      const periodLabel = `${months[now.getMonth()]} ${now.getFullYear()}`
+      const periodLabel = `${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`
       const periodStart = now.toISOString().split('T')[0]
       // Period end = last day of current month
       const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0)

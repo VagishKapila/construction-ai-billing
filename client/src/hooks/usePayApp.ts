@@ -278,6 +278,7 @@ export function usePayApp(
       setError(null);
 
       const payload = lines.map((line) => ({
+        id: line.id,
         sov_line_id: line.sov_line_id,
         this_pct: line.this_pct,
         retainage_pct: line.retainage_pct,
