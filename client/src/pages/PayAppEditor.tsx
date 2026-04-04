@@ -296,8 +296,19 @@ function StepTabs({ currentStep, onStepChange }: { currentStep: Step; onStepChan
 }
 
 // ============================================================================
-// STEP NAVIGATION FOOTER
+// STEP NAVIGATION (top + bottom)
 // ============================================================================
+
+interface StepNavProps {
+  currentStep: Step
+  onPrev: () => void
+  onNext: () => void
+  nextLabel?: string
+  onSaveAndNext?: () => void
+  onFinish?: () => void
+  isSaving?: boolean
+  position?: 'top' | 'bottom'
+}
 
 function StepNav({
   currentStep,
@@ -307,21 +318,19 @@ function StepNav({
   onSaveAndNext,
   onFinish,
   isSaving,
-}: {
-  currentStep: Step
-  onPrev: () => void
-  onNext: () => void
-  nextLabel?: string
-  onSaveAndNext?: () => void
-  onFinish?: () => void
-  isSaving?: boolean
-}) {
+  position = 'bottom',
+}: StepNavProps) {
+  const isTop = position === 'top'
   return (
-    <div className="flex justify-between items-center pt-6 border-t border-border mt-6">
+    <div className={`flex justify-between items-center ${
+      isTop
+        ? 'pb-4 border-b border-border mb-4'
+        : 'pt-6 border-t border-border mt-6'
+    }`}>
       {currentStep > 1 ? (
-        <Button onClick={onPrev} variant="outline" className="gap-1">
+        <Button onClick={onPrev} variant="outline" size={isTop ? 'sm' : 'default'} className="gap-1">
           <ChevronLeft className="w-4 h-4" />
-          Back
+          {isTop ? 'Back' : 'Back'}
         </Button>
       ) : (
         <div />
@@ -335,6 +344,7 @@ function StepNav({
         <Button
           onClick={onSaveAndNext || onNext}
           disabled={isSaving}
+          size={isTop ? 'sm' : 'default'}
           className="gap-1 bg-primary-600 hover:bg-primary-700"
         >
           {isSaving ? 'Saving...' : nextLabel || `Next: ${STEP_LABELS[(currentStep + 1) as Step]}`}
@@ -343,14 +353,106 @@ function StepNav({
       ) : onFinish ? (
         <Button
           onClick={onFinish}
+          size={isTop ? 'sm' : 'default'}
           className="gap-2 bg-primary-600 hover:bg-primary-700"
         >
           <CheckCircle2 className="w-4 h-4" />
-          Done — Return to Project
+          Finish
         </Button>
       ) : (
         <div />
       )}
+    </div>
+  )
+}
+
+// ============================================================================
+// COMPLETION MODAL — shown when user clicks "Finish"
+// ============================================================================
+
+function CompletionModal({
+  isOpen,
+  payAppNumber,
+  onSendToOwner,
+  onDownloadPDF,
+  onSubmitAndReturn,
+  isSubmitting,
+  isDownloading,
+}: {
+  isOpen: boolean
+  payAppNumber: number
+  onSendToOwner: () => void
+  onDownloadPDF: () => void
+  onSubmitAndReturn: () => void
+  isSubmitting: boolean
+  isDownloading: boolean
+}) {
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+        {/* Header */}
+        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 p-6 text-white text-center">
+          <CheckCircle2 className="w-12 h-12 mx-auto mb-3 opacity-90" />
+          <h2 className="text-xl font-bold">Pay Application #{payAppNumber} Complete</h2>
+          <p className="text-emerald-100 text-sm mt-1">Your invoice is ready. How would you like to proceed?</p>
+        </div>
+
+        {/* Actions */}
+        <div className="p-6 space-y-3">
+          {/* Primary: Send to Owner */}
+          <button
+            onClick={onSendToOwner}
+            className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-green-200 bg-green-50 hover:bg-green-100 hover:border-green-300 transition-all group"
+          >
+            <div className="w-10 h-10 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
+              <Mail className="w-5 h-5 text-white" />
+            </div>
+            <div className="text-left flex-1">
+              <p className="font-semibold text-gray-900">Send to Owner</p>
+              <p className="text-xs text-gray-500">Email the G702/G703 PDF directly</p>
+            </div>
+            <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-green-600 transition-colors" />
+          </button>
+
+          {/* Secondary: Download PDF */}
+          <button
+            onClick={onDownloadPDF}
+            disabled={isDownloading}
+            className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 hover:border-blue-300 transition-all group disabled:opacity-50"
+          >
+            <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
+              <Download className="w-5 h-5 text-white" />
+            </div>
+            <div className="text-left flex-1">
+              <p className="font-semibold text-gray-900">
+                {isDownloading ? 'Generating PDF...' : 'Download PDF'}
+              </p>
+              <p className="text-xs text-gray-500">Save to your computer, submit & return</p>
+            </div>
+            <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-blue-600 transition-colors" />
+          </button>
+
+          {/* Tertiary: Just Submit & Return */}
+          <button
+            onClick={onSubmitAndReturn}
+            disabled={isSubmitting}
+            className="w-full flex items-center gap-4 p-4 rounded-xl border border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition-all group disabled:opacity-50"
+          >
+            <div className="w-10 h-10 rounded-full bg-gray-500 flex items-center justify-center flex-shrink-0">
+              <CheckCircle2 className="w-5 h-5 text-white" />
+            </div>
+            <div className="text-left flex-1">
+              <p className="font-semibold text-gray-900">
+                {isSubmitting ? 'Submitting...' : 'Submit & Return to Project'}
+              </p>
+              <p className="text-xs text-gray-500">Mark as submitted, send later</p>
+            </div>
+            <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition-colors" />
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -1803,11 +1905,65 @@ export function PayAppEditor() {
     [emailPayApp, updatePayApp, payApp, isTrialGated, handleSave, navigate, projectId],
   )
 
-  // Finish — save and return to project
+  // Completion modal state
+  const [isCompletionOpen, setIsCompletionOpen] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Finish — open completion modal (auto-save first)
   const handleFinish = useCallback(async () => {
     await autoSaveIfNeeded()
-    navigate(`/projects/${projectId}`)
-  }, [autoSaveIfNeeded, navigate, projectId])
+    setIsCompletionOpen(true)
+  }, [autoSaveIfNeeded])
+
+  // Submit & return to project (from completion modal)
+  const handleSubmitAndReturn = useCallback(async () => {
+    setIsSubmitting(true)
+    try {
+      await handleSave()
+      if (payApp?.status === 'draft') {
+        await updatePayApp({ status: 'submitted' } as any)
+      }
+      navigate(`/projects/${projectId}`)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }, [handleSave, updatePayApp, payApp, navigate, projectId])
+
+  // Download PDF from completion modal — submit, download, then return
+  const handleCompletionDownload = useCallback(async () => {
+    setIsDownloading(true)
+    try {
+      await handleSave()
+      // Mark submitted first so reconciliation is accurate
+      if (payApp?.status === 'draft') {
+        await updatePayApp({ status: 'submitted' } as any)
+      }
+      const token = localStorage.getItem('ci_token')
+      const res = await fetch(`/api/payapps/${payAppId}/pdf?token=${encodeURIComponent(token || '')}`)
+      if (!res.ok) throw new Error('PDF generation failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const projectName = (project as any)?.name?.replace(/\s+/g, '_') || 'Project'
+      a.download = `PayApp_${payApp?.app_number || ''}_${projectName}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      navigate(`/projects/${projectId}`)
+    } catch {
+      alert('Failed to download PDF. Please try again.')
+    } finally {
+      setIsDownloading(false)
+    }
+  }, [handleSave, updatePayApp, payApp, payAppId, project, navigate, projectId])
+
+  // Send to Owner from completion modal — open email modal, close completion
+  const handleCompletionSend = useCallback(() => {
+    setIsCompletionOpen(false)
+    setIsEmailModalOpen(true)
+  }, [])
 
   // Loading
   if (isLoading) {
@@ -1888,6 +2044,18 @@ export function PayAppEditor() {
 
       {/* Step Tabs */}
       <StepTabs currentStep={currentStep} onStepChange={handleStepChange} />
+
+      {/* Top Step Navigation */}
+      <StepNav
+        currentStep={currentStep}
+        onPrev={() => setCurrentStep((currentStep - 1) as Step)}
+        onNext={() => setCurrentStep((currentStep + 1) as Step)}
+        onSaveAndNext={currentStep === 1 ? handleSaveAndNext : undefined}
+        onFinish={currentStep === 6 ? handleFinish : undefined}
+        nextLabel={currentStep === 1 ? 'Save & Next: Change Orders' : undefined}
+        isSaving={isSaving}
+        position="top"
+      />
 
       {/* Step Content */}
       <motion.div
@@ -1984,6 +2152,17 @@ export function PayAppEditor() {
         defaultCC=""
         payAppNumber={payApp.app_number}
         projectName={project.name}
+      />
+
+      {/* Completion Modal — triggered by "Finish" button */}
+      <CompletionModal
+        isOpen={isCompletionOpen}
+        payAppNumber={payApp.app_number}
+        onSendToOwner={handleCompletionSend}
+        onDownloadPDF={handleCompletionDownload}
+        onSubmitAndReturn={handleSubmitAndReturn}
+        isSubmitting={isSubmitting}
+        isDownloading={isDownloading}
       />
     </div>
   )
