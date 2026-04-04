@@ -24,8 +24,8 @@ import {
   AlertTriangle,
   TrendingDown,
   Clock,
-  ShieldCheck,
   DollarSign,
+  Zap,
   Menu,
   X,
 } from 'lucide-react'
@@ -187,7 +187,10 @@ export function Landing() {
               variants={fadeUp}
               className="text-5xl sm:text-6xl md:text-8xl font-black leading-[0.95] tracking-tight"
             >
-              <span className="text-gray-400 text-3xl sm:text-4xl md:text-5xl font-bold block mb-2">In Construction,</span>
+              <span className="inline-flex items-center gap-3 text-3xl sm:text-4xl md:text-5xl font-bold mb-3">
+                <span className="px-4 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400">In Construction</span>
+              </span>
+              <br />
               <span className="text-white">You did the work.</span>
               <br />
               <span className="bg-gradient-to-r from-emerald-400 via-green-400 to-teal-400 bg-clip-text text-transparent">
@@ -310,10 +313,45 @@ export function Landing() {
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
           >
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-sm mb-6">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>AI-Powered Solution</span>
+            {/* AI Brain Visual */}
+            <div className="relative w-32 h-32 mx-auto mb-8">
+              {/* Outer rotating ring */}
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
+                className="absolute inset-0 rounded-full border-2 border-dashed border-emerald-500/30"
+              />
+              {/* Middle pulsing ring */}
+              <motion.div
+                animate={{ scale: [1, 1.15, 1], opacity: [0.3, 0.6, 0.3] }}
+                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                className="absolute inset-2 rounded-full bg-emerald-500/10 border border-emerald-500/20"
+              />
+              {/* Inner core */}
+              <div className="absolute inset-4 rounded-full bg-gradient-to-br from-emerald-500/20 to-green-600/20 flex items-center justify-center">
+                <motion.div
+                  animate={{ scale: [1, 1.1, 1] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                  className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-lg shadow-emerald-500/30"
+                >
+                  <Zap className="w-8 h-8 text-white" />
+                </motion.div>
+              </div>
+              {/* Orbiting dots */}
+              {[0, 1, 2, 3].map((i) => (
+                <motion.div
+                  key={i}
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 8 + i * 2, repeat: Infinity, ease: 'linear' }}
+                  className="absolute inset-0"
+                  style={{ transform: `rotate(${i * 90}deg)` }}
+                >
+                  <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
+                </motion.div>
+              ))}
             </div>
+
+            <p className="text-emerald-400 font-bold text-lg uppercase tracking-widest mb-4">AI-Powered Solution</p>
             <h2 className="text-4xl sm:text-6xl font-black text-white mb-6">
               We fix this.{' '}
               <span className="bg-gradient-to-r from-emerald-400 to-green-400 bg-clip-text text-transparent">Automatically.</span>
