@@ -474,7 +474,7 @@ router.get('/api/projects/:id/reconciliation', auth, async (req, res) => {
     // Retainage release is NOT added to billed — it releases previously held retainage.
     const totalWorkCompleted = totalBilled + totalRetainageHeld;
     const variance = adjustedContract - totalWorkCompleted;
-    const isFullyReconciled = Math.abs(variance) < 0.01;
+    const isFullyReconciled = Math.abs(variance) < 0.02; // allow penny rounding
 
     res.json({
       project_name: project.name,
