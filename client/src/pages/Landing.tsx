@@ -169,20 +169,25 @@ export function Landing() {
             animate="animate"
             className="max-w-4xl"
           >
-            {/* Urgency badge */}
+            {/* 90% stat — prominent glowing banner */}
             <motion.div
               variants={fadeUp}
-              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-red-500/30 bg-red-500/10 text-red-400 text-sm mb-6"
+              className="relative inline-flex items-center gap-3 px-6 py-3 rounded-2xl border border-red-500/30 bg-red-500/10 backdrop-blur-sm mb-8 overflow-hidden"
             >
-              <AlertTriangle className="w-3.5 h-3.5" />
-              <span>90% of businesses can use AI to solve cash flow issues</span>
+              <div className="absolute inset-0 bg-gradient-to-r from-red-500/5 via-red-500/10 to-red-500/5 animate-pulse" />
+              <AlertTriangle className="w-5 h-5 text-red-400 relative z-10 flex-shrink-0" />
+              <span className="relative z-10">
+                <span className="text-3xl sm:text-4xl font-black text-red-400">90%</span>
+                <span className="text-base sm:text-lg text-red-300/80 ml-2">of businesses can use AI to solve cash flow issues</span>
+              </span>
             </motion.div>
 
-            {/* Main headline — BIG, no fluff */}
+            {/* Main headline — industry-specific */}
             <motion.h1
               variants={fadeUp}
               className="text-5xl sm:text-6xl md:text-8xl font-black leading-[0.95] tracking-tight"
             >
+              <span className="text-gray-400 text-3xl sm:text-4xl md:text-5xl font-bold block mb-2">In Construction,</span>
               <span className="text-white">You did the work.</span>
               <br />
               <span className="bg-gradient-to-r from-emerald-400 via-green-400 to-teal-400 bg-clip-text text-transparent">
@@ -190,14 +195,26 @@ export function Landing() {
               </span>
             </motion.h1>
 
-            {/* Sub-headline — specific & punchy */}
+            {/* Sub-headline — branded solution */}
             <motion.p
               variants={fadeUp}
               className="mt-6 text-xl sm:text-2xl text-gray-400 max-w-2xl leading-relaxed"
             >
-              Construction billing is broken. Late invoices, manual follow-ups, and missed leverage windows are{' '}
-              <span className="text-red-400 font-semibold">draining your cash flow</span>. AI fixes that.
+              Late invoices, manual follow-ups, and missed leverage windows are{' '}
+              <span className="text-red-400 font-semibold">draining your cash flow</span>.
             </motion.p>
+            <motion.div
+              variants={fadeUp}
+              className="mt-4 inline-flex items-center gap-2"
+            >
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-green-700 flex items-center justify-center">
+                <Building2 className="w-4 h-4 text-white" />
+              </div>
+              <span className="text-2xl sm:text-3xl font-bold">
+                <span className="text-white">ConstructInv AI</span>{' '}
+                <span className="bg-gradient-to-r from-emerald-400 to-green-400 bg-clip-text text-transparent">fixes that.</span>
+              </span>
+            </motion.div>
 
             {/* CTA row */}
             <motion.div variants={fadeUp} className="mt-10 flex flex-col sm:flex-row items-start gap-4">
