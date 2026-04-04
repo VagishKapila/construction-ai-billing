@@ -102,8 +102,11 @@ async function initDB() {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
     ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS dist_owner      BOOLEAN DEFAULT TRUE;
-    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS dist_architect  BOOLEAN DEFAULT TRUE;
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS dist_architect  BOOLEAN DEFAULT FALSE;
     ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS dist_contractor BOOLEAN DEFAULT FALSE;
+    -- Fix: architect was wrongly defaulting to TRUE — change default and fix existing rows
+    ALTER TABLE pay_apps ALTER COLUMN dist_architect SET DEFAULT FALSE;
+    UPDATE pay_apps SET dist_architect = FALSE WHERE dist_architect = TRUE;
     ALTER TABLE projects  ADD COLUMN IF NOT EXISTS default_retainage NUMERIC(5,2) DEFAULT 10;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id          VARCHAR(200);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified     BOOLEAN DEFAULT FALSE;
@@ -202,6 +205,9 @@ async function initDB() {
     ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS payment_due_date DATE;
     ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
     ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS deleted_by INTEGER REFERENCES users(id);
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ;
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS po_number VARCHAR(100);
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS special_notes TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token VARCHAR(100);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_sent_at TIMESTAMPTZ;
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_7before BOOLEAN DEFAULT TRUE;
@@ -210,6 +216,11 @@ async function initDB() {
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_retention BOOLEAN DEFAULT TRUE;
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_email VARCHAR(300);
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS reminder_phone VARCHAR(50);
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS credit_card_enabled BOOLEAN DEFAULT FALSE;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS nudge_30day BOOLEAN DEFAULT TRUE;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS nudge_60day BOOLEAN DEFAULT TRUE;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS nudge_5payapps BOOLEAN DEFAULT TRUE;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS nudge_dismiss_days INTEGER DEFAULT 7;
 
     -- Contract document upload (optional signed contract attached to project)
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS contract_filename VARCHAR(300);
@@ -222,6 +233,21 @@ async function initDB() {
     ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS payment_received BOOLEAN DEFAULT FALSE;
     ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS payment_received_at TIMESTAMPTZ;
 
+    -- Module 1: Trial & Subscription System (Mar 28 2026)
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_start_date TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_end_date TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(50) DEFAULT 'trial';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_type VARCHAR(50) DEFAULT 'free_trial';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(200);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_subscription_id VARCHAR(200);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS has_completed_onboarding BOOLEAN DEFAULT FALSE;
+
+    -- Backfill existing users: set trial dates based on their registration date
+    UPDATE users SET trial_start_date = created_at WHERE trial_start_date IS NULL;
+    UPDATE users SET trial_end_date = created_at + INTERVAL '90 days' WHERE trial_end_date IS NULL;
+    UPDATE users SET subscription_status = 'trial' WHERE subscription_status IS NULL;
+    UPDATE users SET plan_type = 'free_trial' WHERE plan_type IS NULL;
+
     CREATE TABLE IF NOT EXISTS reminder_log (
       id SERIAL PRIMARY KEY,
       user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -232,6 +258,163 @@ async function initDB() {
       sent_at TIMESTAMPTZ DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_reminder_log ON reminder_log(user_id, reminder_type, sent_at);
+
+    -- Stripe Connect: GC connected accounts
+    CREATE TABLE IF NOT EXISTS connected_accounts (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+      stripe_account_id VARCHAR(200) NOT NULL,
+      account_status VARCHAR(50) DEFAULT 'pending',
+      charges_enabled BOOLEAN DEFAULT FALSE,
+      payouts_enabled BOOLEAN DEFAULT FALSE,
+      business_name VARCHAR(300),
+      payout_schedule VARCHAR(50) DEFAULT 'every_2_days',
+      onboarded_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_connected_stripe_id ON connected_accounts(stripe_account_id);
+
+    -- Payments: tracks every payment from owner to GC
+    CREATE TABLE IF NOT EXISTS payments (
+      id SERIAL PRIMARY KEY,
+      pay_app_id INTEGER REFERENCES pay_apps(id) ON DELETE CASCADE,
+      project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      stripe_payment_intent_id VARCHAR(200),
+      stripe_checkout_session_id VARCHAR(200),
+      payment_token VARCHAR(100) UNIQUE NOT NULL,
+      amount NUMERIC(14,2) NOT NULL,
+      processing_fee NUMERIC(14,2) DEFAULT 0,
+      platform_fee NUMERIC(14,2) DEFAULT 0,
+      payment_method VARCHAR(50),
+      payment_status VARCHAR(50) DEFAULT 'pending',
+      payer_name VARCHAR(300),
+      payer_email VARCHAR(300),
+      payer_phone VARCHAR(100),
+      paid_at TIMESTAMPTZ,
+      failed_at TIMESTAMPTZ,
+      failure_reason TEXT,
+      refunded_at TIMESTAMPTZ,
+      metadata JSONB DEFAULT '{}',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_payments_pay_app ON payments(pay_app_id);
+    CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id);
+    CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(payment_status);
+    CREATE INDEX IF NOT EXISTS idx_payments_token ON payments(payment_token);
+
+    -- Pay app payment tracking columns
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS payment_status VARCHAR(50) DEFAULT 'unpaid';
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS amount_paid NUMERIC(14,2) DEFAULT 0;
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS payment_link_token VARCHAR(100);
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS bad_debt BOOLEAN DEFAULT FALSE;
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS bad_debt_at TIMESTAMPTZ;
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS bad_debt_reason TEXT;
+
+    -- Payment follow-up tracking
+    CREATE TABLE IF NOT EXISTS payment_followups (
+      id SERIAL PRIMARY KEY,
+      payment_id INTEGER REFERENCES payments(id) ON DELETE CASCADE,
+      pay_app_id INTEGER REFERENCES pay_apps(id) ON DELETE CASCADE,
+      followup_type VARCHAR(50) NOT NULL,
+      scheduled_date DATE,
+      sent_at TIMESTAMPTZ,
+      response VARCHAR(50),
+      response_at TIMESTAMPTZ,
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_followups_payapp ON payment_followups(pay_app_id);
+
+    -- User Stripe Connect columns
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_connect_id VARCHAR(200);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS payments_enabled BOOLEAN DEFAULT FALSE;
+
+    -- Optional G702/G703 sections per project (Mar 30 2026)
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS include_architect BOOLEAN DEFAULT TRUE;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS include_retainage BOOLEAN DEFAULT TRUE;
+
+    -- Other invoices: non-contract items (permits, materials, misc) tracked per project
+    CREATE TABLE IF NOT EXISTS other_invoices (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      invoice_number VARCHAR(100),
+      category VARCHAR(100) DEFAULT 'other',
+      description TEXT,
+      vendor VARCHAR(300),
+      amount NUMERIC(14,2) DEFAULT 0,
+      invoice_date DATE DEFAULT CURRENT_DATE,
+      due_date DATE,
+      status VARCHAR(50) DEFAULT 'sent',
+      notes TEXT,
+      attachment_filename VARCHAR(300),
+      attachment_original_name VARCHAR(300),
+      deleted_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_other_invoices_project ON other_invoices(project_id);
+    CREATE INDEX IF NOT EXISTS idx_other_invoices_user ON other_invoices(user_id);
+
+    -- Backfill: existing draft other invoices → sent
+    UPDATE other_invoices SET status = 'sent' WHERE status = 'draft';
+
+    -- App-level settings (Stripe price IDs, feature flags, etc.)
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key VARCHAR(100) PRIMARY KEY,
+      value TEXT,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    -- QuickBooks Online Integration (Phase 8, Apr 2026)
+    CREATE TABLE IF NOT EXISTS quickbooks_connections (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+      realm_id VARCHAR(100) NOT NULL,          -- QB company ID
+      access_token_enc TEXT NOT NULL,           -- encrypted access token
+      refresh_token_enc TEXT NOT NULL,          -- encrypted refresh token
+      token_expires_at TIMESTAMPTZ NOT NULL,
+      company_name VARCHAR(300),
+      company_id VARCHAR(100),
+      sandbox BOOLEAN DEFAULT FALSE,
+      connected_at TIMESTAMPTZ DEFAULT NOW(),
+      last_sync_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_qb_realm ON quickbooks_connections(realm_id);
+
+    CREATE TABLE IF NOT EXISTS quickbooks_sync_log (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+      pay_app_id INTEGER REFERENCES pay_apps(id) ON DELETE SET NULL,
+      sync_type VARCHAR(50) NOT NULL,           -- 'project', 'invoice', 'payment', 'estimate_import'
+      sync_direction VARCHAR(20) NOT NULL,      -- 'push' (to QB) or 'pull' (from QB)
+      qb_entity_type VARCHAR(50),              -- 'Customer', 'Invoice', 'Payment', 'Estimate'
+      qb_entity_id VARCHAR(100),              -- QB entity ID
+      sync_status VARCHAR(50) DEFAULT 'pending', -- 'pending', 'success', 'error', 'skipped'
+      request_payload JSONB,
+      response_payload JSONB,
+      error_message TEXT,
+      synced_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_qb_sync_project ON quickbooks_sync_log(project_id);
+    CREATE INDEX IF NOT EXISTS idx_qb_sync_user ON quickbooks_sync_log(user_id);
+    CREATE INDEX IF NOT EXISTS idx_qb_sync_status ON quickbooks_sync_log(sync_status);
+
+    -- Add QB mapping columns to projects
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS qb_customer_id VARCHAR(100);
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS qb_project_id VARCHAR(100);
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS qb_sync_status VARCHAR(50) DEFAULT 'not_synced';
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS qb_last_synced_at TIMESTAMPTZ;
+
+    -- Add QB mapping columns to pay apps
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS qb_invoice_id VARCHAR(100);
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS qb_payment_id VARCHAR(100);
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS qb_sync_status VARCHAR(50) DEFAULT 'not_synced';
+
+    -- Final retainage release tracking
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS is_retainage_release BOOLEAN DEFAULT FALSE;
   `);
   console.log('Database ready');
 }

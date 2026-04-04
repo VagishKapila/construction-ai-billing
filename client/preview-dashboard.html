@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ConstructInvoice AI - Dashboard Preview</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+* { font-family: 'Inter', sans-serif; }
+body { background: #f8f9fb; margin: 0; }
+
+/* 3D Card Tilt */
+.card-3d {
+  transform-style: preserve-3d;
+  transition: transform 0.4s cubic-bezier(0.03, 0.98, 0.52, 0.99);
+}
+.card-3d:hover {
+  transform: perspective(1000px) rotateY(4deg) rotateX(-3deg) translateZ(8px);
+  box-shadow: 0 25px 50px -12px rgba(99,102,241,0.12);
+}
+.card-3d-depth {
+  transform: translateZ(30px);
+  transform-style: preserve-3d;
+}
+
+/* Spotlight shimmer */
+.spotlight-panel {
+  position: relative;
+  overflow: hidden;
+}
+.spotlight-panel::after {
+  content: '';
+  position: absolute;
+  top: -100%; left: -100%; width: 300%; height: 300%;
+  background: radial-gradient(circle at 30% 30%, rgba(99,102,241,0.06) 0%, transparent 40%);
+  pointer-events: none;
+  transition: all 0.5s;
+}
+.spotlight-panel:hover::after {
+  top: -50%; left: -50%;
+}
+
+/* Animated progress bar */
+@keyframes progressFill { from { width: 0; } }
+.progress-animated { animation: progressFill 1.2s ease-out forwards; }
+
+/* Fade in */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+.fade-up { animation: fadeUp 0.5s ease forwards; opacity: 0; }
+.fade-up-1 { animation-delay: 0.1s; }
+.fade-up-2 { animation-delay: 0.2s; }
+.fade-up-3 { animation-delay: 0.3s; }
+.fade-up-4 { animation-delay: 0.4s; }
+.fade-up-5 { animation-delay: 0.5s; }
+.fade-up-6 { animation-delay: 0.6s; }
+
+/* Row hover slide */
+.project-row { transition: all 0.2s; }
+.project-row:hover { transform: translateX(4px); background: rgba(99,102,241,0.03); }
+</style>
+</head>
+<body>
+<div class="flex min-h-screen">
+  <!-- Sidebar -->
+  <aside class="w-64 bg-white border-r border-gray-200 p-6 flex flex-col">
+    <div class="flex items-center gap-3 mb-10">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+      </div>
+      <span class="font-bold text-gray-900">ConstructInv</span>
+    </div>
+    <nav class="space-y-1 flex-1">
+      <a href="#" class="flex items-center gap-3 px-3 py-2.5 bg-indigo-50 text-indigo-700 rounded-xl text-sm font-medium">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+        Dashboard
+      </a>
+      <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-xl text-sm">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+        Projects
+      </a>
+      <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-xl text-sm">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
+        Payments
+      </a>
+      <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-xl text-sm">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+        Reports
+      </a>
+      <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-xl text-sm">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+        Settings
+      </a>
+    </nav>
+    <div class="pt-4 border-t border-gray-100">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-bold">VK</div>
+        <div>
+          <p class="text-sm font-medium text-gray-900">Vagish K.</p>
+          <p class="text-xs text-gray-500">Varshyl Inc.</p>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="flex-1 p-8 overflow-auto">
+    <!-- Header -->
+    <div class="fade-up flex items-center justify-between mb-8">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
+        <p class="text-sm text-gray-500 mt-1">Welcome back. Here's your billing overview.</p>
+      </div>
+      <button class="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl font-medium text-sm hover:shadow-lg hover:shadow-indigo-500/30 transition-all hover:-translate-y-0.5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+        New Project
+      </button>
+    </div>
+
+    <!-- 3D KPI Cards -->
+    <div class="grid grid-cols-4 gap-5 mb-8">
+      <div class="fade-up fade-up-1 card-3d rounded-2xl bg-white border-2 border-gray-100 p-5 cursor-default">
+        <div class="card-3d-depth">
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Pipeline</p>
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+              <svg class="w-4.5 h-4.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16"></path></svg>
+            </div>
+          </div>
+          <p class="text-3xl font-bold text-gray-900 mt-3 font-mono tabular-nums">$2,418,500</p>
+        </div>
+      </div>
+
+      <div class="fade-up fade-up-2 card-3d rounded-2xl bg-white border-2 border-gray-100 p-5 cursor-default">
+        <div class="card-3d-depth">
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Billed</p>
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+              <svg class="w-4.5 h-4.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+            </div>
+          </div>
+          <p class="text-3xl font-bold text-gray-900 mt-3 font-mono tabular-nums">$847,200</p>
+        </div>
+      </div>
+
+      <div class="fade-up fade-up-3 card-3d rounded-2xl bg-white border-2 border-gray-100 p-5 cursor-default">
+        <div class="card-3d-depth">
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Outstanding</p>
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+              <svg class="w-4.5 h-4.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            </div>
+          </div>
+          <p class="text-3xl font-bold text-gray-900 mt-3 font-mono tabular-nums">$124,350</p>
+          <div class="flex items-center gap-1.5 mt-2">
+            <svg class="w-3.5 h-3.5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"></path></svg>
+            <span class="text-xs font-medium text-red-600">-3.1%</span>
+            <span class="text-xs text-gray-400">vs last month</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="fade-up fade-up-4 card-3d rounded-2xl bg-white border-2 border-gray-100 p-5 cursor-default">
+        <div class="card-3d-depth">
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Collected</p>
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
+              <svg class="w-4.5 h-4.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+            </div>
+          </div>
+          <p class="text-3xl font-bold text-gray-900 mt-3 font-mono tabular-nums">$722,850</p>
+          <div class="flex items-center gap-1.5 mt-2">
+            <svg class="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+            <span class="text-xs font-medium text-green-600">+22.4%</span>
+            <span class="text-xs text-gray-400">vs last month</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Projects + Activity two-column -->
+    <div class="grid grid-cols-5 gap-6">
+      <!-- Projects List -->
+      <div class="fade-up fade-up-5 col-span-3 spotlight-panel rounded-2xl bg-white border-2 border-gray-100 p-6">
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="text-lg font-bold text-gray-900">Active Projects</h2>
+          <a href="#" class="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1">
+            View All
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 17L17 7M17 7H7M17 7v10"></path></svg>
+          </a>
+        </div>
+
+        <div class="space-y-3">
+          <!-- Project Row 1 -->
+          <a href="#" class="project-row flex items-center justify-between p-4 rounded-xl border border-gray-100">
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-semibold text-gray-900">Elm Street Addition</p>
+              <p class="text-xs text-gray-500 mt-0.5">$50,000 contract · Mike Rodriguez</p>
+            </div>
+            <div class="flex items-center gap-4">
+              <div class="w-32">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-xs text-gray-500">60%</span>
+                </div>
+                <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div class="progress-animated h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full" style="width:60%"></div>
+                </div>
+              </div>
+              <span class="px-2.5 py-1 text-xs font-medium rounded-full bg-green-50 text-green-700 border border-green-200">Active</span>
+            </div>
+          </a>
+
+          <!-- Project Row 2 -->
+          <a href="#" class="project-row flex items-center justify-between p-4 rounded-xl border border-gray-100">
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-semibold text-gray-900">Downtown Bathroom Remodel</p>
+              <p class="text-xs text-gray-500 mt-0.5">$42,000 contract · Sarah Chen</p>
+            </div>
+            <div class="flex items-center gap-4">
+              <div class="w-32">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-xs text-gray-500">35%</span>
+                </div>
+                <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div class="progress-animated h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full" style="width:35%"></div>
+                </div>
+              </div>
+              <span class="px-2.5 py-1 text-xs font-medium rounded-full bg-amber-50 text-amber-700 border border-amber-200">In Progress</span>
+            </div>
+          </a>
+
+          <!-- Project Row 3 -->
+          <a href="#" class="project-row flex items-center justify-between p-4 rounded-xl border border-gray-100">
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-semibold text-gray-900">Oak Street Kitchen Renovation</p>
+              <p class="text-xs text-gray-500 mt-0.5">$85,000 contract · Pacific Coast Builders</p>
+            </div>
+            <div class="flex items-center gap-4">
+              <div class="w-32">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-xs text-gray-500">15%</span>
+                </div>
+                <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div class="progress-animated h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full" style="width:15%"></div>
+                </div>
+              </div>
+              <span class="px-2.5 py-1 text-xs font-medium rounded-full bg-green-50 text-green-700 border border-green-200">Active</span>
+            </div>
+          </a>
+
+          <!-- Project Row 4 -->
+          <a href="#" class="project-row flex items-center justify-between p-4 rounded-xl border border-gray-100">
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-semibold text-gray-900">Maple Ave Office Build-Out</p>
+              <p class="text-xs text-gray-500 mt-0.5">$128,000 contract · Sentinel Properties</p>
+            </div>
+            <div class="flex items-center gap-4">
+              <div class="w-32">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-xs text-gray-500">82%</span>
+                </div>
+                <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div class="progress-animated h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full" style="width:82%"></div>
+                </div>
+              </div>
+              <span class="px-2.5 py-1 text-xs font-medium rounded-full bg-green-50 text-green-700 border border-green-200">Active</span>
+            </div>
+          </a>
+        </div>
+      </div>
+
+      <!-- Activity Feed -->
+      <div class="fade-up fade-up-6 col-span-2 spotlight-panel rounded-2xl bg-white border-2 border-gray-100 p-6">
+        <h2 class="text-lg font-bold text-gray-900 mb-5">Recent Activity</h2>
+        <div class="space-y-4">
+          <div class="flex items-start gap-3">
+            <div class="mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center bg-green-50 text-green-600 shrink-0">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
+            </div>
+            <div class="flex-1">
+              <p class="text-sm text-gray-700">ACH payment received — Elm Street Addition</p>
+              <div class="flex items-center gap-2 mt-1">
+                <span class="text-xs font-semibold text-gray-900">$13,475.00</span>
+                <span class="text-xs text-gray-400">2 hours ago</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-start gap-3">
+            <div class="mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center bg-blue-50 text-blue-600 shrink-0">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+            </div>
+            <div class="flex-1">
+              <p class="text-sm text-gray-700">Pay App #3 submitted — Downtown Bathroom</p>
+              <div class="flex items-center gap-2 mt-1">
+                <span class="text-xs font-semibold text-gray-900">$11,340.00</span>
+                <span class="text-xs text-gray-400">5 hours ago</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-start gap-3">
+            <div class="mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center bg-indigo-50 text-indigo-600 shrink-0">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+            </div>
+            <div class="flex-1">
+              <p class="text-sm text-gray-700">New project created — Oak Street Kitchen</p>
+              <div class="flex items-center gap-2 mt-1">
+                <span class="text-xs font-semibold text-gray-900">$85,000.00</span>
+                <span class="text-xs text-gray-400">Yesterday</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-start gap-3">
+            <div class="mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center bg-red-50 text-red-600 shrink-0">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+            </div>
+            <div class="flex-1">
+              <p class="text-sm text-gray-700">Payment overdue — Maple Ave Office (Net 30)</p>
+              <div class="flex items-center gap-2 mt-1">
+                <span class="text-xs font-semibold text-gray-900">$34,560.00</span>
+                <span class="text-xs text-gray-400">3 days ago</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

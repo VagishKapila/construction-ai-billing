@@ -3,10 +3,47 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+
+// ── Stripe SDK (lazy init — only active when STRIPE_SECRET_KEY is set) ──────
+let stripe = null;
+if (process.env.STRIPE_SECRET_KEY) {
+  const Stripe = require('stripe');
+  stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  console.log('[Stripe] SDK initialized' + (process.env.STRIPE_SECRET_KEY.startsWith('sk_test') ? ' (TEST mode)' : ' (LIVE mode)'));
+} else {
+  console.log('[Stripe] No STRIPE_SECRET_KEY — payment features disabled');
+}
 const PDFDocument = require('pdfkit');
 const multer = require('multer');
 let puppeteer = null;
 try { puppeteer = require('puppeteer'); } catch(e) { console.warn('[PDF] Puppeteer not available, falling back to PDFKit'); }
+
+// ── Sharp: optional server-side image compression ─────────────────────────
+// Graceful: if sharp isn't installed or fails to load, compression is skipped
+// silently. Invoices always send regardless. Never crashes the app.
+let sharp = null;
+try { sharp = require('sharp'); console.log('[sharp] Server-side image compression enabled'); }
+catch(e) { console.log('[sharp] Not available — client-side compression only (install sharp + libvips to enable)'); }
+
+async function compressUploadedImage(filePath) {
+  if (!sharp) return; // no sharp = skip silently, original file used as-is
+  const stat = fs.statSync(filePath);
+  if (stat.size < 500 * 1024) return; // skip small files (< 500KB)
+  const tmp = filePath + '.sharp_tmp';
+  try {
+    await sharp(filePath)
+      .resize({ width: 1920, height: 1920, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 85, progressive: true })
+      .toFile(tmp);
+    const newStat = fs.statSync(tmp);
+    fs.renameSync(tmp, filePath);
+    console.log(`[sharp] ${path.basename(filePath)}: ${Math.round(stat.size/1024)}KB → ${Math.round(newStat.size/1024)}KB`);
+  } catch(e) {
+    console.warn('[sharp] Compression failed, using original:', e.message);
+    try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch(_) {}
+    // Original file untouched — invoice processing continues normally
+  }
+}
 const path = require('path');
 const fs = require('fs');
 const { pool, initDB } = require('./db');
@@ -44,8 +81,19 @@ if (!corsOrigin && process.env.NODE_ENV === 'production') {
   console.warn('[SECURITY] WARNING: ALLOWED_ORIGIN is not set in production. Defaulting to wildcard CORS — set this env var immediately.');
 }
 app.use(cors({ origin: corsOrigin || '*' }));
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use((req, res, next) => {
+  // Skip JSON parsing for Stripe webhook — it needs raw body for signature verification
+  if (req.originalUrl === '/api/stripe/webhook') return next();
+  express.json()(req, res, next);
+});
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filePath) => {
+    // Prevent aggressive caching of HTML files so users always get latest version
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    }
+  }
+}));
 const upload = multer({
   dest: 'uploads/',
   limits: { fileSize: 25 * 1024 * 1024 } // 25 MB max per file
@@ -129,14 +177,14 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     const hash  = await bcrypt.hash(password, 10);
     const vTok  = generateToken();
     const r = await pool.query(
-      'INSERT INTO users(name,email,password_hash,verification_token,verification_sent_at) VALUES($1,$2,$3,$4,NOW()) RETURNING id,name,email,email_verified',
+      'INSERT INTO users(name,email,password_hash,verification_token,verification_sent_at,trial_start_date,trial_end_date,subscription_status,plan_type) VALUES($1,$2,$3,$4,NOW(),NOW(),NOW()+INTERVAL \'90 days\',\'trial\',\'free_trial\') RETURNING id,name,email,email_verified,trial_start_date,trial_end_date,subscription_status,plan_type',
       [name, email, hash, vTok]
     );
     const tok = jwt.sign({id:r.rows[0].id,email:email},JWT_SECRET,{expiresIn:'30d'});
     await logEvent(r.rows[0].id, 'user_registered', { email, method: 'email' });
     // Send verification email (non-blocking — don't fail registration if email fails)
     sendVerificationEmail(email, name, vTok).catch(e => console.error('Verify email error:', e.message));
-    res.json({token:tok,user:{...r.rows[0],email_verified:false}});
+    res.json({token:tok,user:{...r.rows[0],email_verified:false,trial_start_date:r.rows[0].trial_start_date,trial_end_date:r.rows[0].trial_end_date,subscription_status:r.rows[0].subscription_status,plan_type:r.rows[0].plan_type,has_completed_onboarding:false}});
   } catch(e) {
     if(e.code==='23505') return res.status(400).json({error:'Email already registered'});
     console.error('[API Error]', e.message); res.status(500).json({error:'Internal server error'});
@@ -161,7 +209,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     if(user.blocked) return res.status(403).json({error:'Your account has been suspended. Please contact support.'});
     const tok = jwt.sign({id:user.id,email:email},JWT_SECRET,{expiresIn:'30d'});
     await logEvent(user.id, 'user_login', { method: 'email' });
-    res.json({token:tok,user:{id:user.id,name:user.name,email:user.email,email_verified:user.email_verified}});
+    res.json({token:tok,user:{id:user.id,name:user.name,email:user.email,email_verified:user.email_verified,trial_start_date:user.trial_start_date,trial_end_date:user.trial_end_date,subscription_status:user.subscription_status,plan_type:user.plan_type,has_completed_onboarding:user.has_completed_onboarding}});
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({error:'Internal server error'}); }
 });
 
@@ -180,7 +228,7 @@ app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
       [resetToken, user.id]
     );
     const appUrl = process.env.APP_URL || 'https://constructinv.varshyl.com';
-    const resetUrl = `${appUrl}/?reset=${resetToken}`;
+    const resetUrl = `${appUrl}/app.html?reset=${resetToken}`;
     const apiKey   = process.env.RESEND_API_KEY;
     const fromEmail = process.env.FROM_EMAIL || 'noreply@varshyl.com';
     if (!apiKey) {
@@ -357,7 +405,7 @@ app.get('/api/auth/google', (req, res) => {
 
 app.get('/api/auth/google/callback', async (req, res) => {
   const { code, error } = req.query;
-  if (error || !code) return res.redirect('/?auth_error=google_denied');
+  if (error || !code) return res.redirect('/app.html?auth_error=google_denied');
   try {
     const redirectUri = `${process.env.APP_URL || 'http://localhost:3000'}/api/auth/google/callback`;
     // Exchange code for tokens
@@ -385,12 +433,12 @@ app.get('/api/auth/google/callback', async (req, res) => {
       if (!user.google_id) {
         await pool.query('UPDATE users SET google_id=$1, email_verified=TRUE WHERE id=$2', [profile.id, user.id]);
       }
-      if (user.blocked) return res.redirect('/?auth_error=account_blocked');
+      if (user.blocked) return res.redirect('/app.html?auth_error=account_blocked');
     } else {
       // New user via Google — auto-verified
       const r = await pool.query(
-        'INSERT INTO users(name,email,password_hash,google_id,email_verified) VALUES($1,$2,$3,$4,TRUE) RETURNING *',
-        [profile.name || profile.email.split('@')[0], profile.email, '', profile.id]
+        'INSERT INTO users(name,email,password_hash,google_id,email_verified,trial_start_date,trial_end_date,subscription_status,plan_type) VALUES($1,$2,$3,$4,TRUE,NOW(),NOW()+INTERVAL \'90 days\',\'trial\',\'free_trial\') RETURNING *',
+        [(profile.name || profile.email.split('@')[0]).replace(/[^\x00-\x7F]/g, '').trim() || profile.email.split('@')[0], profile.email, '', profile.id]
       );
       user = r.rows[0];
       await logEvent(user.id, 'user_registered', { email: user.email, method: 'google' });
@@ -402,10 +450,10 @@ app.get('/api/auth/google/callback', async (req, res) => {
     // Use URL fragment (#) instead of query string — fragments are NOT sent to servers,
     // NOT logged in access logs, and NOT included in Referer headers. This prevents
     // the JWT from leaking through browser history, server logs, or third-party referers.
-    res.redirect(`/#google_token=${tok}`);
+    res.redirect(`/app.html#google_token=${tok}`);
   } catch(e) {
     console.error('Google OAuth error:', e.message);
-    res.redirect('/?auth_error=google_failed');
+    res.redirect('/app.html?auth_error=google_failed');
   }
 });
 
@@ -534,6 +582,18 @@ app.post('/oauth/token', express.json(), express.urlencoded({ extended: false })
   res.json({ access_token: tok, token_type: 'bearer', expires_in: 90 * 24 * 3600 });
 });
 
+// ── Get current user (refresh cached data) ──────────────────────────────────
+app.get('/api/auth/me', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT id, name, email, email_verified, trial_start_date, trial_end_date, subscription_status, plan_type, has_completed_onboarding FROM users WHERE id=$1',
+      [req.user.id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'User not found' });
+    res.json({ user: r.rows[0] });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // ── Email verification ──────────────────────────────────────────────────────
 app.get('/api/auth/verify/:token', async (req, res) => {
   try {
@@ -544,10 +604,10 @@ app.get('/api/auth/verify/:token', async (req, res) => {
        RETURNING id,name,email`,
       [req.params.token]
     );
-    if (!r.rows[0]) return res.redirect('/?verify_error=invalid_or_expired_token');
+    if (!r.rows[0]) return res.redirect('/app.html?verify_error=invalid_or_expired_token');
     await logEvent(r.rows[0].id, 'email_verified', {});
-    res.redirect('/?verified=1');
-  } catch(e) { res.redirect('/?verify_error=server_error'); }
+    res.redirect('/app.html?verified=1');
+  } catch(e) { res.redirect('/app.html?verify_error=server_error'); }
 });
 
 app.post('/api/auth/resend-verification', auth, async (req, res) => {
@@ -564,19 +624,28 @@ app.post('/api/auth/resend-verification', auth, async (req, res) => {
 // ── DASHBOARD STATS — single query for all billing totals
 app.get('/api/stats', auth, async (req,res) => {
   try {
-    const r = await pool.query(`
-      SELECT
-        COALESCE(SUM(sl.scheduled_value * pal.this_pct / 100.0), 0)                               AS total_billed,
-        COALESCE(SUM(sl.scheduled_value * pal.this_pct / 100.0 * pal.retainage_pct / 100.0), 0)  AS total_retainage
-      FROM projects p
-      JOIN pay_apps       pa  ON pa.project_id  = p.id
-      JOIN pay_app_lines  pal ON pal.pay_app_id  = pa.id
-      JOIN sov_lines      sl  ON sl.id           = pal.sov_line_id
-      WHERE p.user_id = $1
-        AND pa.status = 'submitted'
-        AND pa.deleted_at IS NULL
-    `, [req.user.id]);
-    res.json(r.rows[0] || { total_billed: 0, total_retainage: 0 });
+    const [billing, otherInv] = await Promise.all([
+      pool.query(`
+        SELECT
+          COALESCE(SUM(sl.scheduled_value * pal.this_pct / 100.0), 0)                               AS total_billed,
+          COALESCE(SUM(sl.scheduled_value * pal.this_pct / 100.0 * pal.retainage_pct / 100.0), 0)  AS total_retainage
+        FROM projects p
+        JOIN pay_apps       pa  ON pa.project_id  = p.id
+        JOIN pay_app_lines  pal ON pal.pay_app_id  = pa.id
+        JOIN sov_lines      sl  ON sl.id           = pal.sov_line_id
+        WHERE p.user_id = $1
+          AND pa.status = 'submitted'
+          AND pa.deleted_at IS NULL
+      `, [req.user.id]),
+      pool.query(`
+        SELECT COUNT(*) AS other_invoice_count,
+               COALESCE(SUM(amount), 0) AS other_invoice_total
+        FROM other_invoices WHERE user_id=$1 AND deleted_at IS NULL
+      `, [req.user.id])
+    ]);
+    const stats = billing.rows[0] || { total_billed: 0, total_retainage: 0 };
+    const oi = otherInv.rows[0] || { other_invoice_count: 0, other_invoice_total: 0 };
+    res.json({ ...stats, ...oi });
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -587,22 +656,24 @@ app.get('/api/projects', auth, async (req,res) => {
 });
 
 app.post('/api/projects', auth, async (req,res) => {
-  const {name,number,owner,owner_email,owner_phone,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date,est_date,default_retainage} = req.body;
+  const {name,number,owner,owner_email,owner_phone,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date,est_date,default_retainage,payment_terms,include_architect,include_retainage} = req.body;
   const retPct = (default_retainage !== undefined && default_retainage !== null) ? parseFloat(default_retainage) : 10;
+  const inclArch = include_architect !== false;
+  const inclRet = include_retainage !== false;
   const r = await pool.query(
-    `INSERT INTO projects(user_id,name,number,owner,owner_email,owner_phone,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date,est_date,default_retainage)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
-    [req.user.id,name,number,owner,owner_email||null,owner_phone||null,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date||null,est_date||null,retPct]
+    `INSERT INTO projects(user_id,name,number,owner,owner_email,owner_phone,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date,est_date,default_retainage,payment_terms,include_architect,include_retainage)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
+    [req.user.id,name,number,owner,owner_email||null,owner_phone||null,contractor,architect,contact,contact_name,contact_phone,contact_email,building_area,original_contract,contract_date||null,est_date||null,retPct,payment_terms||null,inclArch,inclRet]
   );
   await logEvent(req.user.id, 'project_created', { project_id: r.rows[0].id, contract_value: original_contract });
   res.json(r.rows[0]);
 });
 
 app.put('/api/projects/:id', auth, async (req,res) => {
-  const {name,number,owner,contractor,architect,contact,building_area,original_contract,contract_date} = req.body;
+  const {name,number,owner,contractor,architect,contact,building_area,original_contract,contract_date,include_architect,include_retainage} = req.body;
   const r = await pool.query(
-    'UPDATE projects SET name=$1,number=$2,owner=$3,contractor=$4,architect=$5,contact=$6,building_area=$7,original_contract=$8,contract_date=$9 WHERE id=$10 AND user_id=$11 RETURNING *',
-    [name,number,owner,contractor,architect,contact,building_area,original_contract,contract_date,req.params.id,req.user.id]
+    'UPDATE projects SET name=$1,number=$2,owner=$3,contractor=$4,architect=$5,contact=$6,building_area=$7,original_contract=$8,contract_date=$9,include_architect=COALESCE($12,include_architect),include_retainage=COALESCE($13,include_retainage) WHERE id=$10 AND user_id=$11 RETURNING *',
+    [name,number,owner,contractor,architect,contact,building_area,original_contract,contract_date,req.params.id,req.user.id,include_architect,include_retainage]
   );
   res.json(r.rows[0]);
 });
@@ -688,7 +759,7 @@ app.post('/api/projects/:id/payapps', auth, async (req,res) => {
 
 app.get('/api/payapps/:id', auth, async (req,res) => {
   const pa = await pool.query(
-    'SELECT pa.*,p.name as project_name,p.owner,p.contractor,p.architect,p.contact,p.contact_name,p.contact_phone,p.contact_email,p.original_contract,p.number as project_number,p.building_area,p.id as project_id,p.contract_date,p.payment_terms FROM pay_apps pa JOIN projects p ON p.id=pa.project_id WHERE pa.id=$1 AND p.user_id=$2 AND pa.deleted_at IS NULL',
+    'SELECT pa.*,p.name as project_name,p.owner,p.contractor,p.architect,p.contact,p.contact_name,p.contact_phone,p.contact_email,p.original_contract,p.number as project_number,p.building_area,p.id as project_id,p.contract_date,p.payment_terms,p.include_architect,p.include_retainage FROM pay_apps pa JOIN projects p ON p.id=pa.project_id WHERE pa.id=$1 AND p.user_id=$2 AND pa.deleted_at IS NULL',
     [req.params.id, req.user.id]
   );
   if(!pa.rows[0]) return res.status(404).json({error:'Not found'});
@@ -702,7 +773,7 @@ app.get('/api/payapps/:id', auth, async (req,res) => {
 });
 
 app.put('/api/payapps/:id', auth, async (req,res) => {
-  const {period_label,period_start,period_end,status,architect_certified,architect_name,architect_date,notes} = req.body;
+  const {period_label,period_start,period_end,status,architect_certified,architect_name,architect_date,notes,po_number,special_notes} = req.body;
   // Boolean fields need explicit undefined check — false is valid but falsy
   const distOwner    = req.body.dist_owner    !== undefined ? req.body.dist_owner    : null;
   const distArchitect= req.body.dist_architect!== undefined ? req.body.dist_architect: null;
@@ -732,14 +803,17 @@ app.put('/api/payapps/:id', auth, async (req,res) => {
       notes           = COALESCE($8,  notes),
       dist_owner      = COALESCE($11, dist_owner),
       dist_architect  = COALESCE($12, dist_architect),
-      dist_contractor = COALESCE($13, dist_contractor)
+      dist_contractor = COALESCE($13, dist_contractor),
+      po_number       = COALESCE($14, po_number),
+      special_notes   = COALESCE($15, special_notes)
      WHERE id=$9 AND project_id IN (SELECT id FROM projects WHERE user_id=$10)
      RETURNING *`,
     [period_label||null, period_start||null, period_end||null,
      status||null, architect_certified||null, architect_name||null,
      architect_date||null, notes||null,
      req.params.id, req.user.id,
-     distOwner, distArchitect, distContractor]
+     distOwner, distArchitect, distContractor,
+     po_number||null, special_notes||null]
   );
   if(!r.rows[0]) return res.status(404).json({error:'Not found'});
   if (status === 'submitted') {
@@ -757,7 +831,7 @@ app.put('/api/payapps/:id', auth, async (req,res) => {
         WHERE pal.pay_app_id=$1`, [req.params.id]);
       if (snap.rows[0]) {
         await pool.query(
-          'UPDATE pay_apps SET amount_due=$1, retention_held=$2 WHERE id=$3',
+          'UPDATE pay_apps SET amount_due=$1, retention_held=$2, submitted_at=COALESCE(submitted_at, NOW()) WHERE id=$3',
           [snap.rows[0].amount_due||0, snap.rows[0].retention_held||0, req.params.id]
         );
       }
@@ -787,7 +861,9 @@ app.put('/api/payapps/:id', auth, async (req,res) => {
       }
     } catch(dueErr) { console.error('[Auto due date]', dueErr.message); }
 
-    // Auto-generate unconditional final waiver lien release (non-blocking)
+    // Auto-generate lien waiver on submit (non-blocking)
+    // - Progress payments → Conditional Waiver (with amount, conditional on receiving payment)
+    // - Final payment (≥98% complete) → Unconditional Final Waiver (waives all remaining rights)
     try {
       // Only create if one doesn't already exist for this pay app
       const lienCheck = await pool.query(
@@ -813,13 +889,25 @@ app.put('/api/payapps/:id', auth, async (req,res) => {
           const jurisdiction = proj.jurisdiction || 'california';
           const pay_app_ref = `Pay App #${pa.app_number}${pa.period_label ? ' — ' + pa.period_label : ''}`;
 
-          const fname = `lien_unconditional_final_${req.params.id}_${Date.now()}.pdf`;
+          // Determine if this is a final payment: ≥98% of contract billed
+          const compCheck = await pool.query(`
+            SELECT SUM(sl.scheduled_value) as total_contract,
+                   SUM(sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100) as total_billed
+            FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id
+            WHERE pal.pay_app_id=$1`, [req.params.id]);
+          const totalContract = parseFloat(compCheck.rows[0]?.total_contract || 0);
+          const totalBilled = parseFloat(compCheck.rows[0]?.total_billed || 0);
+          const isFinalPayment = totalContract > 0 && (totalBilled / totalContract) >= 0.98;
+
+          const doc_type = isFinalPayment ? 'unconditional_final_waiver' : 'conditional_waiver';
+          const lienAmountForDoc = isFinalPayment ? 0 : lienAmount; // Unconditional final = no specific amount
+          const fname = `lien_${doc_type}_${req.params.id}_${Date.now()}.pdf`;
           const fpath = path.join(__dirname, 'uploads', fname);
           const signedAt = new Date();
 
           await generateLienDocPDF({
-            fpath, doc_type: 'unconditional_final_waiver', project: proj,
-            through_date, amount: lienAmount,
+            fpath, doc_type, project: proj,
+            through_date, amount: lienAmountForDoc,
             maker_of_check: proj.owner || '',
             check_payable_to: proj.company_name || proj.contractor || '',
             signatory_name, signatory_title: null,
@@ -830,17 +918,33 @@ app.put('/api/payapps/:id', auth, async (req,res) => {
                through_date, amount, maker_of_check, check_payable_to,
                signatory_name, signatory_title, signed_at, signatory_ip)
              VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-            [proj.id, parseInt(req.params.id), 'unconditional_final_waiver', fname, jurisdiction,
-             through_date, lienAmount, proj.owner||null, proj.company_name||proj.contractor||null,
+            [proj.id, parseInt(req.params.id), doc_type, fname, jurisdiction,
+             through_date, lienAmountForDoc, proj.owner||null, proj.company_name||proj.contractor||null,
              signatory_name, null, signedAt, req.ip || 'auto']
           );
-          await logEvent(req.user.id, 'lien_auto_generated', { pay_app_id: parseInt(req.params.id) });
+          await logEvent(req.user.id, 'lien_auto_generated', { pay_app_id: parseInt(req.params.id), doc_type, is_final: isFinalPayment });
         }
       }
     } catch(lienErr) { console.error('[Auto lien release]', lienErr.message); }
   }
   res.json(r.rows[0]);
 });
+
+// Unsubmit: allow owner to revert a submitted pay app back to draft
+app.post('/api/payapps/:id/unsubmit', auth, async (req,res) => {
+  try {
+    const r = await pool.query(
+      `UPDATE pay_apps SET status='draft', submitted_at=NULL
+       WHERE id=$1 AND project_id IN (SELECT id FROM projects WHERE user_id=$2)
+       RETURNING id, status`,
+      [req.params.id, req.user.id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Not found' });
+    await logEvent(req.user.id, 'payapp_unsubmitted', { pay_app_id: parseInt(req.params.id) });
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 
 // ── Soft-delete a pay app (moves to trash, never permanently destroyed) ───────
 // Query param: ?cascade=true → also deletes all subsequent pay apps in the same project
@@ -1031,10 +1135,15 @@ app.post('/api/payapps/:id/attachments', auth, upload.single('file'), async (req
     try { fs.unlinkSync(req.file.path); } catch(_) {}
     return res.status(400).json({ error: 'File type not allowed. Accepted: PDF, images, Word, Excel, CSV.' });
   }
-  const {originalname,filename,size,mimetype} = req.file;
+  // Server-side compression for image attachments (graceful fallback)
+  if (req.file.mimetype.startsWith('image/')) {
+    await compressUploadedImage(path.join(__dirname, 'uploads', req.file.filename)).catch(()=>{});
+  }
+  const {originalname,filename,mimetype} = req.file;
+  const actualSize = (() => { try { return fs.statSync(path.join(__dirname,'uploads',filename)).size; } catch(_) { return req.file.size; } })();
   const r = await pool.query(
     'INSERT INTO attachments(pay_app_id,filename,original_name,file_size,mime_type) VALUES($1,$2,$3,$4,$5) RETURNING *',
-    [req.params.id,filename,originalname,size,mimetype]
+    [req.params.id,filename,originalname,actualSize,mimetype]
   );
   res.json(r.rows[0]);
 });
@@ -1059,6 +1168,17 @@ app.delete('/api/attachments/:id', auth, async (req,res) => {
 //   5. Skip grand-total / subtotal summary rows (don't include them as line items)
 function parseSOVFile(filePath) {
   const XLSX = require('xlsx');
+  // Local helper to normalize summary row descriptions (subtotal/total/balance) to standard keys.
+  // Defined inside parseSOVFile so it's available when QA test evals this function in isolation.
+  function _xlsSummaryLabel(text) {
+    const s = String(text).replace(/\s*[$\d,\.]+.*$/, '').trim().toLowerCase().replace(/\s+/g,' ');
+    if (/sub[\s-]?total/.test(s))   return 'subtotal';
+    if (/balance[\s-]?due/.test(s)) return 'balance_due';
+    if (/amount[\s-]?paid/.test(s)) return 'amount_paid';
+    if (/grand/.test(s))            return 'total';
+    if (/^total/.test(s))           return 'total';
+    return s.replace(/[^a-z0-9_]/g,'_').slice(0,30);
+  }
   const workbook = XLSX.readFile(filePath);
 
   // Prefer Summary sheet
@@ -1095,8 +1215,18 @@ function parseSOVFile(filePath) {
       break;
     }
     // Track best partial match (only amount OR only description) as a fallback
+    // BUT skip rows that have numeric data in other columns — those are data/summary rows, not headers
+    // (e.g. "TOTAL" row with dollar amounts is a summary, not a column header)
     if ((fAmt >= 0 || fDesc >= 0) && bestPartialRow < 0) {
-      bestPartialRow = ri; bestPartialAmt = fAmt; bestPartialDesc = fDesc; bestPartialItem = fItem;
+      let hasNumericData = false;
+      for (let ci = 0; ci < row.length; ci++) {
+        if (ci === fAmt || ci === fDesc || ci === fItem) continue;
+        const v = row[ci];
+        if (typeof v === 'number' && v > 0) { hasNumericData = true; break; }
+      }
+      if (!hasNumericData) {
+        bestPartialRow = ri; bestPartialAmt = fAmt; bestPartialDesc = fDesc; bestPartialItem = fItem;
+      }
     }
   }
   // Fall back to partial match if no row had both
@@ -1142,12 +1272,16 @@ function parseSOVFile(filePath) {
   }
 
   // ── Step 2c: Amount scoring — exclude known cost code columns ────────────────
+  // Amounts are ALWAYS to the RIGHT of descriptions in SOV documents.
+  // Also exclude columns left of description (likely CSI codes even if not detected).
   if (iAmt < 0) {
-    // Re-score amounts excluding cost code cols; rightmost highest-count col wins
+    // Re-score amounts excluding code cols and cols left of description; rightmost highest-count col wins
     const amtScore2 = new Array(nCols).fill(0);
+    const descAnchorForAmt = iDesc >= 0 ? iDesc : 0;
     for (const row of json) {
       for (let ci = 0; ci < row.length; ci++) {
         if (ci === iDesc || costCodeCols.has(ci)) continue;
+        if (ci <= descAnchorForAmt) continue;  // amounts must be RIGHT of descriptions
         const cell = String(row[ci]||'').trim();
         if (!cell || cell.length < 2) continue;
         const n = parseFloat(cell.replace(/[$,\s]/g,''));
@@ -1157,6 +1291,7 @@ function parseSOVFile(filePath) {
     let best = 0;
     for (let ci = 0; ci < nCols; ci++) {
       if (ci === iDesc || costCodeCols.has(ci)) continue;
+      if (ci <= descAnchorForAmt) continue;
       if (amtScore2[ci] >= best) { best = amtScore2[ci]; iAmt = ci; }
     }
   }
@@ -1174,9 +1309,18 @@ function parseSOVFile(filePath) {
   }
 
   // ── Step 3: Parse data rows — skip summary/total rows, collect line items ───
-  const isSummary = (desc, itemId) =>
-    /^(total|subtotal|grand\s*total|total\s+project|total\s+bid|total\s+cost)/i.test(desc) ||
-    /^(total|subtotal|grand\s*total)$/i.test(itemId);
+  const xlsSummary = {};  // captures subtotal/total rows as metadata
+  const isSummary = (desc, itemId, amt) => {
+    const isSum = /^(total|subtotal|grand\s*total|total\s+project|total\s+bid|total\s+cost)/i.test(desc) ||
+                  /^(total|subtotal|grand\s*total)$/i.test(itemId);
+    if (isSum && !isNaN(amt) && amt > 0) {
+      // Prefer itemId for label when it looks like a summary keyword (e.g. "TOTAL"), else use desc
+      const labelText = /^(total|subtotal|grand)/i.test(itemId) ? itemId : (desc || itemId);
+      const key = _xlsSummaryLabel(labelText);
+      xlsSummary[key] = Math.round(amt * 100) / 100;
+    }
+    return isSum;
+  };
 
   const isHeaderLabel = (desc) =>
     /^(section|description|item|scope|no\.|#|trade|work\s*item|csi)/i.test(desc);
@@ -1197,7 +1341,16 @@ function parseSOVFile(filePath) {
 
     if (!desc || desc.length < 2) continue;
     if (isHeaderLabel(desc)) continue;
-    if (isSummary(desc, itemId)) continue;  // skip Grand Total rows; continue so Fee after subtotal is kept
+    if (isSummary(desc, itemId, parseFloat(rawAmt))) continue;  // skip Grand Total rows; capture as summary metadata
+    // Also check other columns for TOTAL/SUBTOTAL labels (e.g. col 0 may have "TOTAL"
+    // while the desc column has a note like "(Excludes Permits...)")
+    let rowHasSummaryLabel = false;
+    for (let ci = 0; ci < row.length; ci++) {
+      if (ci === iDesc || ci === iAmt) continue;
+      const cell = String(row[ci]||'').trim();
+      if (/^(total|subtotal|grand\s*total)$/i.test(cell)) { rowHasSummaryLabel = true; break; }
+    }
+    if (rowHasSummaryLabel && isSummary('total', itemId, parseFloat(rawAmt))) continue;
     if (isNaN(amt) || amt <= 0) continue;   // skip "By Others", blank amounts
 
     // isParent: ends-in-000 CSI division codes, short alpha codes (GC/GL), or blank code
@@ -1247,6 +1400,64 @@ function parseSOVFile(filePath) {
     seen.add(key);
     return true;
   });
+
+  // ── Post-process 3: Lump sum fallback ──────────────────────────────────────
+  // If normal parsing found 0 line items, check for a "lump sum" proposal:
+  // descriptions exist but amounts are only in a TOTAL row. Creates a single
+  // line item with the total amount. Scope descriptions are collected for display
+  // in the SOV review step but only the lump sum line goes to billing.
+  if (allRows.length === 0) {
+    // Scan ALL rows for a TOTAL row with a dollar amount
+    let lumpTotal = 0;
+    const descCol = iDesc >= 0 ? iDesc : (() => {
+      // Find desc column by scoring
+      const maxD = Math.max(...descScore);
+      return maxD > 0 ? descScore.indexOf(maxD) : -1;
+    })();
+    for (let ri = 0; ri < json.length; ri++) {
+      const row = json[ri];
+      for (let ci = 0; ci < row.length; ci++) {
+        const cell = String(row[ci]||'').trim();
+        if (/^(total|grand\s*total)$/i.test(cell)) {
+          // Found a TOTAL label — look for the biggest number in this row
+          for (let ci2 = 0; ci2 < row.length; ci2++) {
+            const n = parseFloat(String(row[ci2]||'').replace(/[$,\s]/g, ''));
+            if (!isNaN(n) && n > lumpTotal) lumpTotal = n;
+          }
+        }
+      }
+    }
+    if (lumpTotal > 0 && descCol >= 0) {
+      // Build line items that mirror the original bid: each scope line at $0,
+      // then a TOTAL line at the bottom with the lump sum amount.
+      const lumpRows = [];
+      // Find the column with CSI codes (col left of descriptions with 4-6 digit numbers)
+      let codeCol = -1;
+      for (let ci = 0; ci < descCol; ci++) {
+        let codeCount = 0, total = 0;
+        for (const row of json) { const v = String(row[ci]||'').trim(); if (!v) continue; total++; if (/^\d{4,6}$/.test(v)) codeCount++; }
+        if (total > 3 && codeCount / total >= 0.4) { codeCol = ci; break; }
+      }
+      // Collect scope lines: rows that have a CSI code with a description (skip boilerplate)
+      for (let ri = 0; ri < json.length; ri++) {
+        const row = json[ri];
+        const code = codeCol >= 0 ? String(row[codeCol]||'').trim() : '';
+        const desc = String(row[descCol]||'').trim();
+        const isCode = /^\d{4,6}$/.test(code);
+        // Must have a valid CSI code — this filters out boilerplate, phone numbers, signatures
+        if (!isCode) continue;
+        // Skip rows where code is a summary label
+        if (/^(total|subtotal|grand)/i.test(code)) continue;
+        if (/^(total|subtotal|grand|note|sincerely|dear |we thank|it is an|signature)/i.test(desc)) continue;
+        if (/^(Altn|option)/i.test(desc)) continue;
+        lumpRows.push({ item_id: code, description: desc || '(scope item)', scheduled_value: 0, is_parent: false });
+      }
+      // Add the TOTAL line at the bottom with the lump sum amount
+      lumpRows.push({ item_id: '', description: 'TOTAL (Lump Sum)', scheduled_value: Math.round(lumpTotal * 100) / 100, is_parent: false });
+      xlsSummary['total'] = Math.round(lumpTotal * 100) / 100;
+      return { headers: ['Item #','Description','Scheduled Value'], sheetName, allRows: lumpRows, parentRows: [], iItem: codeCol, iDesc: descCol, iAmt: -1, summary: xlsSummary, lump_sum: true };
+    }
+  }
 
   const parentRows = allRows.filter(r => r.is_parent);
 
@@ -1326,6 +1537,7 @@ function rowsFromLines(lines) {
   const summary = {};
   const seen = new Set();
   let counter = 1000;
+  let pendingDesc = null; // for PDFs where description is on one line, "CODE $amount" on the next
   for (const raw of merged) {
     const line = raw.trim();
     if (line.length < 5) continue;
@@ -1352,18 +1564,26 @@ function rowsFromLines(lines) {
     if (SKIP_RE.test(line)) continue;
     if (SKIP_META_RE.test(line)) continue;
     const amounts = extractAmounts(line);
-    if (!amounts.length) continue;
+    if (!amounts.length) {
+      // No dollar amount — save as pending description in case next line has a "CODE $amount" pattern
+      const candidate = cleanDesc(line.replace(/\s*\$[\d,]+(?:\.\d{1,2})?.*$/, '').trim());
+      pendingDesc = (candidate.length >= 4 && !/^[\d\s.,\-]+$/.test(candidate)) ? candidate : null;
+      continue;
+    }
     const total = amounts[amounts.length - 1];
-    if (total <= 0) continue;
+    if (total <= 0) { pendingDesc = null; continue; }
     // Description = everything before the amount (strip trailing $X,XXX or bare X,XXX)
     let desc = cleanDesc(
       line.replace(/\s*\$[\d,]+(?:\.\d{1,2})?.*$/, '')
           .replace(/\s+\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?\s*$/, '')
           .trim()
     );
-    // Filter out empty, purely numeric, or numeric-with-punctuation descriptions
-    // (catches "201,186.41" being treated as a description)
-    if (desc.length < 4 || /^[\d\s.,\-]+$/.test(desc)) continue;
+    // If description is empty or purely numeric (e.g. "23000"), try pending description from prior line
+    if (desc.length < 4 || /^[\d\s.,\-]+$/.test(desc)) {
+      if (pendingDesc) { desc = pendingDesc; }
+      else { pendingDesc = null; continue; }
+    }
+    pendingDesc = null;
     if (SKIP_RE.test(desc)) continue;
     const key = desc.toLowerCase();
     if (seen.has(key)) continue;
@@ -1426,27 +1646,38 @@ app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
     let result;
 
     if (ext === '.pdf') {
-      // PDF: use parse_sov.py (pdfplumber) — handles multi-column contractor estimates correctly
-      const pyResult = await new Promise((resolve, reject) => {
-        const { spawn } = require('child_process');
-        // Rename temp file so Python sees .pdf extension
-        const tmpPdf = req.file.path + '.pdf';
-        fs.renameSync(req.file.path, tmpPdf);
-        const py = spawn('python3', [path.join(__dirname, 'parse_sov.py'), tmpPdf]);
-        let out = '', err = '';
-        py.stdout.on('data', d => out += d);
-        py.stderr.on('data', d => err += d);
-        py.on('close', code => {
-          try { fs.renameSync(tmpPdf, req.file.path); } catch(_) {}
-          if (code !== 0 && !out) return reject(new Error(err || 'Python parser failed'));
-          try { resolve(JSON.parse(out)); } catch(e) { reject(new Error('Invalid JSON from parser: ' + out.slice(0,200))); }
+      // PDF: pdfplumber (Python) first — correct multi-column table handling.
+      // Falls back to pure-JS pdf-parse if Python is not available on this server.
+      let parsed = null;
+      try {
+        parsed = await new Promise((resolve, reject) => {
+          const { spawn } = require('child_process');
+          const tmpPdf = req.file.path + '.pdf';
+          fs.renameSync(req.file.path, tmpPdf);
+          const py = spawn('python3', [path.join(__dirname, 'parse_sov.py'), tmpPdf]);
+          let out = '', err = '';
+          py.stdout.on('data', d => out += d);
+          py.stderr.on('data', d => err += d);
+          py.on('error', (e) => {
+            try { fs.renameSync(tmpPdf, req.file.path); } catch(_) {}
+            reject(e);
+          });
+          py.on('close', code => {
+            try { fs.renameSync(tmpPdf, req.file.path); } catch(_) {}
+            const combined = out + err;
+            let r = null;
+            for (const s of [out, err]) { try { r = JSON.parse(s.trim()); break; } catch(_) {} }
+            if (!r) { const m = combined.match(/\{[\s\S]*\}/); if (m) { try { r = JSON.parse(m[0]); } catch(_) {} } }
+            if (r) return resolve(r);
+            reject(new Error('Parser output: ' + combined.slice(0, 200)));
+          });
         });
-      });
-      if (pyResult.error) {
-        cleanup();
-        return res.status(422).json({ error: pyResult.error });
+        console.log('[PDF] pdfplumber parsed', parsed.row_count, 'rows');
+      } catch(e) {
+        console.log('[PDF] Python unavailable, using pure-JS fallback:', e.message);
+        parsed = await parseSOVFromText(req.file.path, ext);
       }
-      const rows = pyResult.rows || [];
+      const rows = (parsed && parsed.rows) || [];
       if (!rows.length) {
         cleanup();
         return res.status(422).json({ error: 'No line items with dollar amounts could be extracted from this PDF. If it is a scanned/image PDF, try uploading a Word (.docx) or Excel (.xlsx) version instead.' });
@@ -1455,6 +1686,7 @@ app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
       result = {
         rows, all_rows: rows,
         row_count: rows.length, total_rows: rows.length,
+        summary, computed_total, reported_total,
         filename: req.file.originalname,
         sheet_used: 'PDF',
         summary: pyResult.summary || {},
@@ -1472,6 +1704,7 @@ app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
       result = {
         rows, all_rows: rows,
         row_count: rows.length, total_rows: rows.length,
+        summary, computed_total, reported_total,
         filename: req.file.originalname,
         sheet_used: ext.replace('.','').toUpperCase(),
         summary: parseResult.summary || {},
@@ -1488,6 +1721,7 @@ app.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
         rows:       parsed.allRows,
         row_count:  parsed.allRows.length,
         total_rows: parsed.allRows.length,
+        summary, computed_total, reported_total,
         filename:   req.file.originalname,
         sheet_used: parsed.sheetName,
         summary:    parsed.summary || {},
@@ -1511,11 +1745,12 @@ app.get('/api/projects/:id/sov/uploads', auth, async (req, res) => {
 // Contract routes handled below in Phase 1 section (lines ~2063+)
 
 // ── Generate a self-contained HTML document that mirrors the on-screen preview ──
-function generatePayAppHTML(pa, lines, cos, totals, logoBase64, sigBase64) {
+function generatePayAppHTML(pa, lines, cos, totals, logoBase64, sigBase64, photoAttachments=[], docAttachments=[]) {
   const { tComp, tRet, tPrevCert, tCO, contract, earned, due } = totals;
   const fmtM = n => '$' + parseFloat(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 
   // Build G703 rows and accumulate totals
+  const showRet = pa.include_retainage !== false;
   let tSV=0, tPrev2=0, tThis2=0, tComp2=0, tRet2=0;
   const g703Rows = lines.map(r => {
     const sv   = parseFloat(r.scheduled_value);
@@ -1526,6 +1761,17 @@ function generatePayAppHTML(pa, lines, cos, totals, logoBase64, sigBase64) {
     const ret  = comp * parseFloat(r.retainage_pct) / 100;
     const bal  = sv - comp;
     tSV += sv; tPrev2 += prev; tThis2 += thisPer; tComp2 += comp; tRet2 += ret;
+    if (sv === 0) return `<tr style="background:#f9f9f9;color:#999">
+      <td style="border:1px solid #ccc;padding:3px 5px">${r.item_id||''}</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;font-style:italic">${r.description||''}</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:center;font-style:italic;font-size:8pt">Included</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td>
+      ${showRet ? '<td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td><td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td>' : ''}
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:center">-</td>
+    </tr>`;
     return `<tr>
       <td style="border:1px solid #ccc;padding:3px 5px">${r.item_id||''}</td>
       <td style="border:1px solid #ccc;padding:3px 5px">${r.description||''}</td>
@@ -1534,8 +1780,8 @@ function generatePayAppHTML(pa, lines, cos, totals, logoBase64, sigBase64) {
       <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(thisPer)}</td>
       <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(comp)}</td>
       <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${pctComp.toFixed(0)}%</td>
-      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${parseFloat(r.retainage_pct).toFixed(0)}%</td>
-      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(ret)}</td>
+      ${showRet ? `<td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${parseFloat(r.retainage_pct).toFixed(0)}%</td>
+      <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(ret)}</td>` : ''}
       <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(bal)}</td>
     </tr>`;
   }).join('');
@@ -1567,8 +1813,8 @@ body{font-family:'Times New Roman',Times,serif;font-size:9pt;color:#000;backgrou
 .aia-title h1{font-size:12pt;font-weight:bold;margin-bottom:2px}
 .aia-title h2{font-size:9.5pt;font-weight:normal;color:#444;margin-bottom:5px}
 .aia-title p{font-size:8.5pt;margin:2px 0}
-.aia-appnum{flex:0 0 145px;text-align:right;font-size:8.5pt;line-height:1.5}
-.aia-appnum .big{font-size:15pt;font-weight:bold;display:block}
+.aia-appnum{flex:0 0 180px;text-align:right;font-size:8.5pt;line-height:1.5}
+.aia-appnum .big{font-size:11pt;font-weight:bold}
 /* Payment terms */
 .aia-payment-terms{font-size:8.5pt;background:#f5f9ff;border:1px solid #c8daf5;padding:4px 9px;border-radius:3px;margin-bottom:8px}
 /* Summary grid */
@@ -1587,9 +1833,10 @@ body{font-family:'Times New Roman',Times,serif;font-size:9pt;color:#000;backgrou
 .aia-checkbox.checked{background:#10b981}
 /* Signature boxes */
 .aia-sig-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
-.aia-sig-box{border:1px solid #ccc;padding:10px;border-radius:4px}
+.aia-sig-box{border:1px solid #ccc;padding:10px;border-radius:4px;display:flex;flex-direction:column;min-height:120px}
 .aia-sig-title{font-weight:bold;font-size:9pt;margin-bottom:6px;border-bottom:1px solid #eee;padding-bottom:4px}
-.aia-sig-line{border-bottom:1px solid #333;margin:8px 0 4px}
+.aia-sig-spacer{flex:1}
+.aia-sig-line{border-bottom:1px solid #333;margin:4px 0 4px}
 .aia-sig-label{font-size:7.5pt;color:#555}
 .aia-sig-note{font-size:7.5pt;color:#555;margin-bottom:8px;line-height:1.4}
 /* G703 */
@@ -1614,13 +1861,14 @@ td{border:1px solid #ddd;padding:2px 5px}
     <h1>Application and Certificate for Payment</h1>
     <h2>Document G702</h2>
     <p>TO OWNER: <strong>${pa.owner||'—'}</strong> &nbsp;&nbsp; PROJECT: <strong>${pa.pname||'—'}</strong></p>
-    <p>FROM CONTRACTOR: <strong>${pa.contractor||'—'}</strong> &nbsp;&nbsp; ARCHITECT: <strong>${pa.architect||'—'}</strong></p>
+    <p>FROM CONTRACTOR: <strong>${pa.contractor||'—'}</strong>${pa.include_architect !== false ? ` &nbsp;&nbsp; ARCHITECT: <strong>${pa.architect||'—'}</strong>` : ''}</p>
   </div>
   <div class="aia-appnum">
     <span class="big">#${pa.app_number}</span>
     <div>Period: ${pa.period_label||'—'}</div>
     <div>Contract date: ${contractDate}</div>
     <div>Project No: ${pa.pnum||'—'}</div>
+    ${pa.po_number ? `<div style="margin-top:2px;font-size:7pt;overflow-wrap:break-word;word-break:break-word">PO #: <span style="font-weight:600">${pa.po_number}</span></div>` : ''}
   </div>
 </div>
 
@@ -1642,29 +1890,33 @@ td{border:1px solid #ddd;padding:2px 5px}
 <div class="aia-distribution">
   <div class="aia-dist-title">Distribution to:</div>
   <div class="aia-dist-grid">
-    <div class="aia-dist-item"><div class="aia-checkbox checked"></div><span>Owner</span></div>
-    <div class="aia-dist-item"><div class="aia-checkbox checked"></div><span>Architect</span></div>
-    <div class="aia-dist-item"><div class="aia-checkbox"></div><span>Contractor file</span></div>
+    <div class="aia-dist-item"><div class="aia-checkbox${pa.dist_owner !== false ? ' checked' : ''}"></div><span>Owner</span></div>
+    <div class="aia-dist-item"><div class="aia-checkbox${pa.dist_architect === true ? ' checked' : ''}"></div><span>Architect</span></div>
+    <div class="aia-dist-item"><div class="aia-checkbox${pa.dist_contractor === true ? ' checked' : ''}"></div><span>Contractor file</span></div>
   </div>
 </div>
 
-<div class="aia-sig-grid">
+<div class="aia-sig-grid" ${pa.include_architect === false ? 'style="grid-template-columns:1fr"' : ''}>
   <div class="aia-sig-box">
     <div class="aia-sig-title">Contractor's Signed Certification</div>
     <p class="aia-sig-note">The undersigned Contractor certifies that to the best of the Contractor's knowledge, information and belief the Work covered by this Application for Payment has been completed in accordance with the Contract Documents.</p>
+    <div class="aia-sig-spacer"></div>
     ${sigHtml}
     <div class="aia-sig-line"></div>
     <div class="aia-sig-label">Authorized Signature &nbsp;&nbsp;&nbsp; Date: ${today}</div>
     ${contactName ? `<div style="font-size:8.5pt;font-weight:bold;margin-top:5px;color:#222">${contactName}</div><div style="font-size:7.5pt;color:#666">${companyDisplayName}</div>` : (companyDisplayName ? `<div style="font-size:8.5pt;font-weight:bold;margin-top:5px;color:#222">${companyDisplayName}</div>` : '')}
   </div>
-  <div class="aia-sig-box">
+  ${pa.include_architect !== false ? `<div class="aia-sig-box">
     <div class="aia-sig-title">Architect's Certificate for Payment</div>
     <p class="aia-sig-note">In accordance with the Contract Documents, the Architect certifies to the Owner that the Work has progressed to the point indicated and the quality of the Work is in accordance with the Contract Documents.</p>
     <div style="font-size:8pt;margin-bottom:4px">Amount Certified: <strong>${pa.architect_certified ? fmtM(pa.architect_certified) : 'Pending'}</strong></div>
+    <div class="aia-sig-spacer"></div>
     <div class="aia-sig-line"></div>
     <div class="aia-sig-label">Architect Signature &nbsp;&nbsp;&nbsp; Date: ${pa.architect_date ? new Date(pa.architect_date).toLocaleDateString() : ''}</div>
-  </div>
+  </div>` : ''}
 </div>
+
+${pa.special_notes ? `<div style="margin-top:8px;padding:6px 10px;background:#fafafa;border:1px solid #ddd;border-radius:4px;font-size:8pt;color:#333"><strong>Notes:</strong> ${pa.special_notes}</div>` : ''}
 
 <!-- G703 PAGE (page break before) -->
 <div class="aia-g703-section">
@@ -1680,35 +1932,158 @@ td{border:1px solid #ddd;padding:2px 5px}
         <th style="text-align:right;width:72px">Work This Period</th>
         <th style="text-align:right;width:72px">Total Completed</th>
         <th style="text-align:right;width:44px">% Comp.</th>
-        <th style="text-align:right;width:40px">Ret.%</th>
-        <th style="text-align:right;width:70px">Retainage $</th>
+        ${showRet ? '<th style="text-align:right;width:40px">Ret.%</th><th style="text-align:right;width:70px">Retainage $</th>' : ''}
         <th style="text-align:right;width:72px">Balance to Finish</th>
       </tr>
     </thead>
-    <tbody>${g703Rows}</tbody>
+    <tbody>${g703Rows}${cos.length ? `
+      <tr style="background:#fffbe6;border-top:2px solid #999">
+        <td colspan="${showRet ? 10 : 8}" style="border:1px solid #ccc;padding:5px;font-weight:bold;font-size:8pt;color:#444">CHANGE ORDERS</td>
+      </tr>
+      ${cos.map(co => {
+        const coAmt = parseFloat(co.amount || 0);
+        tSV += coAmt; tComp2 += coAmt; // COs add to scheduled value and are 100% complete when approved
+        return `<tr style="background:#fffbe6">
+          <td style="border:1px solid #ccc;padding:3px 5px;font-style:italic">CO-${co.co_number||''}</td>
+          <td style="border:1px solid #ccc;padding:3px 5px">${co.description||''} ${co.status ? '('+co.status+')' : ''}</td>
+          <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(coAmt)}</td>
+          <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">-</td>
+          <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(coAmt)}</td>
+          <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">${fmtM(coAmt)}</td>
+          <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">100%</td>
+          ${showRet ? '<td style="border:1px solid #ccc;padding:3px 5px;text-align:right">-</td><td style="border:1px solid #ccc;padding:3px 5px;text-align:right">-</td>' : ''}
+          <td style="border:1px solid #ccc;padding:3px 5px;text-align:right">$0.00</td>
+        </tr>`;
+      }).join('')}` : ''}</tbody>
     <tfoot>
       <tr class="tfoot-row">
         <td></td>
-        <td>GRAND TOTAL</td>
+        <td>GRAND TOTAL (incl. Change Orders)</td>
         <td style="text-align:right">${fmtM(tSV)}</td>
         <td style="text-align:right">${fmtM(tPrev2)}</td>
         <td style="text-align:right">${fmtM(tThis2)}</td>
         <td style="text-align:right">${fmtM(tComp2)}</td>
         <td style="text-align:right">${tSV>0?(tComp2/tSV*100).toFixed(0)+'%':'0%'}</td>
-        <td></td>
-        <td style="text-align:right">${fmtM(tRet2)}</td>
+        ${showRet ? `<td></td><td style="text-align:right">${fmtM(tRet2)}</td>` : ''}
         <td style="text-align:right">${fmtM(tSV-tComp2)}</td>
       </tr>
     </tfoot>
   </table>
+  ${pa.payment_link_token && due > 0 ? `
+  <div style="text-align:center;margin:18px 0 10px;padding:14px 20px;background:#f0f4ff;border:1.5px solid #93c5fd;border-radius:8px">
+    <div style="font-size:9pt;color:#555;margin-bottom:6px">Pay this invoice online — ACH or credit card</div>
+    <a href="https://constructinv.varshyl.com/pay/${pa.payment_link_token}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 28px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:10pt">Pay Now — ${fmtM(due)}</a>
+    <div style="font-size:7.5pt;color:#888;margin-top:6px">constructinv.varshyl.com/pay/${pa.payment_link_token}</div>
+  </div>` : ''}
   <div class="print-branding">
     <div class="brand-name"><span style="color:#6B2FA0;font-weight:bold">Construct</span><span style="color:#E87722;font-weight:bold">Invoice</span> <span style="color:#009B8D;font-weight:bold">AI</span></div>
     <div class="brand-tagline">$0 to use — pay it forward instead: feed a child, help a neighbor 🙏</div>
     <a href="https://constructinv.varshyl.com" class="brand-link">constructinv.varshyl.com</a>
   </div>
 </div>
+${photoAttachments.length ? `
+<div style="page-break-before:always;padding:28px 36px">
+  <div style="border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:18px">
+    <span style="font-size:12pt;font-weight:bold;font-family:'Times New Roman',serif">Site Photos — Attachment</span>
+    <span style="font-size:9pt;color:#555;margin-left:12px">Pay App #${pa.app_number}${pa.period_label ? ' · ' + pa.period_label : ''}</span>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:16px">
+    ${photoAttachments.map((p, i) => `
+    <div style="break-inside:avoid;text-align:center;width:245px">
+      <img src="${p.base64}" style="width:245px;max-height:200px;object-fit:contain;border:1px solid #ccc;display:block"/>
+      <div style="font-size:7.5pt;color:#666;margin-top:4px;word-break:break-word">${p.name || ('Photo ' + (i+1))}</div>
+    </div>`).join('')}
+  </div>
+</div>` : ''}
+${docAttachments.length ? `
+<div style="page-break-before:${photoAttachments.length?'always':'always'};padding:28px 36px">
+  <div style="border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:18px">
+    <span style="font-size:12pt;font-weight:bold;font-family:'Times New Roman',serif">Supporting Documents — Attachment List</span>
+    <span style="font-size:9pt;color:#555;margin-left:12px">Pay App #${pa.app_number}${pa.period_label ? ' · ' + pa.period_label : ''}</span>
+  </div>
+  ${docAttachments.map((d,i) => `
+  <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:#f7f7f7;border:1px solid #ddd;border-radius:4px;margin-bottom:8px">
+    <span style="font-size:13pt">📄</span>
+    <div>
+      <div style="font-size:10pt;font-weight:600">${d.name}</div>
+      <div style="font-size:8pt;color:#777">Document ${i+1} of ${docAttachments.length}</div>
+    </div>
+  </div>`).join('')}
+  <p style="font-size:8.5pt;color:#666;margin-top:16px;font-style:italic">These documents are attached as separate files in the email alongside this PDF.</p>
+</div>` : ''}
 </body></html>`;
 }
+
+// HTML Preview — serves the same professional AIA G702/G703 HTML used by Puppeteer PDF
+// This is the RELIABLE path: works even when Puppeteer is unavailable.
+// Browser opens this in a new tab → user can Save as PDF from browser's print dialog.
+app.get('/api/payapps/:id/html', async (req,res) => {
+  const token = req.query.token || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
+  let decoded;
+  try { decoded = jwt.verify(token, JWT_SECRET); } catch(e) { return res.status(401).json({error:'Invalid token'}); }
+
+  const paRes = await pool.query(
+    `SELECT pa.*,p.name as pname,p.owner,p.contractor,p.architect,p.original_contract,
+            p.number as pnum,p.payment_terms,p.contract_date,
+            p.include_architect,p.include_retainage,
+            cs.logo_filename,cs.signature_filename,cs.default_payment_terms,
+            cs.contact_name,cs.company_name
+     FROM pay_apps pa
+     JOIN projects p ON p.id=pa.project_id
+     LEFT JOIN company_settings cs ON cs.user_id=p.user_id
+     WHERE pa.id=$1 AND p.user_id=$2`,
+    [req.params.id, decoded.id]
+  );
+  const pa = paRes.rows[0];
+  if(!pa) return res.status(404).json({error:'Not found'});
+  await logEvent(decoded.id, 'pdf_previewed', { pay_app_id: parseInt(req.params.id) });
+  const lines = await pool.query(
+    'SELECT pal.*,sl.item_id,sl.description,sl.scheduled_value FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id WHERE pal.pay_app_id=$1 ORDER BY sl.sort_order',
+    [req.params.id]
+  );
+  const cos = await pool.query('SELECT * FROM change_orders WHERE pay_app_id=$1',[req.params.id]);
+
+  let tComp=0,tRet=0,tThis=0,tPrev=0,tPrevCert=0;
+  lines.rows.forEach(r=>{
+    const sv=parseFloat(r.scheduled_value);
+    const retPct=parseFloat(r.retainage_pct)/100;
+    const prev=sv*parseFloat(r.prev_pct)/100;
+    const thisPer=sv*parseFloat(r.this_pct)/100;
+    const comp=prev+thisPer+parseFloat(r.stored_materials||0);
+    tComp+=comp; tRet+=comp*retPct; tPrevCert+=prev*(1-retPct);
+  });
+  const tCO=cos.rows.reduce((s,c)=>s+parseFloat(c.amount||0),0);
+  const contract=parseFloat(pa.original_contract)+tCO;
+  const earned=tComp-tRet;
+  const due=Math.max(0,earned-tPrevCert);
+
+  const imgMimeH = buf => { if (buf[0]===0x89 && buf[1]===0x50) return 'image/png'; if (buf[0]===0xFF && buf[1]===0xD8) return 'image/jpeg'; return 'image/png'; };
+  const readImgB64H = filename => { if (!filename) return null; try { const fp = path.join(__dirname, 'uploads', filename); if (!fs.existsSync(fp)) return null; const buf = fs.readFileSync(fp); return `data:${imgMimeH(buf)};base64,${buf.toString('base64')}`; } catch(e) { return null; } };
+  const logoBase64 = readImgB64H(pa.logo_filename);
+  const sigBase64  = readImgB64H(pa.signature_filename);
+
+  const photoAttsRes = await pool.query(`SELECT filename, original_name FROM attachments WHERE pay_app_id=$1 AND mime_type LIKE 'image/%' ORDER BY uploaded_at`, [req.params.id]);
+  const photoAttachments = photoAttsRes.rows.map(a => { const b64 = readImgB64H(a.filename); if (!b64) return null; return { base64: b64, name: a.original_name || a.filename }; }).filter(Boolean);
+  const docAttsRes = await pool.query(`SELECT filename, original_name FROM attachments WHERE pay_app_id=$1 AND mime_type='application/pdf' ORDER BY uploaded_at`, [req.params.id]);
+  const docAttachments = docAttsRes.rows.map(a => ({ name: a.original_name || a.filename }));
+
+  const totals = { tComp, tRet, tPrevCert, tCO, contract, earned, due };
+  const html = generatePayAppHTML(pa, lines.rows, cos.rows, totals, logoBase64, sigBase64, photoAttachments, docAttachments);
+
+  // Wrap with print-friendly auto-print script
+  const printableHtml = html.replace('</body>', `
+<script>
+  // Auto-trigger print dialog when page loads
+  window.onload = function() {
+    // Small delay so the page renders fully first
+    setTimeout(function() { window.print(); }, 500);
+  };
+</script>
+</body>`);
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(printableHtml);
+});
 
 // PDF
 app.get('/api/payapps/:id/pdf', async (req,res) => {
@@ -1719,6 +2094,7 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
   const paRes = await pool.query(
     `SELECT pa.*,p.name as pname,p.owner,p.contractor,p.architect,p.original_contract,
             p.number as pnum,p.payment_terms,p.contract_date,
+            p.include_architect,p.include_retainage,
             cs.logo_filename,cs.signature_filename,cs.default_payment_terms,
             cs.contact_name,cs.company_name
      FROM pay_apps pa
@@ -1774,6 +2150,32 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
   const logoBase64 = readImgB64(pa.logo_filename);
   const sigBase64  = readImgB64(pa.signature_filename);
 
+  // ── Load photo attachments for this pay app ───────────────────────────────
+  const photoAttsRes = await pool.query(
+    `SELECT filename, original_name FROM attachments WHERE pay_app_id=$1 AND mime_type LIKE 'image/%' ORDER BY uploaded_at`,
+    [req.params.id]
+  );
+  const photoAttachments = photoAttsRes.rows.map(a => {
+    const b64 = readImgB64(a.filename);
+    if (!b64) return null;
+    return { base64: b64, name: a.original_name || a.filename, filePath: path.join(__dirname, 'uploads', a.filename) };
+  }).filter(Boolean);
+
+  // ── Load PDF document attachments (listed as references, not embedded) ─────
+  const docAttsRes = await pool.query(
+    `SELECT filename, original_name FROM attachments WHERE pay_app_id=$1 AND mime_type='application/pdf' ORDER BY uploaded_at`,
+    [req.params.id]
+  );
+  const docAttachments = docAttsRes.rows.map(a => ({ name: a.original_name || a.filename }));
+
+  // ── Debug: log logo status for diagnosing missing logo reports ────────────
+  if (!pa.logo_filename) {
+    console.log(`[PDF] No logo_filename in company_settings for user_id=${decoded.id} (pay_app=${req.params.id})`);
+  } else {
+    const lp = path.join(__dirname, 'uploads', pa.logo_filename);
+    if (!fs.existsSync(lp)) console.log(`[PDF] Logo file missing on disk: ${lp}`);
+  }
+
   const totals = { tComp, tRet, tPrevCert, tCO, contract, earned, due };
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="PayApp_${pa.app_number}_${(pa.pname||'').replace(/\s+/g,'_')}.pdf"`);
@@ -1782,7 +2184,7 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
   if (puppeteer) {
     let browser;
     try {
-      const html = generatePayAppHTML(pa, lines.rows, cos.rows, totals, logoBase64, sigBase64);
+      const html = generatePayAppHTML(pa, lines.rows, cos.rows, totals, logoBase64, sigBase64, photoAttachments, docAttachments);
       browser = await puppeteer.launch({
         args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu']
       });
@@ -1823,6 +2225,7 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
     doc.font('Helvetica').text(l,L,y,{width:240});
     doc.text(r,R,y,{width:240});
   });
+  if(pa.po_number){doc.font('Helvetica').text('PO #: '+pa.po_number,L,doc.y,{width:240});}
   doc.moveDown(0.4);
   doc.moveTo(45,doc.y).lineTo(567,doc.y).lineWidth(0.5).stroke();
   doc.moveDown(0.4);
@@ -1845,6 +2248,8 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
     doc.text(lbl,L+20,y,{width:330});
     doc.text(val,L+360,y,{width:140,align:'right'});
   });
+
+  if(pa.special_notes){const plainNotes=pa.special_notes.replace(/<br\s*\/?>/gi,'\n').replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' ');doc.moveDown(0.5);doc.font('Helvetica-Bold').fontSize(8).text('Notes:',L,doc.y,{continued:true});doc.font('Helvetica').text(' '+plainNotes,{width:500});}
 
   doc.addPage();
   doc.fontSize(13).font('Helvetica-Bold').text('Document G703 - Continuation Sheet',{align:'center'});
@@ -1870,8 +2275,15 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
     tSV2+=sv; tPrev2+=prev; tThis2+=thisPer; tComp2+=comp; tRet2+=ret;
     if(doc.y>700){ doc.addPage(); doc.fontSize(7); }
     const y=doc.y;
-    [r.item_id,r.description,fmt(sv),fmt(prev),parseFloat(r.prev_pct).toFixed(0)+'%',fmt(thisPer),fmt(comp),parseFloat(r.retainage_pct).toFixed(0)+'%',fmt(ret),fmt(bal)]
-      .forEach((v,i)=>doc.text(v,cx[i],y,{width:cw[i],align:i>1?'right':'left'}));
+    if(sv===0){
+      // Scope-only line: just show code + description, skip dollar columns
+      doc.fillColor('#888').text(r.item_id||'',cx[0],y,{width:cw[0]});
+      doc.text(r.description||'',cx[1],y,{width:440});
+      doc.fillColor('#000');
+    } else {
+      [r.item_id,r.description,fmt(sv),fmt(prev),parseFloat(r.prev_pct).toFixed(0)+'%',fmt(thisPer),fmt(comp),parseFloat(r.retainage_pct).toFixed(0)+'%',fmt(ret),fmt(bal)]
+        .forEach((v,i)=>doc.text(v,cx[i],y,{width:cw[i],align:i>1?'right':'left'}));
+    }
   });
   doc.moveDown(0.3);
   doc.moveTo(45,doc.y).lineTo(567,doc.y).lineWidth(0.5).stroke();
@@ -1931,7 +2343,365 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
     }
   } catch(lienErr) { console.error('Lien append error:', lienErr.message); }
 
+  // ── Photo attachments (PDFKit fallback path) ─────────────────────────────
+  for (const att of photoAttachments) {
+    try {
+      if (att.filePath && fs.existsSync(att.filePath)) {
+        doc.addPage();
+        doc.fontSize(9).font('Helvetica-Bold').text('Site Photo', 45, 45);
+        doc.fontSize(8).font('Helvetica').fillColor('#555').text(att.name || '', 45, 58);
+        doc.fillColor('#000');
+        doc.image(att.filePath, 45, 80, { fit: [522, 640], align: 'center', valign: 'top' });
+      }
+    } catch(photoErr) { console.error('Photo page error:', photoErr.message); }
+  }
+
   doc.end();
+});
+
+// ── Email pay application (PDF + lien waiver attached) ───────────────────
+app.post('/api/payapps/:id/email', auth, async (req, res) => {
+  const { to, cc, subject, message, attach_lien_waiver, include_payment_link } = req.body;
+  const shouldAttachLien = attach_lien_waiver !== false; // default true
+  const shouldIncludePayLink = include_payment_link !== false; // default true (opt-out)
+  if (!to) return res.status(400).json({ error: 'Recipient email (to) is required' });
+
+  try {
+    // Load pay app data
+    const paRes = await pool.query(
+      `SELECT pa.*,p.name as pname,p.owner,p.contractor,p.architect,p.original_contract,
+              p.number as pnum,p.payment_terms,p.contract_date,
+              p.include_architect,p.include_retainage,
+              cs.logo_filename,cs.signature_filename,cs.default_payment_terms,
+              cs.contact_name,cs.company_name
+       FROM pay_apps pa
+       JOIN projects p ON p.id=pa.project_id
+       LEFT JOIN company_settings cs ON cs.user_id=p.user_id
+       WHERE pa.id=$1 AND p.user_id=$2`,
+      [req.params.id, req.user.id]
+    );
+    const pa = paRes.rows[0];
+    if (!pa) return res.status(404).json({ error: 'Pay app not found' });
+
+    const lines = await pool.query(
+      'SELECT pal.*,sl.item_id,sl.description,sl.scheduled_value FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id WHERE pal.pay_app_id=$1 ORDER BY sl.sort_order',
+      [req.params.id]
+    );
+    const cos = await pool.query('SELECT * FROM change_orders WHERE pay_app_id=$1', [req.params.id]);
+
+    // Calculate totals
+    let tComp=0, tRet=0, tPrevCert=0;
+    lines.rows.forEach(r => {
+      const sv=parseFloat(r.scheduled_value);
+      const retPct=parseFloat(r.retainage_pct)/100;
+      const prev=sv*parseFloat(r.prev_pct)/100;
+      const thisPer=sv*parseFloat(r.this_pct)/100;
+      const comp=prev+thisPer+parseFloat(r.stored_materials||0);
+      tComp+=comp; tRet+=comp*retPct; tPrevCert+=prev*(1-retPct);
+    });
+    const tCO=cos.rows.reduce((s,c)=>s+parseFloat(c.amount||0),0);
+    const contract=parseFloat(pa.original_contract)+tCO;
+    const earned=tComp-tRet;
+    const due=Math.max(0,earned-tPrevCert);
+    const totals={tComp,tRet,tPrevCert,tCO,contract,earned,due};
+
+    // Load images (reuse same helper pattern as PDF route)
+    const imgMimeE = buf => {
+      if (buf[0]===0x89 && buf[1]===0x50) return 'image/png';
+      if (buf[0]===0xFF && buf[1]===0xD8) return 'image/jpeg';
+      if (buf[0]===0x47 && buf[1]===0x49) return 'image/gif';
+      return 'image/png';
+    };
+    const readImgB64E = filename => {
+      if (!filename) return null;
+      try {
+        const fp = path.join(__dirname, 'uploads', filename);
+        if (!fs.existsSync(fp)) return null;
+        const buf = fs.readFileSync(fp);
+        return `data:${imgMimeE(buf)};base64,${buf.toString('base64')}`;
+      } catch(e) { return null; }
+    };
+    const logoBase64 = readImgB64E(pa.logo_filename);
+    const sigBase64  = readImgB64E(pa.signature_filename);
+
+    const photoAttsRes = await pool.query(
+      `SELECT filename, original_name FROM attachments WHERE pay_app_id=$1 AND mime_type LIKE 'image/%' ORDER BY uploaded_at`,
+      [req.params.id]
+    );
+    const photoAttachments = photoAttsRes.rows.map(a => {
+      const b64 = readImgB64E(a.filename);
+      if (!b64) return null;
+      return { base64: b64, name: a.original_name || a.filename, filePath: path.join(__dirname, 'uploads', a.filename) };
+    }).filter(Boolean);
+
+    // Generate pay app PDF buffer via Puppeteer
+    // NOTE: skip photo attachments in email PDF to stay well under Resend's 40MB limit.
+    // The full PDF (with photos) is always available via the Download button in the app.
+    const html = generatePayAppHTML(pa, lines.rows, cos.rows, totals, logoBase64, sigBase64, []);
+    const pdfFilename = `PayApp_${pa.app_number}_${(pa.pname||'').replace(/\s+/g,'_')}.pdf`;
+    const emailAttachments = [];
+
+    if (puppeteer) {
+      let browser;
+      try {
+        browser = await puppeteer.launch({
+          args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu']
+        });
+        const page = await browser.newPage();
+        await page.setContent(html, { waitUntil: 'networkidle0' });
+        const pdfBuf = await page.pdf({
+          format: 'Letter',
+          printBackground: true,
+          margin: { top: '0.5in', right: '0.45in', bottom: '0.5in', left: '0.45in' }
+        });
+        emailAttachments.push({ filename: pdfFilename, content: Buffer.from(pdfBuf).toString('base64') });
+      } catch(puppErr) {
+        console.error('[Email PDF] Puppeteer error, falling back to PDFKit:', puppErr.message);
+      } finally {
+        if (browser) await browser.close().catch(()=>{});
+      }
+    }
+
+    // PDFKit fallback for email attachment (used if Puppeteer unavailable or errored)
+    if (emailAttachments.length === 0) {
+      try {
+        const pdfDoc = new PDFDocument({ size: 'LETTER', margin: 45 });
+        const chunks = [];
+        pdfDoc.on('data', c => chunks.push(c));
+        await new Promise((resolve, reject) => {
+          pdfDoc.on('end', resolve);
+          pdfDoc.on('error', reject);
+          pdfDoc.fontSize(15).font('Helvetica-Bold').text('Document G702', { align: 'center' });
+          pdfDoc.fontSize(10).font('Helvetica').text('Application and Certificate for Payment', { align: 'center' });
+          pdfDoc.moveDown(0.5);
+          pdfDoc.fontSize(11).font('Helvetica-Bold').text(pa.pname || 'Pay Application');
+          pdfDoc.fontSize(9).font('Helvetica').text(`Application #${pa.app_number}  ·  ${pa.period_label || ''}`);
+          if (pa.po_number) pdfDoc.text(`PO #: ${pa.po_number}`);
+          pdfDoc.moveDown(0.4);
+          pdfDoc.fontSize(9).text(`Original Contract Sum: $${Number(totals.contract || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
+          pdfDoc.text(`Net Change by Change Orders: $${Number(totals.tCO || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
+          pdfDoc.text(`Total Completed & Stored to Date: $${Number(totals.tComp || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
+          pdfDoc.text(`Retainage: $${Number(totals.tRet || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
+          pdfDoc.text(`Total Earned Less Retainage: $${Number(totals.earned || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
+          pdfDoc.text(`Less Previous Certificates: $${Number(totals.tPrevCert || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
+          pdfDoc.moveDown(0.3);
+          pdfDoc.font('Helvetica-Bold').text(`Current Payment Due: $${Number(totals.due || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
+          if (pa.special_notes) { const pn=pa.special_notes.replace(/<br\s*\/?>/gi,'\n').replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' '); pdfDoc.moveDown(0.5); pdfDoc.font('Helvetica-Bold').fontSize(8).text('Notes:',{continued:true}); pdfDoc.font('Helvetica').text(' '+pn); }
+          pdfDoc.moveDown(1);
+          pdfDoc.fontSize(8).font('Helvetica').fillColor('#888').text('Generated by ConstructInvoice AI · Full PDF available in app', { align: 'center' });
+          pdfDoc.end();
+        });
+        const pdfBuf = Buffer.concat(chunks);
+        emailAttachments.push({ filename: pdfFilename, content: pdfBuf.toString('base64') });
+        console.log('[Email PDF] PDFKit fallback generated', pdfBuf.length, 'bytes');
+      } catch(pdfErr) {
+        console.error('[Email PDF] PDFKit fallback also failed:', pdfErr.message);
+        // Email will still send, just without PDF attachment
+      }
+    }
+
+    // Attach lien waiver PDF if one is linked and user opted in (default: yes)
+    // Auto-generate conditional waiver if none exists yet
+    if (shouldAttachLien) try {
+      let lienRes = await pool.query(
+        `SELECT ld.*, p.name, p.owner, p.contractor, p.location, p.city, p.state, p.contact as location_contact,
+                cs.logo_filename, cs.company_name
+         FROM lien_documents ld
+         JOIN projects p ON p.id=ld.project_id
+         LEFT JOIN company_settings cs ON cs.user_id=p.user_id
+         WHERE ld.pay_app_id=$1 AND p.user_id=$2
+         ORDER BY ld.created_at DESC LIMIT 1`,
+        [req.params.id, req.user.id]
+      );
+      // Auto-generate conditional waiver if none linked and we have enough data
+      if (!lienRes.rows[0] && due > 0 && (pa.contact_name || pa.company_name)) {
+        try {
+          const sigName = pa.contact_name || '';
+          const throughDate = pa.period_end ? new Date(pa.period_end).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+          const projRes = await pool.query('SELECT * FROM projects WHERE id=$1 AND user_id=$2', [pa.project_id, req.user.id]);
+          const proj = projRes.rows[0];
+          if (proj && sigName) {
+            const lienFilename = `lien_${Date.now()}_${req.params.id}.pdf`;
+            const fpath = path.join(__dirname, 'uploads', lienFilename);
+            await generateLienDocPDF({ fpath, doc_type: 'conditional_waiver', project: { name: proj.name, owner: proj.owner, contractor: proj.contractor || pa.company_name, company_name: pa.company_name, location: proj.location, city: proj.city, state: proj.state, logo_filename: pa.logo_filename },
+              through_date: throughDate, amount: due, maker_of_check: proj.owner || '', check_payable_to: proj.contractor || pa.company_name || '',
+              signatory_name: sigName, signatory_title: '', signedAt: new Date(), ip: 'auto-generated', jurisdiction: proj.jurisdiction || 'california',
+              pay_app_ref: `Pay App #${pa.app_number}${pa.period_label ? ' — ' + pa.period_label : ''}` });
+            // Insert into DB
+            await pool.query(
+              `INSERT INTO lien_documents (project_id, pay_app_id, doc_type, through_date, amount, maker_of_check, check_payable_to, signatory_name, signatory_title, signed_at, signatory_ip, jurisdiction, filename)
+               VALUES ($1,$2,'conditional_waiver',$3,$4,$5,$6,$7,'',$8,'auto-generated',$9,$10)`,
+              [pa.project_id, req.params.id, throughDate, due, proj.owner || '', proj.contractor || pa.company_name || '', sigName, new Date(), proj.jurisdiction || 'california', lienFilename]
+            );
+            // Re-query to get the full lien doc
+            lienRes = await pool.query(
+              `SELECT ld.*, p.name, p.owner, p.contractor, p.location, p.city, p.state, p.contact as location_contact,
+                      cs.logo_filename, cs.company_name
+               FROM lien_documents ld
+               JOIN projects p ON p.id=ld.project_id
+               LEFT JOIN company_settings cs ON cs.user_id=p.user_id
+               WHERE ld.pay_app_id=$1 AND p.user_id=$2
+               ORDER BY ld.created_at DESC LIMIT 1`,
+              [req.params.id, req.user.id]
+            );
+            console.log('[Email] Auto-generated conditional waiver for pay app', req.params.id);
+          }
+        } catch(autoLienErr) { console.error('[Email] Auto-gen lien failed:', autoLienErr.message); }
+      }
+      if (lienRes.rows[0]) {
+        const lien = lienRes.rows[0];
+        const lienPath = path.join(__dirname, 'uploads', lien.filename);
+        // Regenerate to temp file, then replace original if successful
+        try {
+          const tmpLien = lienPath + '.email.tmp';
+          const lienProject = { name: lien.name, owner: lien.owner, contractor: lien.contractor || lien.company_name,
+            company_name: lien.company_name, location: lien.location_contact, city: lien.city, state: lien.state, logo_filename: lien.logo_filename };
+          const lienRef = `Pay App #${pa.app_number}${pa.period_label ? ' — ' + pa.period_label : ''}`;
+          await generateLienDocPDF({ fpath: tmpLien, doc_type: lien.doc_type, project: lienProject,
+            through_date: lien.through_date, amount: lien.amount, maker_of_check: lien.maker_of_check,
+            check_payable_to: lien.check_payable_to, signatory_name: lien.signatory_name,
+            signatory_title: lien.signatory_title, signedAt: new Date(lien.signed_at),
+            ip: lien.signatory_ip || 'on file', jurisdiction: lien.jurisdiction || 'california', pay_app_ref: lienRef });
+          if (fs.existsSync(tmpLien) && fs.statSync(tmpLien).size > 100) {
+            fs.renameSync(tmpLien, lienPath); // Update the stored file too
+          } else {
+            try { fs.unlinkSync(tmpLien); } catch(_) {}
+          }
+        } catch(regenErr) {
+          console.error('[Email] Lien regen error:', regenErr.message);
+          try { const tmp = lienPath + '.email.tmp'; if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch(_) {}
+        }
+        // Attach the file (either freshly regenerated or original)
+        if (fs.existsSync(lienPath)) {
+          const lienBuf = fs.readFileSync(lienPath);
+          if (lienBuf.length > 0) {
+            emailAttachments.push({
+              filename: `Lien_Waiver_${(lien.doc_type||'waiver').replace(/\s+/g,'_')}_PayApp${pa.app_number}.pdf`,
+              content: lienBuf.toString('base64')
+            });
+          }
+        }
+      }
+    } catch(lienErr) { console.error('[Email] Lien attach error:', lienErr.message); }
+
+    // Attach any uploaded PDF documents as separate email attachments
+    try {
+      const pdfAttsRes = await pool.query(
+        `SELECT filename, original_name FROM attachments WHERE pay_app_id=$1 AND mime_type='application/pdf' ORDER BY uploaded_at`,
+        [req.params.id]
+      );
+      for (const att of pdfAttsRes.rows) {
+        const attPath = path.join(__dirname, 'uploads', att.filename);
+        if (fs.existsSync(attPath)) {
+          const buf = fs.readFileSync(attPath);
+          emailAttachments.push({ filename: att.original_name || att.filename, content: buf.toString('base64') });
+        }
+      }
+    } catch(attErr) { console.error('[Email] PDF doc attach error:', attErr.message); }
+
+    // Auto-generate payment link if GC has Stripe Connect and pay app doesn't have one yet
+    // Only include if user checked "Include Payment Link" (default: true / opt-out)
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    let payNowUrl = null;
+    if (shouldIncludePayLink) {
+      try {
+        const acctCheck = (await pool.query('SELECT stripe_account_id FROM connected_accounts WHERE user_id=$1 AND charges_enabled=TRUE', [req.user.id])).rows[0];
+        if (acctCheck && due > 0) {
+          let payToken = pa.payment_link_token;
+          if (!payToken) {
+            payToken = generatePaymentToken();
+            await pool.query('UPDATE pay_apps SET payment_link_token=$1 WHERE id=$2', [payToken, req.params.id]);
+          }
+          payNowUrl = `${baseUrl}/pay/${payToken}`;
+        }
+      } catch(payLinkErr) { console.error('[Email] Payment link gen error:', payLinkErr.message); }
+    }
+
+    // Build HTML email body
+    const safeMsg = (message||'').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+    const fmtEmail = n => '$' + Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const payNowBtnHtml = payNowUrl ? `
+        <div style="text-align:center;margin:24px 0 12px">
+          <a href="${payNowUrl}" style="display:inline-block;background:#16a34a;color:#ffffff;padding:16px 48px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14pt;letter-spacing:0.5px">Pay Now — ${fmtEmail(due)}</a>
+        </div>
+        <p style="font-size:9pt;color:#888;text-align:center;margin:4px 0 16px">ACH bank transfer or credit card accepted. Secure payment via Stripe.</p>` : '';
+    const lienAttachedNote = emailAttachments.length > 1 ? '<span style="color:#16a34a;font-weight:600"> + Lien Waiver</span>' : '';
+    const emailHtml = `<div style="font-family:'Segoe UI',Helvetica,Arial,sans-serif;max-width:640px;margin:0 auto;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
+      <div style="background:linear-gradient(135deg,#1e40af,#2563eb);padding:24px 28px;color:#fff">
+        <h2 style="margin:0;font-size:18pt;font-weight:700">Pay Application #${pa.app_number}</h2>
+        <div style="font-size:11pt;margin-top:6px;opacity:0.9">${pa.pname||''} &middot; ${pa.period_label||''}</div>
+      </div>
+      <div style="padding:28px;background:#fff">
+        ${safeMsg ? `<div style="margin-bottom:20px;padding:14px 16px;background:#f8fafc;border-left:4px solid #2563eb;border-radius:4px;font-size:10pt;color:#334155;line-height:1.6">${safeMsg}</div>` : '<p style="margin-top:0;margin-bottom:20px;font-size:10pt;color:#334155">Please review the attached payment application.</p>'}
+        <table style="width:100%;border-collapse:collapse;font-size:10pt;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden">
+          <tr><td style="padding:8px 14px;color:#64748b;border-bottom:1px solid #f1f5f9">Project</td><td style="padding:8px 14px;font-weight:600;border-bottom:1px solid #f1f5f9">${pa.pname||''}</td></tr>
+          <tr style="background:#f8fafc"><td style="padding:8px 14px;color:#64748b;border-bottom:1px solid #f1f5f9">Contractor</td><td style="padding:8px 14px;border-bottom:1px solid #f1f5f9">${pa.contractor||''}</td></tr>
+          <tr><td style="padding:8px 14px;color:#64748b;border-bottom:1px solid #f1f5f9">Application #</td><td style="padding:8px 14px;border-bottom:1px solid #f1f5f9">${pa.app_number}</td></tr>
+          <tr style="background:#f8fafc"><td style="padding:8px 14px;color:#64748b;border-bottom:1px solid #f1f5f9">Period</td><td style="padding:8px 14px;border-bottom:1px solid #f1f5f9">${pa.period_label||''}</td></tr>
+          <tr><td style="padding:8px 14px;color:#64748b;border-bottom:1px solid #f1f5f9">Payment Terms</td><td style="padding:8px 14px;border-bottom:1px solid #f1f5f9">${pa.payment_terms||'Due on receipt'}</td></tr>
+        </table>
+
+        <div style="margin-top:20px;padding:16px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:8px">
+          <div style="font-size:9pt;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Document G702 — Summary</div>
+          <table style="width:100%;border-collapse:collapse;font-size:9.5pt">
+            <tr><td style="padding:4px 0;color:#334155">A. Original Contract Sum</td><td style="padding:4px 0;text-align:right;font-weight:500">${fmtEmail(pa.original_contract)}</td></tr>
+            <tr><td style="padding:4px 0;color:#334155">B. Net Change by Change Orders</td><td style="padding:4px 0;text-align:right;font-weight:500">${fmtEmail(totals.tCO)}</td></tr>
+            <tr style="border-top:1px solid #93c5fd"><td style="padding:4px 0;color:#334155;font-weight:600">C. Contract Sum to Date</td><td style="padding:4px 0;text-align:right;font-weight:600">${fmtEmail(totals.contract)}</td></tr>
+            <tr><td style="padding:4px 0;color:#334155">D. Total Completed & Stored</td><td style="padding:4px 0;text-align:right;font-weight:500">${fmtEmail(totals.tComp)}</td></tr>
+            <tr><td style="padding:4px 0;color:#334155">E. Retainage</td><td style="padding:4px 0;text-align:right;font-weight:500">${fmtEmail(totals.tRet)}</td></tr>
+            <tr><td style="padding:4px 0;color:#334155">F. Total Earned Less Retainage</td><td style="padding:4px 0;text-align:right;font-weight:500">${fmtEmail(totals.earned)}</td></tr>
+            <tr><td style="padding:4px 0;color:#334155">G. Less Previous Certificates</td><td style="padding:4px 0;text-align:right;font-weight:500">${fmtEmail(totals.tPrevCert)}</td></tr>
+            <tr style="border-top:2px solid #1e40af"><td style="padding:8px 0 4px;color:#1e40af;font-weight:700;font-size:11pt">H. Current Payment Due</td><td style="padding:8px 0 4px;text-align:right;font-weight:700;color:#1e40af;font-size:11pt">${fmtEmail(totals.due)}</td></tr>
+          </table>
+        </div>
+
+        ${payNowBtnHtml}
+
+        ${emailAttachments.length > 0 ? `<div style="margin-top:20px;padding:12px 14px;background:#f1f5f9;border-radius:6px;font-size:9pt;color:#64748b">
+          <strong>Attachments:</strong> G702/G703 Pay Application PDF${lienAttachedNote}${emailAttachments.length > 2 ? ` + ${emailAttachments.length - 2} additional document(s)` : ''}
+        </div>` : ''}
+      </div>
+      <div style="padding:14px 28px;background:#f8fafc;border-top:1px solid #e5e7eb;font-size:8pt;color:#94a3b8;text-align:center">
+        Sent via <a href="https://constructinv.varshyl.com" style="color:#2563eb;text-decoration:none">ConstructInvoice AI</a> &middot; Varshyl Inc.
+      </div>
+    </div>`;
+
+    // Send via Resend
+    const fromEmail = process.env.FROM_EMAIL || 'billing@varshyl.com';
+    if (!process.env.RESEND_API_KEY) {
+      console.log(`[DEV Email] TO:${to} CC:${cc||'-'} | ${subject||'Pay App #'+pa.app_number} | attachments:${emailAttachments.length}`);
+    } else {
+      const payload = {
+        from: fromEmail,
+        to: [to],
+        subject: subject || `Pay Application #${pa.app_number} — ${pa.pname||''} (${pa.period_label||''})`,
+        html: emailHtml,
+        attachments: emailAttachments
+      };
+      if (cc) payload.cc = [cc];
+      const r = await fetchEmail('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!r.ok) {
+        const errBody = await r.text().catch(()=>'');
+        console.error('[Email Route] Resend error:', r.status, errBody);
+        return res.status(502).json({ error: 'Email delivery failed', detail: errBody });
+      }
+    }
+
+    // Mark pay app as submitted
+    if (pa.status !== 'submitted') {
+      await pool.query('UPDATE pay_apps SET status=$1 WHERE id=$2', ['submitted', req.params.id]);
+    }
+    await logEvent(req.user.id, 'email_sent', { pay_app_id: parseInt(req.params.id) });
+    res.json({ ok: true, attachments: emailAttachments.length });
+
+  } catch(e) {
+    console.error('[Email Route] Error:', e.message, e.stack);
+    res.status(500).json({ error: 'Failed to send email', detail: e.message });
+  }
 });
 
 
@@ -1943,11 +2713,11 @@ app.get('/api/settings', auth, async (req,res) => {
 
 app.post('/api/settings', auth, async (req,res) => {
   const {company_name,default_payment_terms,default_retainage,contact_name,contact_phone,contact_email,job_number_format,
-    reminder_7before,reminder_due,reminder_7after,reminder_retention,reminder_email,reminder_phone} = req.body;
+    reminder_7before,reminder_due,reminder_7after,reminder_retention,reminder_email,reminder_phone,credit_card_enabled} = req.body;
   const r = await pool.query(
     `INSERT INTO company_settings(user_id,company_name,default_payment_terms,default_retainage,contact_name,contact_phone,contact_email,job_number_format,
-       reminder_7before,reminder_due,reminder_7after,reminder_retention,reminder_email,reminder_phone)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       reminder_7before,reminder_due,reminder_7after,reminder_retention,reminder_email,reminder_phone,credit_card_enabled)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      ON CONFLICT(user_id) DO UPDATE SET
        company_name=EXCLUDED.company_name,
        default_payment_terms=EXCLUDED.default_payment_terms,
@@ -1962,19 +2732,34 @@ app.post('/api/settings', auth, async (req,res) => {
        reminder_retention=COALESCE(EXCLUDED.reminder_retention, company_settings.reminder_retention, TRUE),
        reminder_email=COALESCE(EXCLUDED.reminder_email, company_settings.reminder_email),
        reminder_phone=COALESCE(EXCLUDED.reminder_phone, company_settings.reminder_phone),
+       credit_card_enabled=COALESCE(EXCLUDED.credit_card_enabled, company_settings.credit_card_enabled, FALSE),
        updated_at=NOW()
      RETURNING *`,
     [req.user.id,company_name,default_payment_terms||'Due on receipt',default_retainage||10,
      contact_name||null,contact_phone||null,contact_email||null,job_number_format||null,
      reminder_7before??null,reminder_due??null,reminder_7after??null,reminder_retention??null,
-     reminder_email||null,reminder_phone||null]
+     reminder_email||null,reminder_phone||null,credit_card_enabled??null]
   );
   res.json(r.rows[0]);
+});
+
+// Save nudge preferences (separate endpoint to avoid overwriting all settings)
+app.post('/api/settings/nudges', auth, async (req, res) => {
+  const { nudge_30day, nudge_60day, nudge_5payapps, nudge_dismiss_days } = req.body;
+  try {
+    await pool.query(
+      `UPDATE company_settings SET nudge_30day=$1, nudge_60day=$2, nudge_5payapps=$3, nudge_dismiss_days=$4 WHERE user_id=$5`,
+      [nudge_30day !== false, nudge_60day !== false, nudge_5payapps !== false, parseInt(nudge_dismiss_days) || 7, req.user.id]
+    );
+    res.json({ ok: true });
+  } catch(e) { console.error('[Nudge Settings]', e.message); res.status(500).json({ error: 'Failed to save' }); }
 });
 
 app.post('/api/settings/logo', auth, upload.single('file'), async (req,res) => {
   if(!req.file) return res.status(400).json({error:'No file'});
   if (rejectFile(req, res, MIME_IMAGE, 'logo')) return;
+  // Server-side compression (graceful — never blocks the save)
+  await compressUploadedImage(path.join(__dirname, 'uploads', req.file.filename)).catch(()=>{});
   // Delete old logo if exists
   const old = await pool.query('SELECT logo_filename FROM company_settings WHERE user_id=$1',[req.user.id]);
   if(old.rows[0]?.logo_filename) {
@@ -2006,6 +2791,7 @@ app.get('/api/settings/logo', auth, async (req,res) => {
 app.post('/api/settings/signature', auth, upload.single('file'), async (req,res) => {
   if(!req.file) return res.status(400).json({error:'No file'});
   if (rejectFile(req, res, MIME_IMAGE, 'signature')) return;
+  await compressUploadedImage(path.join(__dirname, 'uploads', req.file.filename)).catch(()=>{});
   const r = await pool.query(
     `INSERT INTO company_settings(user_id,signature_filename)
      VALUES($1,$2)
@@ -2028,15 +2814,18 @@ app.get('/api/settings/signature', auth, async (req,res) => {
 // EDIT PROJECT
 app.put('/api/projects/:id/full', auth, async (req,res) => {
   const {name,number,owner,contractor,architect,contact,contact_name,contact_phone,
-         contact_email,building_area,original_contract,contract_date,est_date} = req.body;
+         contact_email,building_area,original_contract,contract_date,est_date,include_architect,include_retainage} = req.body;
+  const inclArch = include_architect !== undefined ? include_architect : null;
+  const inclRet  = include_retainage !== undefined ? include_retainage : null;
   const r = await pool.query(
     `UPDATE projects SET name=$1,number=$2,owner=$3,contractor=$4,architect=$5,
      contact=$6,contact_name=$7,contact_phone=$8,contact_email=$9,
-     building_area=$10,original_contract=$11,contract_date=$12,est_date=$13
+     building_area=$10,original_contract=$11,contract_date=$12,est_date=$13,
+     include_architect=COALESCE($16,include_architect),include_retainage=COALESCE($17,include_retainage)
      WHERE id=$14 AND user_id=$15 RETURNING *`,
     [name,number,owner,contractor,architect,contact,contact_name,contact_phone,
      contact_email,building_area,original_contract,contract_date,est_date,
-     req.params.id,req.user.id]
+     req.params.id,req.user.id,inclArch,inclRet]
   );
   res.json(r.rows[0]);
 });
@@ -2092,7 +2881,7 @@ app.post('/api/admin/test-email', adminAuth, async (req, res) => {
 
 app.get('/api/admin/stats', adminAuth, async (req, res) => {
   try {
-    const [users, projects, payapps, events, recentErrors, slowReqs, topEvents, dailySignups, featureUsage] = await Promise.all([
+    const [users, projects, payapps, events, recentErrors, slowReqs, topEvents, dailySignups, featureUsage, pipeline, totalBilled, billedByMonth, subscriptionStats] = await Promise.all([
       pool.query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE created_at > NOW()-INTERVAL '7 days') as last7 FROM users`),
       pool.query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE created_at > NOW()-INTERVAL '7 days') as last7 FROM projects`),
       pool.query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status='submitted') as submitted, COUNT(*) FILTER (WHERE created_at > NOW()-INTERVAL '7 days') as last7 FROM pay_apps`),
@@ -2102,7 +2891,26 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
       pool.query(`SELECT event, COUNT(*) as count FROM analytics_events WHERE created_at > NOW()-INTERVAL '30 days' GROUP BY event ORDER BY count DESC LIMIT 15`),
       pool.query(`SELECT DATE(created_at) as day, COUNT(*) as signups FROM analytics_events WHERE event='user_registered' AND created_at > NOW()-INTERVAL '30 days' GROUP BY day ORDER BY day`),
       pool.query(`SELECT event, COUNT(*) as count FROM analytics_events WHERE event IN ('payapp_created','payapp_submitted','pdf_downloaded','project_created','payapp_lines_saved') AND created_at > NOW()-INTERVAL '30 days' GROUP BY event ORDER BY count DESC`),
+      // Total pipeline = sum of all SOV scheduled values across all projects
+      pool.query(`SELECT COALESCE(SUM(scheduled_value), 0) as pipeline, COUNT(DISTINCT project_id) as project_count FROM sov_lines`),
+      // Total billed = sum of amount_due on submitted pay apps (using snapshotted values)
+      pool.query(`SELECT COALESCE(SUM(amount_due), 0) as total_billed, COUNT(*) as count FROM pay_apps WHERE status IN ('submitted','approved','paid') AND deleted_at IS NULL`),
+      // Billed by month (last 12 months) for chart
+      pool.query(`SELECT TO_CHAR(DATE_TRUNC('month', COALESCE(submitted_at, created_at)), 'Mon YYYY') as month, DATE_TRUNC('month', COALESCE(submitted_at, created_at)) as month_dt, COALESCE(SUM(amount_due), 0) as billed FROM pay_apps WHERE status IN ('submitted','approved','paid') AND deleted_at IS NULL GROUP BY month_dt, month ORDER BY month_dt DESC LIMIT 12`),
+      // Subscription stats
+      pool.query(`SELECT
+        COUNT(*) FILTER (WHERE subscription_status='trial') as trial_users,
+        COUNT(*) FILTER (WHERE subscription_status='active') as pro_users,
+        COUNT(*) FILTER (WHERE subscription_status='free_override') as free_override_users,
+        COUNT(*) FILTER (WHERE subscription_status='canceled') as canceled_users,
+        COUNT(*) FILTER (WHERE subscription_status='trial' AND trial_end_date < NOW()) as expired_trials,
+        COUNT(*) FILTER (WHERE subscription_status='trial' AND trial_end_date BETWEEN NOW() AND NOW()+INTERVAL '7 days') as expiring_this_week
+      FROM users`),
     ]);
+    const pipelineTotal = parseFloat(pipeline.rows[0].pipeline) || 0;
+    const billedTotal   = parseFloat(totalBilled.rows[0].total_billed) || 0;
+    const projectCount  = parseInt(pipeline.rows[0].project_count) || 0;
+    const avgContract   = projectCount > 0 ? Math.round(pipelineTotal / projectCount) : 0;
     res.json({
       users:       users.rows[0],
       projects:    projects.rows[0],
@@ -2113,7 +2921,51 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
       topEvents:     topEvents.rows,
       dailySignups:  dailySignups.rows,
       featureUsage:  featureUsage.rows,
+      revenue: {
+        pipeline:     pipelineTotal,
+        total_billed: billedTotal,
+        avg_contract: avgContract,
+        billed_by_month: billedByMonth.rows.reverse(), // chronological order
+      },
+      subscriptions: subscriptionStats.rows[0] || {},
     });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// Chart: pay app creation count by month (last 12 months)
+app.get('/api/admin/chart/payapp-activity', adminAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'Mon YYYY') as month,
+             DATE_TRUNC('month', created_at) as month_dt,
+             COUNT(*) as count
+      FROM pay_apps
+      WHERE created_at > NOW() - INTERVAL '12 months'
+        AND deleted_at IS NULL
+      GROUP BY month_dt, month
+      ORDER BY month_dt ASC
+    `);
+    res.json(r.rows);
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// Chart: pipeline vs billed by user (top 10 by pipeline)
+app.get('/api/admin/chart/pipeline-by-user', adminAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT u.name, u.email,
+             COALESCE(SUM(sl.scheduled_value), 0) as pipeline,
+             COALESCE(SUM(pa.amount_due) FILTER (WHERE pa.status IN ('submitted','approved','paid') AND pa.deleted_at IS NULL), 0) as billed
+      FROM users u
+      LEFT JOIN projects p ON p.user_id = u.id
+      LEFT JOIN sov_lines sl ON sl.project_id = p.id
+      LEFT JOIN pay_apps pa ON pa.project_id = p.id
+      GROUP BY u.id, u.name, u.email
+      HAVING COALESCE(SUM(sl.scheduled_value), 0) > 0
+      ORDER BY pipeline DESC
+      LIMIT 10
+    `);
+    res.json(r.rows);
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -2126,11 +2978,20 @@ app.get('/api/admin/errors', adminAuth, async (req, res) => {
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+app.delete('/api/admin/errors', adminAuth, async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM analytics_events WHERE event IN ('server_error','login_failed','slow_request')`);
+    await logEvent(req.user.id, 'admin_errors_cleared', {});
+    res.json({ ok: true });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 app.get('/api/admin/users', adminAuth, async (req, res) => {
   try {
     const r = await pool.query(`
       SELECT u.id, u.name, u.email, u.created_at,
         u.email_verified, u.blocked, u.google_id,
+        u.trial_start_date, u.trial_end_date, u.subscription_status, u.plan_type,
         COUNT(DISTINCT p.id) as project_count,
         COUNT(DISTINCT pa.id) as payapp_count,
         COUNT(DISTINCT pa.id) FILTER (WHERE pa.status='submitted') as submitted_count,
@@ -2175,6 +3036,20 @@ app.post('/api/admin/users/:id/verify-email', adminAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Admin: resend verification email to any user ─────────────────────────────
+app.post('/api/admin/users/:id/resend-verification', adminAuth, async (req, res) => {
+  try {
+    const user = (await pool.query('SELECT id, email, name, email_verified FROM users WHERE id=$1', [req.params.id])).rows[0];
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.email_verified) return res.json({ ok: true, message: 'Already verified' });
+    const token = generateToken();
+    await pool.query('UPDATE users SET verification_token=$1, verification_sent_at=NOW() WHERE id=$2', [token, user.id]);
+    await sendVerificationEmail(user.email, user.name, token);
+    await logEvent(req.user.id, 'admin_resend_verification', { target_user_id: user.id, target_email: user.email });
+    res.json({ ok: true });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // ── Admin: reset any user's password directly (no email needed) ─────────────
 app.post('/api/admin/users/:id/reset-password', adminAuth, async (req, res) => {
   const { new_password } = req.body;
@@ -2189,6 +3064,962 @@ app.post('/api/admin/users/:id/reset-password', adminAuth, async (req, res) => {
     // Return a fresh login token so admin can hand it off to the user if needed
     const tok = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
     res.json({ ok: true, email: user.email, token: tok });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── SUBSCRIPTION & TRIAL STATUS ──────────────────────────────────────────────
+app.get('/api/subscription', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT trial_start_date, trial_end_date, subscription_status, plan_type, stripe_customer_id FROM users WHERE id=$1',
+      [req.user.id]
+    );
+    const user = r.rows[0];
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const now = new Date();
+    const trialEnd = user.trial_end_date ? new Date(user.trial_end_date) : null;
+    const daysLeft = trialEnd ? Math.max(0, Math.ceil((trialEnd - now) / (1000*60*60*24))) : 0;
+    const trialExpired = trialEnd ? now > trialEnd : false;
+    // Admin users are always 'active' — never blocked
+    const isAdmin = isAdminEmail(req.user.email);
+    res.json({
+      trial_start_date: user.trial_start_date,
+      trial_end_date: user.trial_end_date,
+      subscription_status: isAdmin ? 'active' : user.subscription_status,
+      plan_type: isAdmin ? 'pro' : user.plan_type,
+      days_left: daysLeft,
+      trial_expired: isAdmin ? false : trialExpired,
+      is_admin: isAdmin,
+      has_stripe: !!user.stripe_customer_id
+    });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── Stripe Subscription Billing ($40/month Pro plan) ────────────────────────
+
+// One-time setup: create the Stripe Product + Price (admin only, idempotent)
+app.post('/api/admin/setup-subscription-product', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  try {
+    // Check if we already have a price stored
+    const existing = (await pool.query("SELECT value FROM app_settings WHERE key='subscription_price_id'")).rows[0];
+    if (existing?.value) {
+      // Verify it still exists in Stripe
+      try {
+        const price = await stripe.prices.retrieve(existing.value);
+        return res.json({ message: 'Subscription product already exists', price_id: existing.value, product_id: price.product, amount: price.unit_amount, interval: price.recurring?.interval });
+      } catch(e) { /* price was deleted, recreate below */ }
+    }
+    // Create product
+    const product = await stripe.products.create({
+      name: 'ConstructInvoice AI Pro',
+      description: 'Full access to ConstructInvoice AI — G702/G703 pay apps, lien waivers, payment collection, AI assistant, and more.',
+      metadata: { app: 'constructinvoice', tier: 'pro' }
+    });
+    // Create price ($40/month)
+    const price = await stripe.prices.create({
+      product: product.id,
+      unit_amount: 4000, // $40.00 in cents
+      currency: 'usd',
+      recurring: { interval: 'month' },
+      metadata: { app: 'constructinvoice', tier: 'pro' }
+    });
+    // Store in app_settings table for future reference
+    await pool.query(
+      "INSERT INTO app_settings(key,value) VALUES('subscription_price_id',$1) ON CONFLICT(key) DO UPDATE SET value=$1",
+      [price.id]
+    );
+    await pool.query(
+      "INSERT INTO app_settings(key,value) VALUES('subscription_product_id',$1) ON CONFLICT(key) DO UPDATE SET value=$1",
+      [product.id]
+    );
+    console.log(`[Stripe] Created subscription product ${product.id} with price ${price.id} ($40/month)`);
+    res.json({ message: 'Subscription product created', product_id: product.id, price_id: price.id, amount: 4000, interval: 'month' });
+  } catch(e) { console.error('[Stripe Setup Error]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// Get subscription price ID (used by frontend to create checkout)
+app.get('/api/subscription/price', auth, async (req, res) => {
+  try {
+    const r = (await pool.query("SELECT value FROM app_settings WHERE key='subscription_price_id'")).rows[0];
+    if (!r?.value) return res.status(404).json({ error: 'Subscription not configured. Admin must run setup first.' });
+    res.json({ price_id: r.value, amount: 4000, currency: 'usd', interval: 'month' });
+  } catch(e) { res.status(500).json({ error: 'Internal error' }); }
+});
+
+// Create a Stripe Checkout Session for subscription
+app.post('/api/subscription/checkout', auth, requireStripe, async (req, res) => {
+  try {
+    const priceRow = (await pool.query("SELECT value FROM app_settings WHERE key='subscription_price_id'")).rows[0];
+    if (!priceRow?.value) return res.status(400).json({ error: 'Subscription price not configured. Admin must run setup first.' });
+    const user = (await pool.query('SELECT id, email, name, stripe_customer_id FROM users WHERE id=$1', [req.user.id])).rows[0];
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    // Create or reuse Stripe Customer
+    let customerId = user.stripe_customer_id;
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        name: user.name || undefined,
+        metadata: { user_id: String(user.id), app: 'constructinvoice' }
+      });
+      customerId = customer.id;
+      await pool.query('UPDATE users SET stripe_customer_id=$1 WHERE id=$2', [customerId, user.id]);
+    }
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const session = await stripe.checkout.sessions.create({
+      customer: customerId,
+      mode: 'subscription',
+      line_items: [{ price: priceRow.value, quantity: 1 }],
+      success_url: `${baseUrl}/app.html?subscription=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/app.html?subscription=cancelled`,
+      metadata: { user_id: String(user.id), app: 'constructinvoice' },
+      subscription_data: {
+        metadata: { user_id: String(user.id), app: 'constructinvoice' }
+      }
+    });
+    console.log(`[Subscription] Checkout session created for user ${user.id} (${user.email})`);
+    res.json({ checkout_url: session.url, session_id: session.id });
+  } catch(e) { console.error('[Subscription Checkout Error]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// Create Stripe Customer Portal session (manage subscription, cancel, update payment)
+app.post('/api/subscription/portal', auth, requireStripe, async (req, res) => {
+  try {
+    const user = (await pool.query('SELECT stripe_customer_id FROM users WHERE id=$1', [req.user.id])).rows[0];
+    if (!user?.stripe_customer_id) return res.status(400).json({ error: 'No active subscription found' });
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const session = await stripe.billingPortal.sessions.create({
+      customer: user.stripe_customer_id,
+      return_url: `${baseUrl}/app.html#settings`,
+    });
+    res.json({ portal_url: session.url });
+  } catch(e) { console.error('[Portal Error]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// Admin: update subscription price (change amount)
+app.post('/api/admin/update-subscription-price', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  try {
+    const { amount } = req.body; // amount in dollars
+    if (!amount || amount < 1) return res.status(400).json({ error: 'Amount must be at least $1' });
+    const productRow = (await pool.query("SELECT value FROM app_settings WHERE key='subscription_product_id'")).rows[0];
+    if (!productRow?.value) return res.status(400).json({ error: 'No subscription product exists. Run setup first.' });
+    // Create new price (Stripe prices are immutable — you archive old, create new)
+    const price = await stripe.prices.create({
+      product: productRow.value,
+      unit_amount: Math.round(amount * 100),
+      currency: 'usd',
+      recurring: { interval: 'month' },
+      metadata: { app: 'constructinvoice', tier: 'pro' }
+    });
+    // Archive old price
+    const oldPriceRow = (await pool.query("SELECT value FROM app_settings WHERE key='subscription_price_id'")).rows[0];
+    if (oldPriceRow?.value) {
+      try { await stripe.prices.update(oldPriceRow.value, { active: false }); } catch(e) {}
+    }
+    await pool.query("UPDATE app_settings SET value=$1 WHERE key='subscription_price_id'", [price.id]);
+    console.log(`[Stripe] Updated subscription price to $${amount}/month (${price.id})`);
+    res.json({ message: `Price updated to $${amount}/month`, price_id: price.id });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Admin: Stripe webhook management (SDK-only, no dashboard needed) ─────────
+const REQUIRED_WEBHOOK_EVENTS = [
+  'checkout.session.completed',
+  'checkout.session.async_payment_succeeded',
+  'checkout.session.async_payment_failed',
+  'checkout.session.expired',
+  'invoice.paid',
+  'invoice.payment_failed',
+  'customer.subscription.deleted',
+  'customer.subscription.updated',
+  'payment_intent.payment_failed'
+];
+
+app.get('/api/admin/stripe/list-webhooks', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  try {
+    const endpoints = await stripe.webhookEndpoints.list({ limit: 20 });
+    res.json(endpoints.data.map(ep => ({
+      id: ep.id,
+      url: ep.url,
+      status: ep.status,
+      enabled_events: ep.enabled_events,
+      api_version: ep.api_version,
+      created: new Date(ep.created * 1000).toISOString()
+    })));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/stripe/create-webhook', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  try {
+    const { url } = req.body;
+    const targetUrl = url || `${process.env.BASE_URL || `${req.protocol}://${req.get('host')}`}/api/stripe/webhook`;
+    // Check if webhook already exists for this URL
+    const existing = await stripe.webhookEndpoints.list({ limit: 20 });
+    const found = existing.data.find(ep => ep.url === targetUrl && ep.status === 'enabled');
+    if (found) {
+      return res.json({ message: 'Webhook already exists', id: found.id, url: found.url, secret: '(already created — check Railway env)', events: found.enabled_events });
+    }
+    const endpoint = await stripe.webhookEndpoints.create({
+      url: targetUrl,
+      enabled_events: REQUIRED_WEBHOOK_EVENTS,
+      description: 'ConstructInvoice AI — payments + subscriptions',
+      metadata: { app: 'constructinvoice', created_by: 'admin_sdk' }
+    });
+    console.log(`[Stripe] Webhook endpoint created: ${endpoint.id} → ${targetUrl}`);
+    res.json({ message: 'Webhook created', id: endpoint.id, url: endpoint.url, secret: endpoint.secret, events: endpoint.enabled_events });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/admin/stripe/delete-webhook', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  try {
+    const { webhook_id } = req.body;
+    if (!webhook_id) return res.status(400).json({ error: 'webhook_id required' });
+    await stripe.webhookEndpoints.del(webhook_id);
+    console.log(`[Stripe] Webhook endpoint deleted: ${webhook_id}`);
+    res.json({ message: 'Webhook deleted', id: webhook_id });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Comprehensive Stripe setup verification
+app.get('/api/admin/stripe/verify-setup', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  try {
+    const checks = {};
+    // 1. Account info
+    const account = await stripe.accounts.retrieve();
+    checks.account = { id: account.id, name: account.settings?.dashboard?.display_name, country: account.country, charges: account.charges_enabled, payouts: account.payouts_enabled };
+    // 2. Mode detection
+    checks.mode = process.env.STRIPE_SECRET_KEY?.startsWith('sk_test') ? 'TEST' : 'LIVE';
+    // 3. Subscription product
+    const prodRow = (await pool.query("SELECT value FROM app_settings WHERE key='subscription_product_id'")).rows[0];
+    const priceRow = (await pool.query("SELECT value FROM app_settings WHERE key='subscription_price_id'")).rows[0];
+    checks.subscription = { product_id: prodRow?.value || 'NOT SET', price_id: priceRow?.value || 'NOT SET' };
+    if (priceRow?.value) {
+      try {
+        const price = await stripe.prices.retrieve(priceRow.value);
+        checks.subscription.amount = price.unit_amount / 100;
+        checks.subscription.currency = price.currency;
+        checks.subscription.interval = price.recurring?.interval;
+        checks.subscription.active = price.active;
+      } catch(e) { checks.subscription.error = 'Price not found in Stripe: ' + e.message; }
+    }
+    // 4. Webhooks
+    const endpoints = await stripe.webhookEndpoints.list({ limit: 20 });
+    checks.webhooks = endpoints.data.map(ep => ({ id: ep.id, url: ep.url, status: ep.status, events: ep.enabled_events.length }));
+    checks.webhook_secret_configured = !!process.env.STRIPE_WEBHOOK_SECRET;
+    // 5. Connected accounts count
+    const connectedAccounts = (await pool.query('SELECT COUNT(*) FROM connected_accounts WHERE account_status=$1', ['active'])).rows[0].count;
+    checks.connected_accounts = parseInt(connectedAccounts);
+    // 6. Overall readiness
+    const issues = [];
+    if (!prodRow?.value) issues.push('No subscription product — run setup-subscription-product');
+    if (!priceRow?.value) issues.push('No subscription price — run setup-subscription-product');
+    if (checks.webhooks.length === 0) issues.push('No webhook endpoints configured');
+    if (!process.env.STRIPE_WEBHOOK_SECRET) issues.push('STRIPE_WEBHOOK_SECRET env var not set');
+    if (!process.env.BASE_URL) issues.push('BASE_URL env var not set (needed for payment links)');
+    checks.ready = issues.length === 0;
+    checks.issues = issues;
+    res.json(checks);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── Admin: End-to-End Stripe Test Harness ────────────────────────────────────
+// Creates test GC accounts, projects, pay apps, and verifies money flow.
+// ALL endpoints are admin-only. Used in TEST mode only.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Create a test GC user + Stripe Express connected account + onboarding link
+app.post('/api/admin/test/create-test-gc', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  const isTest = process.env.STRIPE_SECRET_KEY?.startsWith('sk_test');
+  if (!isTest) return res.status(403).json({ error: 'Test endpoints only work in Stripe TEST mode' });
+  try {
+    const { name, email, company_name } = req.body;
+    if (!name || !email) return res.status(400).json({ error: 'name and email required' });
+    // 1. Create user in our DB (or find existing)
+    let userId;
+    const existing = await pool.query('SELECT id FROM users WHERE email=$1', [email]);
+    if (existing.rows[0]) {
+      userId = existing.rows[0].id;
+    } else {
+      const hash = await bcrypt.hash('TestPass123!', 10);
+      const r = await pool.query(
+        `INSERT INTO users(name,email,password_hash,email_verified,trial_start_date,trial_end_date,subscription_status,plan_type)
+         VALUES($1,$2,$3,TRUE,NOW(),NOW()+INTERVAL '90 days','trial','free_trial') RETURNING id`,
+        [name, email, hash]
+      );
+      userId = r.rows[0].id;
+    }
+    // 2. Save company settings
+    if (company_name) {
+      await pool.query(
+        `INSERT INTO company_settings(user_id, company_name) VALUES($1,$2)
+         ON CONFLICT(user_id) DO UPDATE SET company_name=$2`,
+        [userId, company_name]
+      );
+    }
+    // 3. Create Stripe Express connected account
+    const existingAcct = await pool.query('SELECT * FROM connected_accounts WHERE user_id=$1', [userId]);
+    let accountId;
+    if (existingAcct.rows[0]) {
+      accountId = existingAcct.rows[0].stripe_account_id;
+    } else {
+      const account = await stripe.accounts.create({
+        type: 'express',
+        country: 'US',
+        email: email,
+        business_type: 'company',
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+          us_bank_account_ach_payments: { requested: true },
+        },
+        metadata: { user_id: String(userId), platform: 'constructinvoice', test: 'true' },
+      });
+      accountId = account.id;
+      await pool.query(
+        'INSERT INTO connected_accounts(user_id, stripe_account_id) VALUES($1,$2) ON CONFLICT(user_id) DO UPDATE SET stripe_account_id=$2',
+        [userId, accountId]
+      );
+      await pool.query('UPDATE users SET stripe_connect_id=$1 WHERE id=$2', [accountId, userId]);
+    }
+    // 4. Generate onboarding link
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const link = await stripe.accountLinks.create({
+      account: accountId,
+      refresh_url: `${baseUrl}/app.html#payments_setup=refresh`,
+      return_url: `${baseUrl}/app.html#payments_setup=complete`,
+      type: 'account_onboarding',
+    });
+    // 5. Check current account status
+    const acct = await stripe.accounts.retrieve(accountId);
+    res.json({
+      message: 'Test GC created',
+      user_id: userId,
+      email: email,
+      password: 'TestPass123!',
+      stripe_account_id: accountId,
+      charges_enabled: acct.charges_enabled,
+      payouts_enabled: acct.payouts_enabled,
+      onboarding_url: link.url,
+      note: 'Open onboarding_url in browser. In test mode, click "Use test data" to auto-fill all fields.'
+    });
+  } catch(e) {
+    console.error('[Test Create GC]', e.message);
+    if (e.code === '23505') return res.status(400).json({ error: 'Email already exists — use a different email or the existing user' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Create a test project + SOV + pay app for a test GC user, and generate payment link
+app.post('/api/admin/test/create-test-payapp', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  try {
+    const { user_id, project_name, contract_amount, owner_name, owner_email } = req.body;
+    if (!user_id) return res.status(400).json({ error: 'user_id required' });
+    const pName = project_name || 'Test Renovation Project';
+    const amount = contract_amount || 85000;
+    const oName = owner_name || 'John Smith (Test Owner)';
+    const oEmail = owner_email || 'testowner@example.com';
+    // 1. Create project
+    const proj = await pool.query(
+      `INSERT INTO projects(user_id,name,number,owner,owner_email,contractor,original_contract,default_retainage,payment_terms)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [user_id, pName, 'TEST-' + Date.now().toString(36).toUpperCase(), oName, oEmail, 'Test GC Company', amount, 10, 'Net 30']
+    );
+    const projectId = proj.rows[0].id;
+    // 2. Create SOV lines (realistic construction items)
+    const sovItems = [
+      { item_id: '1', description: 'General Conditions', scheduled_value: Math.round(amount * 0.08) },
+      { item_id: '2', description: 'Site Preparation', scheduled_value: Math.round(amount * 0.05) },
+      { item_id: '3', description: 'Concrete & Foundation', scheduled_value: Math.round(amount * 0.15) },
+      { item_id: '4', description: 'Framing & Structural', scheduled_value: Math.round(amount * 0.20) },
+      { item_id: '5', description: 'Electrical', scheduled_value: Math.round(amount * 0.12) },
+      { item_id: '6', description: 'Plumbing', scheduled_value: Math.round(amount * 0.10) },
+      { item_id: '7', description: 'HVAC', scheduled_value: Math.round(amount * 0.10) },
+      { item_id: '8', description: 'Finishes & Paint', scheduled_value: Math.round(amount * 0.08) },
+      { item_id: '9', description: 'Landscaping', scheduled_value: Math.round(amount * 0.05) },
+      { item_id: '10', description: 'Project Management Fee', scheduled_value: amount - Math.round(amount * 0.93) },
+    ];
+    const sovTotal = sovItems.reduce((s, l) => s + l.scheduled_value, 0);
+    for (const [i, line] of sovItems.entries()) {
+      await pool.query(
+        'INSERT INTO sov_lines(project_id,item_id,description,scheduled_value,sort_order) VALUES($1,$2,$3,$4,$5)',
+        [projectId, line.item_id, line.description, line.scheduled_value, i]
+      );
+    }
+    await pool.query('UPDATE projects SET original_contract=$1 WHERE id=$2', [sovTotal, projectId]);
+    // 3. Create Pay App #1 with 30% progress
+    const invoiceToken = require('crypto').randomBytes(24).toString('hex');
+    const pa = await pool.query(
+      `INSERT INTO pay_apps(project_id,app_number,period_label,period_start,period_end,invoice_token)
+       VALUES($1,1,'March 2026','2026-03-01','2026-03-31',$2) RETURNING *`,
+      [projectId, invoiceToken]
+    );
+    const paId = pa.rows[0].id;
+    // 4. Create pay app lines with 30% this period
+    const sovLines = await pool.query('SELECT * FROM sov_lines WHERE project_id=$1 ORDER BY sort_order', [projectId]);
+    let totalThisPeriod = 0;
+    for (const line of sovLines.rows) {
+      const thisPct = 30; // 30% progress this period
+      const sv = parseFloat(line.scheduled_value);
+      totalThisPeriod += sv * thisPct / 100;
+      await pool.query(
+        'INSERT INTO pay_app_lines(pay_app_id,sov_line_id,prev_pct,this_pct,retainage_pct,stored_materials) VALUES($1,$2,$3,$4,$5,$6)',
+        [paId, line.id, 0, thisPct, 10, 0]
+      );
+    }
+    // 5. Generate payment link token
+    const payToken = require('crypto').randomBytes(24).toString('hex');
+    await pool.query('UPDATE pay_apps SET payment_link_token=$1, status=$2 WHERE id=$3', [payToken, 'submitted', paId]);
+    // 6. Calculate expected payment amounts
+    const grossThisPeriod = totalThisPeriod;
+    const retainage = grossThisPeriod * 0.10;
+    const netAfterRetainage = grossThisPeriod - retainage;
+    const paymentDue = netAfterRetainage; // First pay app, no previous certs
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    res.json({
+      message: 'Test project + pay app created',
+      project_id: projectId,
+      project_name: pName,
+      pay_app_id: paId,
+      sov_total: sovTotal,
+      sov_lines: sovItems.length,
+      progress_pct: 30,
+      gross_this_period: grossThisPeriod,
+      retainage_10pct: retainage,
+      net_after_retainage: netAfterRetainage,
+      payment_due: paymentDue,
+      payment_link: `${baseUrl}/pay/${payToken}`,
+      payment_token: payToken,
+      owner: oName,
+      owner_email: oEmail,
+      expected_fees: {
+        ach: { platform_fee: 25.00, gc_receives: paymentDue - 25.00, owner_pays: paymentDue },
+        card: {
+          processing_fee: Math.round((paymentDue * 0.033 + 0.40) * 100) / 100,
+          owner_pays: Math.round((paymentDue + paymentDue * 0.033 + 0.40) * 100) / 100,
+          gc_receives: paymentDue,
+          platform_keeps_margin: Math.round(((paymentDue * 0.033 + 0.40) - (paymentDue * 0.029 + 0.30)) * 100) / 100
+        }
+      }
+    });
+  } catch(e) {
+    console.error('[Test Create PayApp]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Complete reconciliation report — shows ALL money flow with math verification
+app.get('/api/admin/test/reconciliation', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  try {
+    // 1. All payments in our DB
+    const payments = await pool.query(`
+      SELECT p.*, pa.app_number, pa.project_id, pa.payment_link_token,
+             pr.name as project_name, pr.owner, u.name as gc_name, u.email as gc_email,
+             ca.stripe_account_id
+      FROM payments p
+      JOIN pay_apps pa ON pa.id = p.pay_app_id
+      JOIN projects pr ON pr.id = pa.project_id
+      JOIN users u ON u.id = p.user_id
+      LEFT JOIN connected_accounts ca ON ca.user_id = p.user_id
+      ORDER BY p.created_at DESC
+    `);
+    // 2. All connected accounts with balances
+    const connectedAccts = await pool.query(`
+      SELECT ca.*, u.name as gc_name, u.email as gc_email
+      FROM connected_accounts ca
+      JOIN users u ON u.id = ca.user_id
+    `);
+    const accountDetails = [];
+    for (const acct of connectedAccts.rows) {
+      try {
+        const stripeAcct = await stripe.accounts.retrieve(acct.stripe_account_id);
+        let balance = null;
+        try { balance = await stripe.balance.retrieve({ stripeAccount: acct.stripe_account_id }); } catch(e) {}
+        accountDetails.push({
+          gc_name: acct.gc_name,
+          gc_email: acct.gc_email,
+          stripe_id: acct.stripe_account_id,
+          charges_enabled: stripeAcct.charges_enabled,
+          payouts_enabled: stripeAcct.payouts_enabled,
+          business_name: stripeAcct.business_profile?.name || stripeAcct.settings?.dashboard?.display_name,
+          balance: balance ? {
+            available: balance.available.map(b => ({ amount: b.amount / 100, currency: b.currency })),
+            pending: balance.pending.map(b => ({ amount: b.amount / 100, currency: b.currency }))
+          } : 'Unable to retrieve'
+        });
+      } catch(e) {
+        accountDetails.push({ gc_name: acct.gc_name, stripe_id: acct.stripe_account_id, error: e.message });
+      }
+    }
+    // 3. Platform balance
+    let platformBalance;
+    try {
+      const bal = await stripe.balance.retrieve();
+      platformBalance = {
+        available: bal.available.map(b => ({ amount: b.amount / 100, currency: b.currency })),
+        pending: bal.pending.map(b => ({ amount: b.amount / 100, currency: b.currency }))
+      };
+    } catch(e) { platformBalance = { error: e.message }; }
+    // 4. Recent Stripe charges (last 20)
+    let recentCharges = [];
+    try {
+      const charges = await stripe.charges.list({ limit: 20 });
+      recentCharges = charges.data.map(c => ({
+        id: c.id,
+        amount: c.amount / 100,
+        fee: c.application_fee_amount ? c.application_fee_amount / 100 : 0,
+        net: (c.amount - (c.application_fee_amount || 0)) / 100,
+        status: c.status,
+        method: c.payment_method_details?.type || 'unknown',
+        destination: c.transfer_data?.destination || 'platform',
+        created: new Date(c.created * 1000).toISOString(),
+        description: c.description
+      }));
+    } catch(e) { recentCharges = [{ error: e.message }]; }
+    // 5. Subscription revenue
+    let subscriptions = [];
+    try {
+      const subs = await stripe.subscriptions.list({ limit: 50, status: 'all' });
+      subscriptions = subs.data.map(s => ({
+        id: s.id,
+        customer: s.customer,
+        status: s.status,
+        amount: s.items.data[0]?.price?.unit_amount / 100,
+        interval: s.items.data[0]?.price?.recurring?.interval,
+        created: new Date(s.created * 1000).toISOString(),
+        current_period_end: new Date(s.current_period_end * 1000).toISOString()
+      }));
+    } catch(e) {}
+    // 6. Math verification
+    const dbPayments = payments.rows.map(p => ({
+      id: p.id,
+      pay_app: `#${p.app_number}`,
+      project: p.project_name,
+      gc: p.gc_name,
+      amount: parseFloat(p.amount),
+      processing_fee: parseFloat(p.processing_fee || 0),
+      platform_fee: parseFloat(p.platform_fee || 0),
+      method: p.payment_method,
+      payment_status: p.payment_status,
+      stripe_session: p.stripe_checkout_session_id,
+      connected_account: p.stripe_account_id,
+      created: p.created_at
+    }));
+    const totals = {
+      total_payments: dbPayments.length,
+      total_amount: dbPayments.reduce((s, p) => s + p.amount, 0),
+      total_platform_fees: dbPayments.reduce((s, p) => s + p.platform_fee, 0),
+      total_processing_fees: dbPayments.reduce((s, p) => s + p.processing_fee, 0),
+      total_subscriptions: subscriptions.length,
+      active_subscriptions: subscriptions.filter(s => s.status === 'active').length,
+      monthly_subscription_revenue: subscriptions.filter(s => s.status === 'active').reduce((s, sub) => s + (sub.amount || 0), 0)
+    };
+    res.json({
+      summary: totals,
+      platform_balance: platformBalance,
+      connected_accounts: accountDetails,
+      payments: dbPayments,
+      stripe_charges: recentCharges,
+      subscriptions: subscriptions,
+      generated_at: new Date().toISOString()
+    });
+  } catch(e) {
+    console.error('[Reconciliation]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Complete onboarding programmatically in TEST MODE
+// Deletes existing Express account (can't set company/TOS via API) and recreates as Custom
+// Custom accounts give the platform full API control — identical payment routing
+app.post('/api/admin/test/complete-onboarding', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  const isTest = process.env.STRIPE_SECRET_KEY?.startsWith('sk_test');
+  if (!isTest) return res.status(403).json({ error: 'Only works in Stripe TEST mode' });
+  try {
+    const { user_id } = req.body;
+    if (!user_id) return res.status(400).json({ error: 'user_id required' });
+    const user = await pool.query('SELECT name, email FROM users WHERE id=$1', [user_id]);
+    if (!user.rows[0]) return res.status(404).json({ error: 'User not found' });
+    const company = await pool.query('SELECT company_name FROM company_settings WHERE user_id=$1', [user_id]);
+    const userName = user.rows[0]?.name || 'Test User';
+    const userEmail = user.rows[0]?.email;
+    const companyName = company.rows[0]?.company_name || 'Test Construction Co';
+    const nameParts = userName.split(' ');
+    const firstName = nameParts[0] || 'Test';
+    const lastName = nameParts.slice(1).join(' ') || 'User';
+    // Step 0: Delete existing Express account if present (can't API-onboard Express)
+    const existing = await pool.query('SELECT stripe_account_id FROM connected_accounts WHERE user_id=$1', [user_id]);
+    if (existing.rows[0]) {
+      try { await stripe.accounts.del(existing.rows[0].stripe_account_id); } catch(e) {
+        console.log(`[Test] Could not delete old account: ${e.message}`);
+      }
+      await pool.query('DELETE FROM connected_accounts WHERE user_id=$1', [user_id]);
+    }
+    // Step 1: Create Custom connected account as INDIVIDUAL (simpler requirements than company)
+    // Individual accounts don't need company.phone, and work identically for payment routing
+    const account = await stripe.accounts.create({
+      type: 'custom',
+      country: 'US',
+      email: userEmail,
+      business_type: 'individual',
+      capabilities: {
+        card_payments: { requested: true },
+        transfers: { requested: true },
+        us_bank_account_ach_payments: { requested: true },
+      },
+      business_profile: {
+        mcc: '1520',
+        name: companyName,
+        product_description: 'General contracting and construction services',
+        url: 'https://www.example-construction.com',
+      },
+      individual: {
+        first_name: firstName,
+        last_name: lastName,
+        email: userEmail,
+        phone: '+14155552671',
+        dob: { day: 1, month: 1, year: 1990 },
+        address: { line1: '123 Test Street', city: 'San Francisco', state: 'CA', postal_code: '94105', country: 'US' },
+        ssn_last_4: '0000',
+        id_number: '000000000', // Test SSN
+      },
+      tos_acceptance: {
+        date: Math.floor(Date.now() / 1000),
+        ip: '127.0.0.1',
+        service_agreement: 'full',
+      },
+      metadata: { user_id: String(user_id), platform: 'constructinvoice', test: 'true' },
+    });
+    const accountId = account.id;
+    // Step 2: No separate person needed — individual account uses the `individual` block
+    const person = { id: 'individual_account' };
+    // Step 3: Add test bank account for payouts
+    await stripe.accounts.createExternalAccount(accountId, {
+      external_account: {
+        object: 'bank_account',
+        country: 'US',
+        currency: 'usd',
+        routing_number: '110000000',
+        account_number: '000123456789',
+      },
+    });
+    // Step 4: Save to our DB
+    await pool.query(
+      'INSERT INTO connected_accounts(user_id, stripe_account_id, account_status, charges_enabled, payouts_enabled, business_name, onboarded_at) VALUES($1,$2,$3,$4,$5,$6,NOW()) ON CONFLICT(user_id) DO UPDATE SET stripe_account_id=$2, account_status=$3, charges_enabled=$4, payouts_enabled=$5, business_name=$6, onboarded_at=NOW()',
+      [user_id, accountId, 'active', true, true, companyName]
+    );
+    await pool.query('UPDATE users SET stripe_connect_id=$1, payments_enabled=TRUE WHERE id=$2', [accountId, user_id]);
+    // Step 5: Verify
+    const acct = await stripe.accounts.retrieve(accountId);
+    res.json({
+      message: 'Custom account created & fully onboarded',
+      stripe_account_id: accountId,
+      account_type: 'custom',
+      charges_enabled: acct.charges_enabled,
+      payouts_enabled: acct.payouts_enabled,
+      details_submitted: acct.details_submitted,
+      requirements: {
+        currently_due: acct.requirements?.currently_due || [],
+        past_due: acct.requirements?.past_due || [],
+        disabled_reason: acct.requirements?.disabled_reason || null,
+      },
+      business_name: acct.business_profile?.name,
+      person_id: person.id,
+      bank_account: 'Test bank ****6789 (routing 110000000)',
+      note: 'Custom accounts work identically to Express for payments — same transfer_data, same application_fee routing.'
+    });
+  } catch(e) {
+    console.error('[Test Onboarding]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// List all test GC accounts with their Stripe status
+app.get('/api/admin/test/list-test-gcs', adminAuth, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+  try {
+    const gcs = await pool.query(`
+      SELECT u.id, u.name, u.email, u.subscription_status, u.plan_type,
+             ca.stripe_account_id, ca.charges_enabled, ca.payouts_enabled, ca.account_status, ca.business_name,
+             COUNT(DISTINCT pr.id) as project_count,
+             COUNT(DISTINCT pa.id) as payapp_count
+      FROM users u
+      LEFT JOIN connected_accounts ca ON ca.user_id = u.id
+      LEFT JOIN projects pr ON pr.user_id = u.id
+      LEFT JOIN pay_apps pa ON pa.project_id = pr.id AND pa.deleted_at IS NULL
+      GROUP BY u.id, u.name, u.email, u.subscription_status, u.plan_type,
+               ca.stripe_account_id, ca.charges_enabled, ca.payouts_enabled, ca.account_status, ca.business_name
+      ORDER BY u.created_at DESC
+    `);
+    // Enrich with live Stripe data
+    const results = [];
+    for (const gc of gcs.rows) {
+      const entry = { ...gc, project_count: parseInt(gc.project_count), payapp_count: parseInt(gc.payapp_count) };
+      if (gc.stripe_account_id) {
+        try {
+          const acct = await stripe.accounts.retrieve(gc.stripe_account_id);
+          entry.stripe_live = {
+            charges_enabled: acct.charges_enabled,
+            payouts_enabled: acct.payouts_enabled,
+            details_submitted: acct.details_submitted,
+            business_name: acct.business_profile?.name || acct.settings?.dashboard?.display_name
+          };
+        } catch(e) { entry.stripe_live = { error: e.message }; }
+      }
+      results.push(entry);
+    }
+    res.json(results);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Cleanup: remove test data (test users, projects, pay apps)
+app.post('/api/admin/test/cleanup', adminAuth, async (req, res) => {
+  try {
+    const { user_ids } = req.body;
+    if (!user_ids || !Array.isArray(user_ids) || user_ids.length === 0) {
+      return res.status(400).json({ error: 'user_ids array required' });
+    }
+    // Delete connected accounts from Stripe
+    for (const uid of user_ids) {
+      const ca = await pool.query('SELECT stripe_account_id FROM connected_accounts WHERE user_id=$1', [uid]);
+      if (ca.rows[0]?.stripe_account_id) {
+        try { await stripe.accounts.del(ca.rows[0].stripe_account_id); } catch(e) {
+          console.log(`[Test Cleanup] Could not delete Stripe account ${ca.rows[0].stripe_account_id}: ${e.message}`);
+        }
+      }
+    }
+    // Delete users (CASCADE takes care of projects, pay_apps, sov_lines, etc.)
+    const placeholders = user_ids.map((_, i) => `$${i + 1}`).join(',');
+    const deleted = await pool.query(`DELETE FROM users WHERE id IN (${placeholders}) RETURNING id, email`, user_ids);
+    res.json({ message: `Cleaned up ${deleted.rows.length} test users`, deleted: deleted.rows });
+  } catch(e) {
+    console.error('[Test Cleanup]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── User-facing AI Assistant (product help) ──────────────────────────────────
+const PRODUCT_KNOWLEDGE = `
+You are Aria, the friendly AI assistant built into ConstructInvoice AI — a construction billing platform for General Contractors.
+Your job is to help users understand and use the product. Be warm, concise, and practical. Use short paragraphs.
+
+PRODUCT OVERVIEW:
+ConstructInvoice AI generates AIA G702/G703 pay applications for construction projects. Users create projects, upload a Schedule of Values (SOV), then generate pay apps as PDFs.
+
+PRICING:
+- 90-day FREE trial with full features, no credit card required
+- After trial: $40/month Pro plan
+- If a contractor cannot afford it, they can email vaakapila@gmail.com and the team will waive the fee
+
+KEY FEATURES & HOW-TO:
+
+1. CREATE A PROJECT:
+   - Click "+ New project" in the sidebar
+   - Step 1: Enter project name, owner, contractor, architect, contract amount
+   - Step 2: Upload your Schedule of Values (SOV) file
+   - Step 3: Review parsed SOV line items
+   - Accepted SOV formats: Excel (.xlsx, .xls), CSV, PDF (.pdf), Word (.docx, .doc)
+
+2. CREATE A PAY APP:
+   - Open a project from the Dashboard
+   - Go to the Pay Apps tab, click "+ New Pay App"
+   - Set the application period (from/to dates)
+   - Enter % complete for each SOV line item this period
+   - The G702/G703 math is calculated automatically
+   - Click Save, then download the PDF
+
+3. G702/G703 MATH:
+   - Col A: Scheduled value (from SOV)
+   - Col B: Work completed from previous periods
+   - Col C: Work completed this period (what you enter)
+   - Col D: Total completed (B + C)
+   - Col E: Retainage (% of D)
+   - Col F: Total earned less retainage (D - E)
+   - Col G: Previous certificates for payment
+   - Col H: Current payment due (F - G)
+   - Col I: Balance to finish (A - F)
+
+4. CHANGE ORDERS:
+   - In the Pay App editor, find the "+ Change Order" section
+   - Each change order gets its own line with description and amount
+   - Change orders roll into the G702 totals automatically
+   - Save with the checkmark button or press Enter
+
+5. LIEN WAIVERS:
+   - Conditional waivers are auto-created when a pay app has an amount and signatory info in Settings. You can also manually create waivers from the Preview tab.
+   - Supported types: Preliminary Notice, Conditional Progress, Unconditional Progress, Conditional Final, Unconditional Final
+   - Currently supports California, Virginia, and Washington D.C.
+   - Sign electronically by typing your name — PDF includes timestamp and IP
+
+6. PDF DOWNLOAD:
+   - Click "Download PDF" on the pay app Preview tab
+   - PDF includes G702 cover sheet + G703 continuation sheet
+   - Your company logo and signature are included automatically if set in Settings
+
+7. EMAIL / SEND:
+   - Click "Send & Mark Submitted" to email the pay app PDF to the project owner
+   - Lien waiver PDF is automatically attached if one was generated
+   - After first send, button changes to "Resend"
+
+8. SETTINGS:
+   - Company name, contact info (auto-fills new project forms)
+   - Upload company logo (appears on all PDFs)
+   - Upload signature (auto-fills on pay apps)
+   - Default payment terms and retainage %
+   - Set up automated email reminders (7 days before, day-of, 7 days overdue)
+
+9. REVENUE:
+   - Click "Revenue" in the sidebar
+   - See total billed, retention held, and net received across all projects
+   - Filter by month, quarter, or year
+   - Export to CSV, QuickBooks IIF, or Sage format
+
+10. REPORTS (NEW):
+    - Click "Reports" in the sidebar
+    - Filter by project, date range, and status (draft/submitted/paid)
+    - See monthly billing trend chart (contract billing + other invoices side by side)
+    - Two tables: pay apps and other invoices, both filterable
+    - Export pay apps or other invoices to CSV
+    - Each project also has a mini billing summary at the bottom of the Pay Apps tab
+
+11. OTHER INVOICES (NEW — non-contract):
+    - Inside any project, scroll to "Other invoices" section below pay apps
+    - Click "+ New invoice" to create permits, materials, equipment, labor, inspection, insurance, bond, or other invoices
+    - These are NOT part of the G702/G703 contract total — tracked separately
+    - Attach receipts or documents to each invoice
+    - Download each invoice as a professional PDF
+    - Vendor auto-fills from your company settings
+    - Due date auto-fills to 30 days from today
+
+12. PAYMENTS (Stripe Connect):
+    - Go to Settings → Accept Payments via Stripe
+    - Connect your Stripe account to accept ACH bank transfers (recommended) from property owners
+    - Credit card is off by default — enable it in Settings if you want (higher dispute risk)
+    - When you send a pay app email, it includes a "Pay Now" link
+    - The property owner clicks the link and pays via ACH directly — funds go to your bank
+
+13. SOV UPLOAD TIPS:
+    - The parser auto-detects amount and description columns
+    - "By Others" line items are treated as $0 (correct behavior)
+    - Grand Total rows are automatically excluded
+    - No template required — works with messy contractor spreadsheets
+
+14. TEAM MEMBERS:
+    - Settings > Team members > Invite by email
+    - Roles: Field (content only), Project Manager, Accountant, Executive, Admin
+
+RESPONSE STYLE:
+- Keep answers under 3-4 short sentences when possible
+- Use numbered steps for how-to questions
+- Be encouraging and supportive
+- If you do not know the answer, say so and suggest they email support at vaakapila@gmail.com
+- Do NOT make up features that do not exist
+`.trim();
+
+let _aiUserHistory = {};  // per-user chat history (in-memory, resets on server restart)
+
+app.post('/api/ai/ask', auth, async (req, res) => {
+  const { question, history } = req.body;
+  if (!question) return res.status(400).json({ error: 'Question required' });
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: 'AI not configured' });
+  try {
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 512,
+        system: PRODUCT_KNOWLEDGE,
+        messages: [...(history || []).slice(-10), { role: 'user', content: question }],
+      }),
+    });
+    const aiData = await aiRes.json();
+    if (aiData.error) throw new Error(aiData.error.message);
+    res.json({ answer: aiData.content?.[0]?.text || 'No response' });
+  } catch(e) { console.error('[AI User]', e.message); res.status(500).json({ error: 'AI temporarily unavailable' }); }
+});
+
+// ── Onboarding status ────────────────────────────────────────────────────────
+app.post('/api/onboarding/complete', auth, async (req, res) => {
+  try {
+    await pool.query('UPDATE users SET has_completed_onboarding = TRUE WHERE id=$1', [req.user.id]);
+    await logEvent(req.user.id, 'onboarding_completed', {});
+    res.json({ ok: true });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.post('/api/onboarding/reset', auth, async (req, res) => {
+  try {
+    await pool.query('UPDATE users SET has_completed_onboarding = FALSE WHERE id=$1', [req.user.id]);
+    res.json({ ok: true });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.get('/api/onboarding/status', auth, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT has_completed_onboarding FROM users WHERE id=$1', [req.user.id]);
+    res.json({ has_completed_onboarding: r.rows[0]?.has_completed_onboarding || false });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── Admin: Manage user trials & subscriptions ────────────────────────────────
+app.post('/api/admin/users/:id/extend-trial', adminAuth, async (req, res) => {
+  const { days } = req.body;
+  if (!days || days < 1 || days > 365) return res.status(400).json({ error: 'Days must be between 1 and 365' });
+  try {
+    await pool.query(
+      'UPDATE users SET trial_end_date = COALESCE(trial_end_date, NOW()) + ($1 || \' days\')::INTERVAL, subscription_status = \'trial\', plan_type = \'free_trial\' WHERE id=$2',
+      [days.toString(), req.params.id]
+    );
+    await logEvent(req.user.id, 'admin_trial_extended', { target_user_id: parseInt(req.params.id), days });
+    res.json({ ok: true });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.post('/api/admin/users/:id/set-free-override', adminAuth, async (req, res) => {
+  try {
+    await pool.query(
+      'UPDATE users SET subscription_status = \'free_override\', plan_type = \'free_override\', trial_end_date = NOW() + INTERVAL \'100 years\' WHERE id=$1',
+      [req.params.id]
+    );
+    await logEvent(req.user.id, 'admin_free_override', { target_user_id: parseInt(req.params.id) });
+    res.json({ ok: true });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.post('/api/admin/users/:id/upgrade-pro', adminAuth, async (req, res) => {
+  try {
+    await pool.query(
+      'UPDATE users SET subscription_status = \'active\', plan_type = \'pro\' WHERE id=$1',
+      [req.params.id]
+    );
+    await logEvent(req.user.id, 'admin_upgrade_pro', { target_user_id: parseInt(req.params.id) });
+    res.json({ ok: true });
+  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.post('/api/admin/users/:id/reset-trial', adminAuth, async (req, res) => {
+  try {
+    await pool.query(
+      'UPDATE users SET trial_start_date = NOW(), trial_end_date = NOW() + INTERVAL \'90 days\', subscription_status = \'trial\', plan_type = \'free_trial\' WHERE id=$1',
+      [req.params.id]
+    );
+    await logEvent(req.user.id, 'admin_trial_reset', { target_user_id: parseInt(req.params.id) });
+    res.json({ ok: true });
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -2229,7 +4060,7 @@ app.post('/api/support/request', async (req, res) => {
 app.get('/api/admin/support-requests', adminAuth, async (req, res) => {
   try {
     const r = await pool.query(
-      `SELECT id, event_data, created_at FROM analytics_events
+      `SELECT id, meta AS event_data, created_at FROM analytics_events
        WHERE event = 'support_request'
        ORDER BY created_at DESC LIMIT 100`
     );
@@ -2381,9 +4212,9 @@ app.get('/api/auth/accept-invite/:token', async (req, res) => {
        RETURNING *`,
       [req.params.token]
     );
-    if (!r.rows[0]) return res.redirect('/?invite_error=invalid_or_expired');
-    res.redirect('/?invite_accepted=1');
-  } catch(e) { res.redirect('/?invite_error=server'); }
+    if (!r.rows[0]) return res.redirect('/app.html?invite_error=invalid_or_expired');
+    res.redirect('/app.html?invite_accepted=1');
+  } catch(e) { res.redirect('/app.html?invite_error=server'); }
 });
 
 async function sendTeamInviteEmail(toEmail, toName, inviter, token) {
@@ -2743,20 +4574,95 @@ app.post('/api/projects/:id/lien-docs', auth, async (req, res) => {
 
 // Serve lien document PDF
 app.get('/api/lien-docs/:id/pdf', async (req, res) => {
-  const token = req.query.token || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
-  let decoded;
-  try { decoded = jwt.verify(token, JWT_SECRET); } catch(e) { return res.status(401).json({ error: 'Invalid token' }); }
+  try {
+    const token = req.query.token || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
+    let decoded;
+    try { decoded = jwt.verify(token, JWT_SECRET); } catch(e) { return res.status(401).json({ error: 'Invalid token' }); }
 
-  const r = await pool.query(
-    'SELECT ld.* FROM lien_documents ld JOIN projects p ON p.id=ld.project_id WHERE ld.id=$1 AND p.user_id=$2',
-    [req.params.id, decoded.id]
-  );
-  if (!r.rows[0]) return res.status(404).json({ error: 'Not found' });
-  const fp = path.join(__dirname, 'uploads', r.rows[0].filename);
-  if (!fs.existsSync(fp)) return res.status(404).json({ error: 'File not found' });
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${r.rows[0].doc_type}_${r.rows[0].id}.pdf"`);
-  res.sendFile(fp);
+    const r = await pool.query(
+      `SELECT ld.*, p.name, p.owner, p.contractor, p.location, p.city, p.state, p.contact as location_contact,
+              cs.logo_filename, cs.company_name
+       FROM lien_documents ld
+       JOIN projects p ON p.id=ld.project_id
+       LEFT JOIN company_settings cs ON cs.user_id=p.user_id
+       WHERE ld.id=$1 AND p.user_id=$2`,
+      [req.params.id, decoded.id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Not found' });
+    const lien = r.rows[0];
+
+    const fp = path.resolve(__dirname, 'uploads', lien.filename);
+
+    // Try to regenerate PDF with current logo (write to temp file first to avoid corrupting original)
+    try {
+      let pay_app_ref = null;
+      if (lien.pay_app_id) {
+        const paRow = await pool.query('SELECT app_number, period_label FROM pay_apps WHERE id=$1', [lien.pay_app_id]);
+        if (paRow.rows[0]) pay_app_ref = `Pay App #${paRow.rows[0].app_number}${paRow.rows[0].period_label ? ' — ' + paRow.rows[0].period_label : ''}`;
+      }
+      const project = {
+        name: lien.name, owner: lien.owner, contractor: lien.contractor || lien.company_name,
+        company_name: lien.company_name, location: lien.location_contact,
+        city: lien.city, state: lien.state, logo_filename: lien.logo_filename
+      };
+      const tmpPath = fp + '.tmp';
+      await generateLienDocPDF({
+        fpath: tmpPath, doc_type: lien.doc_type, project,
+        through_date: lien.through_date, amount: lien.amount,
+        maker_of_check: lien.maker_of_check, check_payable_to: lien.check_payable_to,
+        signatory_name: lien.signatory_name, signatory_title: lien.signatory_title,
+        signedAt: new Date(lien.signed_at), ip: lien.signatory_ip || 'on file',
+        jurisdiction: lien.jurisdiction || 'california', pay_app_ref
+      });
+      if (fs.existsSync(tmpPath) && fs.statSync(tmpPath).size > 100) {
+        fs.renameSync(tmpPath, fp);
+      } else {
+        try { fs.unlinkSync(tmpPath); } catch(_) {}
+      }
+    } catch(regenErr) {
+      console.error('[Lien PDF regen error]', regenErr.message);
+      try { const tmp = fp + '.tmp'; if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch(_) {}
+    }
+
+    // If file is still missing/empty after regen attempt, try direct generation as last resort
+    if (!fs.existsSync(fp) || fs.statSync(fp).size === 0) {
+      console.log('[Lien PDF] File missing or empty, attempting direct generation to:', fp);
+      try {
+        let pay_app_ref2 = null;
+        if (lien.pay_app_id) {
+          const paRow2 = await pool.query('SELECT app_number, period_label FROM pay_apps WHERE id=$1', [lien.pay_app_id]);
+          if (paRow2.rows[0]) pay_app_ref2 = `Pay App #${paRow2.rows[0].app_number}${paRow2.rows[0].period_label ? ' — ' + paRow2.rows[0].period_label : ''}`;
+        }
+        const proj2 = {
+          name: lien.name, owner: lien.owner, contractor: lien.contractor || lien.company_name,
+          company_name: lien.company_name, location: lien.location_contact,
+          city: lien.city, state: lien.state, logo_filename: lien.logo_filename
+        };
+        await generateLienDocPDF({
+          fpath: fp, doc_type: lien.doc_type, project: proj2,
+          through_date: lien.through_date, amount: lien.amount,
+          maker_of_check: lien.maker_of_check, check_payable_to: lien.check_payable_to,
+          signatory_name: lien.signatory_name, signatory_title: lien.signatory_title,
+          signedAt: new Date(lien.signed_at), ip: lien.signatory_ip || 'on file',
+          jurisdiction: lien.jurisdiction || 'california', pay_app_ref: pay_app_ref2
+        });
+        console.log('[Lien PDF] Direct generation succeeded, size:', fs.statSync(fp).size);
+      } catch(lastErr) {
+        console.error('[Lien PDF] Direct generation also failed:', lastErr.message, lastErr.stack);
+      }
+    }
+
+    // Serve the file
+    if (fs.existsSync(fp) && fs.statSync(fp).size > 0) {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${lien.doc_type}_${lien.id}.pdf"`);
+      return res.sendFile(fp, (err) => { if (err && !res.headersSent) res.status(500).json({ error: 'File send failed' }); });
+    }
+    return res.status(404).json({ error: 'Lien waiver PDF could not be generated' });
+  } catch(outerErr) {
+    console.error('[Lien PDF route error]', outerErr.message, outerErr.stack);
+    if (!res.headersSent) return res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // ── Shared helper: render a lien waiver into an open PDFDocument at current position ──
@@ -3141,9 +5047,161 @@ app.get('/api/revenue/summary', auth, async (req, res) => {
 
     res.json({ total_billed, net_billed, total_retention, active_projects, chart, rows });
   } catch(e) {
-    console.error('[Revenue]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[Revenue] ERROR:', e.message, '\n', e.stack);
+    res.status(500).json({ error: 'Internal server error', detail: e.message });
   }
+});
+
+// ── MODULE 5: REPORTS API ──────────────────────────────────────────────────
+
+// Reports: filtered pay apps with computed amounts
+app.get('/api/reports/pay-apps', auth, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const { project_id, status, date_from, date_to, sort_by, sort_dir } = req.query;
+    let where = 'p.user_id=$1 AND pa.deleted_at IS NULL';
+    const params = [uid];
+    let pIdx = 2;
+    if (project_id) { where += ` AND pa.project_id=$${pIdx++}`; params.push(project_id); }
+    if (status) {
+      if (status === 'paid') { where += ' AND pa.payment_received=TRUE'; }
+      else if (status === 'submitted') { where += " AND pa.status='submitted' AND (pa.payment_received IS NULL OR pa.payment_received=FALSE)"; }
+      else if (status === 'draft') { where += " AND pa.status!='submitted'"; }
+    }
+    if (date_from) { where += ` AND COALESCE(pa.period_end, pa.created_at::date) >= $${pIdx++}`; params.push(date_from); }
+    if (date_to) { where += ` AND COALESCE(pa.period_end, pa.created_at::date) <= $${pIdx++}`; params.push(date_to); }
+
+    const allowedSort = { date: 'COALESCE(pa.period_end, pa.created_at::date)', project: 'p.name', amount: 'gross_this', app_number: 'pa.app_number' };
+    const orderCol = allowedSort[sort_by] || 'COALESCE(pa.period_end, pa.created_at::date)';
+    const orderDir = sort_dir === 'asc' ? 'ASC' : 'DESC';
+
+    const r = await pool.query(`
+      SELECT pa.id, pa.project_id, pa.app_number, pa.period_label, pa.period_start, pa.period_end,
+             pa.status, pa.payment_received, pa.payment_status, pa.submitted_at, pa.created_at,
+             p.name AS project_name, p.number AS project_number, p.job_number, p.address,
+             p.original_contract, p.owner AS project_owner,
+             COALESCE((SELECT SUM(sl.scheduled_value * pal.this_pct / 100)
+               FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id WHERE pal.pay_app_id=pa.id), 0) AS gross_this,
+             COALESCE((SELECT SUM(sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100)
+               FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id WHERE pal.pay_app_id=pa.id), 0) AS retention_held,
+             COALESCE((SELECT SUM(
+               sl.scheduled_value * pal.this_pct / 100
+               - sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100
+               + sl.scheduled_value * pal.prev_pct / 100 * pal.retainage_pct / 100)
+               FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id WHERE pal.pay_app_id=pa.id), 0) AS amount_due
+      FROM pay_apps pa JOIN projects p ON p.id=pa.project_id
+      WHERE ${where}
+      ORDER BY ${orderCol} ${orderDir}
+    `, params);
+
+    // Summary KPIs
+    const submitted = r.rows.filter(r => r.status === 'submitted' || r.payment_received);
+    const totalBilled = submitted.reduce((s, r) => s + parseFloat(r.gross_this || 0), 0);
+    const totalOutstanding = submitted.filter(r => !r.payment_received).reduce((s, r) => s + parseFloat(r.amount_due || 0), 0);
+    const totalPaid = submitted.filter(r => r.payment_received).reduce((s, r) => s + parseFloat(r.amount_due || 0), 0);
+    const totalRetention = submitted.reduce((s, r) => s + parseFloat(r.retention_held || 0), 0);
+
+    // Monthly chart data (from filtered results)
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const chart = months.map((label, i) => ({
+      label,
+      billed: submitted.filter(r => {
+        const d = new Date(r.period_end || r.created_at);
+        return d.getMonth() === i;
+      }).reduce((s, r) => s + parseFloat(r.amount_due || 0), 0)
+    }));
+
+    res.json({ rows: r.rows, summary: { totalBilled, totalOutstanding, totalPaid, totalRetention, count: r.rows.length }, chart });
+  } catch(e) { console.error('[Reports pay-apps]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// Reports: filtered other invoices
+app.get('/api/reports/other-invoices', auth, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const { project_id, category, status, date_from, date_to, sort_by, sort_dir } = req.query;
+    let where = 'oi.user_id=$1 AND oi.deleted_at IS NULL';
+    const params = [uid];
+    let pIdx = 2;
+    if (project_id) { where += ` AND oi.project_id=$${pIdx++}`; params.push(project_id); }
+    if (category) { where += ` AND oi.category=$${pIdx++}`; params.push(category); }
+    if (status) { where += ` AND oi.status=$${pIdx++}`; params.push(status); }
+    if (date_from) { where += ` AND oi.invoice_date >= $${pIdx++}`; params.push(date_from); }
+    if (date_to) { where += ` AND oi.invoice_date <= $${pIdx++}`; params.push(date_to); }
+
+    const allowedSort = { date: 'oi.invoice_date', project: 'p.name', amount: 'oi.amount', vendor: 'oi.vendor', category: 'oi.category' };
+    const orderCol = allowedSort[sort_by] || 'oi.invoice_date';
+    const orderDir = sort_dir === 'asc' ? 'ASC' : 'DESC';
+
+    const r = await pool.query(`
+      SELECT oi.*, p.name AS project_name, p.number AS project_number, p.job_number, p.address
+      FROM other_invoices oi JOIN projects p ON p.id=oi.project_id
+      WHERE ${where}
+      ORDER BY ${orderCol} ${orderDir}
+    `, params);
+
+    const totalAmount = r.rows.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+    const byCategory = {};
+    r.rows.forEach(inv => {
+      const c = inv.category || 'other';
+      byCategory[c] = (byCategory[c] || 0) + parseFloat(inv.amount || 0);
+    });
+
+    res.json({ rows: r.rows, summary: { totalAmount, count: r.rows.length, byCategory } });
+  } catch(e) { console.error('[Reports other-invoices]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// Reports: CSV export
+app.get('/api/reports/export/csv', auth, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const { type, project_id, date_from, date_to } = req.query;
+    let csvRows = [];
+    if (type === 'other-invoices') {
+      let where = 'oi.user_id=$1 AND oi.deleted_at IS NULL';
+      const params = [uid]; let pIdx = 2;
+      if (project_id) { where += ` AND oi.project_id=$${pIdx++}`; params.push(project_id); }
+      if (date_from) { where += ` AND oi.invoice_date >= $${pIdx++}`; params.push(date_from); }
+      if (date_to) { where += ` AND oi.invoice_date <= $${pIdx++}`; params.push(date_to); }
+      const r = await pool.query(`SELECT oi.*, p.name AS project_name FROM other_invoices oi JOIN projects p ON p.id=oi.project_id WHERE ${where} ORDER BY oi.invoice_date DESC`, params);
+      csvRows.push(['Invoice #','Category','Description','Vendor','Amount','Invoice Date','Due Date','Status','Project','Notes']);
+      r.rows.forEach(inv => {
+        csvRows.push([inv.invoice_number||'',inv.category||'',inv.description||'',inv.vendor||'',inv.amount||0,
+          inv.invoice_date?new Date(inv.invoice_date).toLocaleDateString():'',
+          inv.due_date?new Date(inv.due_date).toLocaleDateString():'',
+          inv.status||'',inv.project_name||'',inv.notes||'']);
+      });
+    } else {
+      // Pay apps export
+      let where = 'p.user_id=$1 AND pa.deleted_at IS NULL';
+      const params = [uid]; let pIdx = 2;
+      if (project_id) { where += ` AND pa.project_id=$${pIdx++}`; params.push(project_id); }
+      if (date_from) { where += ` AND COALESCE(pa.period_end, pa.created_at::date) >= $${pIdx++}`; params.push(date_from); }
+      if (date_to) { where += ` AND COALESCE(pa.period_end, pa.created_at::date) <= $${pIdx++}`; params.push(date_to); }
+      const r = await pool.query(`
+        SELECT pa.app_number, pa.period_label, pa.period_end, pa.status, pa.payment_received,
+               p.name AS project_name, p.job_number,
+               COALESCE((SELECT SUM(sl.scheduled_value * pal.this_pct / 100)
+                 FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id WHERE pal.pay_app_id=pa.id), 0) AS gross_billed,
+               COALESCE((SELECT SUM(sl.scheduled_value * pal.this_pct / 100
+                 - sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100
+                 + sl.scheduled_value * pal.prev_pct / 100 * pal.retainage_pct / 100)
+                 FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id WHERE pal.pay_app_id=pa.id), 0) AS net_due
+        FROM pay_apps pa JOIN projects p ON p.id=pa.project_id
+        WHERE ${where} ORDER BY COALESCE(pa.period_end, pa.created_at::date) DESC
+      `, params);
+      csvRows.push(['App #','Period','Period End','Status','Payment Received','Project','Job #','Gross Billed','Net Due']);
+      r.rows.forEach(pa => {
+        csvRows.push([pa.app_number, pa.period_label||'', pa.period_end?new Date(pa.period_end).toLocaleDateString():'',
+          pa.status||'', pa.payment_received?'Yes':'No', pa.project_name||'', pa.job_number||'',
+          parseFloat(pa.gross_billed||0).toFixed(2), parseFloat(pa.net_due||0).toFixed(2)]);
+      });
+    }
+    const csv = csvRows.map(row => row.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="report_${type||'pay-apps'}_${new Date().toISOString().slice(0,10)}.csv"`);
+    res.send(csv);
+  } catch(e) { console.error('[Reports CSV]', e.message); res.status(500).json({ error: 'Export failed' }); }
 });
 
 // ── PAYMENT RECEIVED TOGGLE ────────────────────────────────────────────────
@@ -3620,7 +5678,7 @@ async function sendReminderEmail({ to, cc, replyTo, subject, html, attachments }
   }
   try {
     const payload = {
-      from: `${fromName} <${fromEmail}>`,
+      from: fromEmail,
       to: Array.isArray(to) ? to : [to],
       subject,
       html,
@@ -3891,7 +5949,946 @@ setInterval(runPaymentReminders, 60 * 60 * 1000);
 // Also run once at startup (after a short delay so DB is ready)
 setTimeout(runPaymentReminders, 15000);
 
+// ── STRIPE CONNECT & PAYMENTS ─────────────────────────────────────────────────
+// Hybrid fee model: ACH $25 from GC | CC 3.3%+$0.40 from payer | Zero absorption
+// All routes require stripe to be initialized (STRIPE_SECRET_KEY env var)
+
+const STRIPE_FEE = {
+  cc_rate: 0.033, cc_flat: 40, // 3.3% + $0.40 (in cents: 40)
+  ach_flat: 2500, // $25.00 flat ACH fee (cents)
+  stripe_ach_rate: 0.008, stripe_ach_cap: 500, // Stripe's 0.8% capped at $5
+};
+
+function requireStripe(req, res, next) {
+  if (!stripe) return res.status(503).json({ error: 'Payment features not configured. Set STRIPE_SECRET_KEY.' });
+  next();
+}
+
+function generatePaymentToken() {
+  return require('crypto').randomBytes(24).toString('hex');
+}
+
+// ── Stripe Connect: Create onboarding link for GC ──────────────────────────
+app.post('/api/stripe/connect', auth, requireStripe, async (req, res) => {
+  try {
+    // Check if user already has a connected account
+    const existing = await pool.query('SELECT * FROM connected_accounts WHERE user_id=$1', [req.user.id]);
+    let accountId;
+    if (existing.rows[0]) {
+      accountId = existing.rows[0].stripe_account_id;
+    } else {
+      // Create Express connected account
+      const user = (await pool.query('SELECT name, email FROM users WHERE id=$1', [req.user.id])).rows[0];
+      const account = await stripe.accounts.create({
+        type: 'express',
+        country: 'US',
+        email: user.email,
+        business_type: 'company',
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+          us_bank_account_ach_payments: { requested: true },
+        },
+        metadata: { user_id: String(req.user.id), platform: 'constructinvoice' },
+      });
+      accountId = account.id;
+      await pool.query(
+        'INSERT INTO connected_accounts(user_id, stripe_account_id) VALUES($1,$2) ON CONFLICT(user_id) DO UPDATE SET stripe_account_id=$2',
+        [req.user.id, accountId]
+      );
+      await pool.query('UPDATE users SET stripe_connect_id=$1 WHERE id=$2', [accountId, req.user.id]);
+      await logEvent(req.user.id, 'stripe_connect_created', { account_id: accountId });
+    }
+    // Create onboarding link
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const link = await stripe.accountLinks.create({
+      account: accountId,
+      refresh_url: `${baseUrl}/app.html#payments_setup=refresh`,
+      return_url: `${baseUrl}/app.html#payments_setup=complete`,
+      type: 'account_onboarding',
+    });
+    res.json({ url: link.url, account_id: accountId });
+  } catch(e) { console.error('[Stripe Connect Error]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// ── Stripe Connect: Check account status ────────────────────────────────────
+app.get('/api/stripe/account-status', auth, requireStripe, async (req, res) => {
+  try {
+    const row = await pool.query('SELECT * FROM connected_accounts WHERE user_id=$1', [req.user.id]);
+    if (!row.rows[0]) return res.json({ connected: false });
+    const acct = await stripe.accounts.retrieve(row.rows[0].stripe_account_id);
+    const charges = acct.charges_enabled;
+    const payouts = acct.payouts_enabled;
+    await pool.query(
+      'UPDATE connected_accounts SET charges_enabled=$1, payouts_enabled=$2, account_status=$3, business_name=$4, onboarded_at=CASE WHEN $1 AND onboarded_at IS NULL THEN NOW() ELSE onboarded_at END WHERE user_id=$5',
+      [charges, payouts, charges ? 'active' : 'pending', acct.business_profile?.name || '', req.user.id]
+    );
+    if (charges) await pool.query('UPDATE users SET payments_enabled=TRUE WHERE id=$1', [req.user.id]);
+    res.json({
+      connected: true,
+      charges_enabled: charges,
+      payouts_enabled: payouts,
+      account_id: row.rows[0].stripe_account_id,
+      business_name: acct.business_profile?.name,
+      status: charges ? 'active' : 'pending',
+    });
+  } catch(e) { console.error('[Stripe Status Error]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// ── Stripe Connect: Create dashboard login link (GC can view their Stripe dashboard) ──
+app.post('/api/stripe/dashboard-link', auth, requireStripe, async (req, res) => {
+  try {
+    const row = await pool.query('SELECT stripe_account_id FROM connected_accounts WHERE user_id=$1', [req.user.id]);
+    if (!row.rows[0]) return res.status(404).json({ error: 'No connected account' });
+    const link = await stripe.accounts.createLoginLink(row.rows[0].stripe_account_id);
+    res.json({ url: link.url });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Generate payment link for a pay app ─────────────────────────────────────
+app.post('/api/pay-apps/:id/payment-link', auth, requireStripe, async (req, res) => {
+  try {
+    const pa = (await pool.query('SELECT pa.*, p.name as project_name, p.user_id FROM pay_apps pa JOIN projects p ON pa.project_id=p.id WHERE pa.id=$1', [req.params.id])).rows[0];
+    if (!pa || pa.user_id !== req.user.id) return res.status(404).json({ error: 'Pay app not found' });
+    // Check GC has Stripe Connect
+    const acct = (await pool.query('SELECT * FROM connected_accounts WHERE user_id=$1 AND charges_enabled=TRUE', [req.user.id])).rows[0];
+    if (!acct) return res.status(400).json({ error: 'Please connect your Stripe account in Settings first.' });
+    // Generate or reuse payment link token
+    let token = pa.payment_link_token;
+    if (!token) {
+      token = generatePaymentToken();
+      await pool.query('UPDATE pay_apps SET payment_link_token=$1 WHERE id=$2', [token, pa.id]);
+    }
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const payUrl = `${baseUrl}/pay/${token}`;
+    await logEvent(req.user.id, 'payment_link_generated', { pay_app_id: pa.id, token });
+    res.json({ url: payUrl, token });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Public payment page data (no auth — accessed by payer via link) ──────────
+app.get('/api/pay/:token', async (req, res) => {
+  try {
+    const pa = (await pool.query(
+      `SELECT pa.*, p.name as project_name, p.number as project_number, p.owner as project_owner,
+              p.contractor, p.user_id, p.owner_email,
+              cs.company_name, cs.logo_filename, cs.contact_name, cs.contact_phone, cs.contact_email,
+              cs.credit_card_enabled
+       FROM pay_apps pa
+       JOIN projects p ON pa.project_id=p.id
+       LEFT JOIN company_settings cs ON cs.user_id=p.user_id
+       WHERE pa.payment_link_token=$1 AND pa.deleted_at IS NULL`,
+      [req.params.token]
+    )).rows[0];
+    if (!pa) return res.status(404).json({ error: 'Payment link not found or expired' });
+    // Get connected account for this GC
+    const acct = (await pool.query('SELECT stripe_account_id FROM connected_accounts WHERE user_id=$1 AND charges_enabled=TRUE', [pa.user_id])).rows[0];
+    if (!acct) return res.status(400).json({ error: 'Contractor has not set up payment acceptance yet.' });
+    // Calculate amounts from pay app lines
+    const lines = (await pool.query(
+      `SELECT pal.*, sl.item_id, sl.description, sl.scheduled_value
+       FROM pay_app_lines pal JOIN sov_lines sl ON pal.sov_line_id=sl.id
+       WHERE pal.pay_app_id=$1`, [pa.id]
+    )).rows;
+    let totalDue = 0;
+    let totalRetainageHeld = 0;
+    let avgRetainagePct = 0;
+    lines.forEach(l => {
+      const sv = parseFloat(l.scheduled_value) || 0;
+      const prevPct = parseFloat(l.prev_pct) || 0;
+      const thisPct = parseFloat(l.this_pct) || 0;
+      const retPct = parseFloat(l.retainage_pct) || 10;
+      const d = sv * (prevPct + thisPct) / 100;
+      const e = d * retPct / 100;
+      const f = d - e;
+      const g = sv * prevPct / 100 * (1 - retPct / 100);
+      totalDue += (f - g);
+      // Track retainage for this period only
+      const thisWork = sv * thisPct / 100;
+      totalRetainageHeld += thisWork * retPct / 100;
+      avgRetainagePct = retPct; // Use last line's retainage (usually uniform)
+    });
+    const amountPaid = parseFloat(pa.amount_paid) || 0;
+    const amountRemaining = Math.max(0, totalDue - amountPaid);
+    // Check if there are any succeeded/pending payments for this pay app
+    const existingPayments = (await pool.query(
+      "SELECT COUNT(*) as count FROM payments WHERE pay_app_id=$1 AND payment_status IN ('succeeded','pending')", [pa.id]
+    )).rows[0].count;
+    // Calculate fees for display
+    const ccFee = Math.round(amountRemaining * STRIPE_FEE.cc_rate * 100 + STRIPE_FEE.cc_flat) / 100;
+    const achFee = STRIPE_FEE.ach_flat / 100; // $25 flat, deducted from GC
+    // Build line items for invoice details display
+    const lineItems = lines.map(l => {
+      const sv = parseFloat(l.scheduled_value) || 0;
+      const prevPct = parseFloat(l.prev_pct) || 0;
+      const thisPct = parseFloat(l.this_pct) || 0;
+      const thisAmt = sv * thisPct / 100;
+      return {
+        item_id: l.item_id,
+        description: l.description,
+        scheduled_value: sv,
+        this_period: parseFloat(thisAmt.toFixed(2)),
+      };
+    }).filter(l => l.this_period > 0 || l.scheduled_value > 0);
+    res.json({
+      project_name: pa.project_name,
+      project_number: pa.project_number,
+      project_owner: pa.project_owner,
+      app_number: pa.app_number,
+      period_label: pa.period_label,
+      company_name: pa.company_name || pa.contractor,
+      logo_filename: pa.logo_filename,
+      contact_name: pa.contact_name,
+      contact_email: pa.contact_email,
+      amount_due: parseFloat(amountRemaining.toFixed(2)),
+      amount_paid: amountPaid,
+      total_due: parseFloat(totalDue.toFixed(2)),
+      payment_status: parseInt(existingPayments) > 0 && (pa.payment_status === 'unpaid' || !pa.payment_status) ? 'processing' : (pa.payment_status || 'unpaid'),
+      has_pending_payment: parseInt(existingPayments) > 0,
+      bad_debt: pa.bad_debt,
+      retainage_held: parseFloat(totalRetainageHeld.toFixed(2)),
+      retainage_pct: avgRetainagePct,
+      cc_fee: ccFee,
+      ach_fee: achFee,
+      stripe_account_id: acct.stripe_account_id,
+      po_number: pa.po_number,
+      lines: lineItems,
+      pay_app_id: pa.id,
+      credit_card_enabled: pa.credit_card_enabled === true || pa.credit_card_enabled === 'true',
+    });
+  } catch(e) { console.error('[Pay Page Error]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// ── Public PDF Download (authenticated via payment token) ─────────────────────
+app.get('/api/pay/:token/pdf', async (req, res) => {
+  try {
+    const pa = (await pool.query(
+      `SELECT pa.*, p.name as pname, p.number as pnum, p.owner, p.contractor, p.architect,
+              p.original_contract, p.payment_terms, p.contract_date, p.user_id,
+              p.include_architect, p.include_retainage,
+              cs.logo_filename, cs.signature_filename, cs.default_payment_terms,
+              cs.contact_name, cs.company_name
+       FROM pay_apps pa JOIN projects p ON pa.project_id=p.id
+       LEFT JOIN company_settings cs ON cs.user_id=p.user_id
+       WHERE pa.payment_link_token=$1 AND pa.deleted_at IS NULL`,
+      [req.params.token]
+    )).rows[0];
+    if (!pa) return res.status(404).json({ error: 'Invoice not found' });
+    const lines = await pool.query(
+      'SELECT pal.*,sl.item_id,sl.description,sl.scheduled_value FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id WHERE pal.pay_app_id=$1 ORDER BY sl.sort_order',
+      [pa.id]
+    );
+    const cos = await pool.query('SELECT * FROM change_orders WHERE pay_app_id=$1', [pa.id]);
+    let tComp=0,tRet=0,tThis=0,tPrev=0,tPrevCert=0;
+    lines.rows.forEach(r => {
+      const sv=parseFloat(r.scheduled_value);
+      const retPct=parseFloat(r.retainage_pct)/100;
+      const prev=sv*parseFloat(r.prev_pct)/100;
+      const thisPer=sv*parseFloat(r.this_pct)/100;
+      const comp=prev+thisPer+parseFloat(r.stored_materials||0);
+      tPrev+=prev; tThis+=thisPer; tComp+=comp;
+      tRet+=comp*retPct;
+      tPrevCert+=prev*(1-retPct);
+    });
+    const tCO=cos.rows.reduce((s,c)=>s+parseFloat(c.amount||0),0);
+    const contract=parseFloat(pa.original_contract)+tCO;
+    const earned=tComp-tRet;
+    const due=Math.max(0,earned-tPrevCert);
+    const imgMime = buf => {
+      if (buf[0]===0x89 && buf[1]===0x50) return 'image/png';
+      if (buf[0]===0xFF && buf[1]===0xD8) return 'image/jpeg';
+      if (buf[0]===0x47 && buf[1]===0x49) return 'image/gif';
+      if (buf[0]===0x52 && buf[1]===0x49) return 'image/webp';
+      return 'image/png';
+    };
+    const readImgB64 = filename => {
+      if (!filename) return null;
+      try {
+        const fp = path.join(__dirname, 'uploads', filename);
+        if (!fs.existsSync(fp)) return null;
+        const buf = fs.readFileSync(fp);
+        return `data:${imgMime(buf)};base64,${buf.toString('base64')}`;
+      } catch(e) { return null; }
+    };
+    const logoBase64 = readImgB64(pa.logo_filename);
+    const sigBase64 = readImgB64(pa.signature_filename);
+    const totals = { tComp, tRet, tPrevCert, tCO, contract, earned, due };
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="PayApp_${pa.app_number}_${(pa.pname||'').replace(/\s+/g,'_')}.pdf"`);
+    if (puppeteer) {
+      let browser;
+      try {
+        const html = generatePayAppHTML(pa, lines.rows, cos.rows, totals, logoBase64, sigBase64, [], []);
+        browser = await puppeteer.launch({ args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu'] });
+        const page = await browser.newPage();
+        await page.setContent(html, { waitUntil: 'networkidle0' });
+        const pdfBuffer = await page.pdf({ format: 'Letter', printBackground: true, margin: { top: '0.5in', right: '0.45in', bottom: '0.5in', left: '0.45in' } });
+        res.send(pdfBuffer);
+        return;
+      } catch(puppErr) {
+        console.error('[Public PDF] Puppeteer error, falling back to PDFKit:', puppErr.message);
+      } finally { if (browser) await browser.close().catch(()=>{}); }
+    }
+    // PDFKit fallback
+    const PDFDocument = require('pdfkit');
+    const pdfDoc = new PDFDocument({ size: 'LETTER', margin: 40 });
+    pdfDoc.pipe(res);
+    pdfDoc.fontSize(16).font('Helvetica-Bold').text(`Pay Application #${pa.app_number}`, { align: 'center' });
+    pdfDoc.moveDown(0.3);
+    pdfDoc.fontSize(11).font('Helvetica').text(`${pa.pname||''} · ${pa.period_label||''}`, { align: 'center' });
+    pdfDoc.moveDown(0.5);
+    pdfDoc.fontSize(10).text(`Current Payment Due: $${due.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`, { align: 'center' });
+    pdfDoc.moveDown(1);
+    pdfDoc.fontSize(8).fillColor('#888').text('Generated by ConstructInvoice AI', { align: 'center' });
+    pdfDoc.end();
+  } catch(e) {
+    console.error('[Public PDF Error]', e.message);
+    res.status(500).json({ error: 'Failed to generate PDF' });
+  }
+});
+
+// ── Create Stripe Checkout Session (called from payment page) ────────────────
+app.post('/api/pay/:token/checkout', async (req, res) => {
+  try {
+    const { method, amount, payer_name, payer_email } = req.body;
+    if (!method || !amount) return res.status(400).json({ error: 'Missing method or amount' });
+    const pa = (await pool.query(
+      `SELECT pa.*, p.name as project_name, p.user_id, p.contractor
+       FROM pay_apps pa JOIN projects p ON pa.project_id=p.id
+       WHERE pa.payment_link_token=$1 AND pa.deleted_at IS NULL`, [req.params.token]
+    )).rows[0];
+    if (!pa) return res.status(404).json({ error: 'Invalid payment link' });
+    if (pa.bad_debt) return res.status(400).json({ error: 'This invoice has been marked as uncollectable.' });
+    const acct = (await pool.query('SELECT stripe_account_id FROM connected_accounts WHERE user_id=$1 AND charges_enabled=TRUE', [pa.user_id])).rows[0];
+    if (!acct) return res.status(400).json({ error: 'Payment not available' });
+    // Check if credit card is enabled for this GC
+    if (method === 'card') {
+      const ccSettings = (await pool.query('SELECT credit_card_enabled FROM company_settings WHERE user_id=$1', [pa.user_id])).rows[0];
+      if (!ccSettings || !ccSettings.credit_card_enabled) {
+        return res.status(400).json({ error: 'Credit card payments are not enabled. Please use ACH bank transfer.' });
+      }
+    }
+    const amountCents = Math.round(parseFloat(amount) * 100);
+    if (amountCents < 100) return res.status(400).json({ error: 'Minimum payment is $1.00' });
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const paymentToken = generatePaymentToken();
+    // Calculate CC processing fee upfront (used for card checkout + INSERT)
+    const processingFeeCents = Math.round(amountCents * STRIPE_FEE.cc_rate) + STRIPE_FEE.cc_flat;
+
+    let sessionConfig;
+    if (method === 'ach') {
+      // ACH: $25 fee deducted from GC side. Owner pays exact amount.
+      // application_fee = our $25 fee. Stripe takes their $5 from the connected account.
+      sessionConfig = {
+        payment_method_types: ['us_bank_account'],
+        mode: 'payment',
+        customer_creation: 'always',
+        payment_intent_data: {
+          application_fee_amount: STRIPE_FEE.ach_flat, // $25 in cents = 2500
+          transfer_data: { destination: acct.stripe_account_id },
+        },
+        line_items: [{
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: `Pay App #${pa.app_number} — ${pa.project_name}`,
+              description: `Payment to ${pa.contractor || 'Contractor'}`,
+            },
+            unit_amount: amountCents,
+          },
+          quantity: 1,
+        }],
+        success_url: `${baseUrl}/pay/${req.params.token}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/pay/${req.params.token}?payment=cancelled`,
+        metadata: { pay_app_id: String(pa.id), payment_token: paymentToken, method: 'ach' },
+      };
+    } else {
+      // CC/Debit: 3.3% + $0.40 processing fee charged ON TOP to the payer
+      const totalChargeCents = amountCents + processingFeeCents;
+      // application_fee = processing fee (we keep the margin, Stripe takes their share from it)
+      sessionConfig = {
+        payment_method_types: ['card'],
+        mode: 'payment',
+        payment_intent_data: {
+          application_fee_amount: processingFeeCents,
+          transfer_data: { destination: acct.stripe_account_id },
+        },
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: { name: `Pay App #${pa.app_number} — ${pa.project_name}` },
+              unit_amount: amountCents,
+            },
+            quantity: 1,
+          },
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: { name: 'Processing Fee' },
+              unit_amount: processingFeeCents,
+            },
+            quantity: 1,
+          },
+        ],
+        success_url: `${baseUrl}/pay/${req.params.token}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/pay/${req.params.token}?payment=cancelled`,
+        metadata: { pay_app_id: String(pa.id), payment_token: paymentToken, method: 'card' },
+      };
+    }
+    // Add payer info if provided
+    if (payer_email) sessionConfig.customer_email = payer_email;
+    const session = await stripe.checkout.sessions.create(sessionConfig);
+    // Record pending payment
+    await pool.query(
+      `INSERT INTO payments(pay_app_id, project_id, user_id, stripe_checkout_session_id, payment_token, amount, processing_fee, payment_method, payment_status, payer_name, payer_email)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9,$10)`,
+      [pa.id, pa.project_id, pa.user_id, session.id, paymentToken, amount,
+       method === 'ach' ? 25 : (processingFeeCents || 0) / 100,
+       method, payer_name || '', payer_email || '']
+    );
+    res.json({ checkout_url: session.url, session_id: session.id });
+  } catch(e) { console.error('[Checkout Error]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// ── Verify payment on success redirect (fallback if webhook is delayed/missing) ──
+app.post('/api/pay/:token/verify', async (req, res) => {
+  try {
+    const { session_id } = req.body;
+    if (!session_id) return res.status(400).json({ error: 'Missing session_id' });
+    // Verify this session belongs to this payment token
+    const payment = (await pool.query(
+      `SELECT p.*, pa.amount_due, pa.id as pay_app_id FROM payments p
+       JOIN pay_apps pa ON pa.id=p.pay_app_id
+       WHERE p.stripe_checkout_session_id=$1 AND pa.payment_link_token=$2`,
+      [session_id, req.params.token]
+    )).rows[0];
+    if (!payment) return res.status(404).json({ error: 'Payment not found' });
+    // If already succeeded, just return
+    if (payment.payment_status === 'succeeded') return res.json({ status: 'succeeded', already: true });
+    // Check with Stripe directly
+    const session = await stripe.checkout.sessions.retrieve(session_id);
+    if (session.payment_status === 'paid' || session.status === 'complete') {
+      // Update payment record
+      await pool.query(
+        `UPDATE payments SET payment_status='succeeded', stripe_payment_intent_id=$1, paid_at=NOW(),
+         payer_email=COALESCE(NULLIF(payer_email,''),$2)
+         WHERE stripe_checkout_session_id=$3`,
+        [session.payment_intent, session.customer_details?.email || '', session_id]
+      );
+      // Update pay app totals
+      const payAppId = payment.pay_app_id;
+      const currentPaid = (await pool.query("SELECT COALESCE(SUM(amount),0) as total FROM payments WHERE pay_app_id=$1 AND payment_status='succeeded'", [payAppId])).rows[0].total;
+      let totalDue = parseFloat(payment.amount_due) || 0;
+      // If amount_due not snapshotted, calculate from line items
+      if (totalDue <= 0) {
+        const linesResult = await pool.query(
+          `SELECT pal.*, sl.scheduled_value FROM pay_app_lines pal
+           JOIN sov_lines sl ON pal.sov_line_id=sl.id WHERE pal.pay_app_id=$1`, [payAppId]);
+        linesResult.rows.forEach(l => {
+          const sv = parseFloat(l.scheduled_value) || 0;
+          const prevP = parseFloat(l.prev_pct) || 0;
+          const thisP = parseFloat(l.this_pct) || 0;
+          const retP = parseFloat(l.retainage_pct) || 10;
+          const d2 = sv * (prevP + thisP) / 100;
+          const e2 = d2 * retP / 100;
+          const f2 = d2 - e2;
+          const g2 = sv * prevP / 100 * (1 - retP / 100);
+          totalDue += (f2 - g2);
+        });
+        if (totalDue > 0) await pool.query('UPDATE pay_apps SET amount_due=$1 WHERE id=$2', [totalDue.toFixed(2), payAppId]);
+      }
+      const paidNum = parseFloat(currentPaid);
+      const newStatus = paidNum >= totalDue && totalDue > 0 ? 'paid' : paidNum > 0 ? 'partial' : 'unpaid';
+      await pool.query(
+        "UPDATE pay_apps SET amount_paid=$1, payment_status=$2, payment_received=$3, payment_received_at=CASE WHEN $2='paid' THEN NOW() ELSE payment_received_at END WHERE id=$4",
+        [paidNum, newStatus, newStatus === 'paid', payAppId]
+      );
+      console.log(`[Payment Verify] Confirmed payment for PA#${payAppId}: $${paidNum} (${newStatus})`);
+      return res.json({ status: 'succeeded', payment_status: newStatus, amount_paid: paidNum });
+    }
+    // ACH might be 'processing' — still pending
+    res.json({ status: session.payment_status || 'pending', stripe_status: session.status });
+  } catch(e) {
+    console.error('[Payment Verify Error]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Stripe Webhook (handles payment success/failure) ────────────────────────
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  let event;
+  try {
+    if (webhookSecret) {
+      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    } else {
+      event = JSON.parse(req.body.toString());
+      console.warn('[Stripe Webhook] No webhook secret — accepting unverified event (dev only)');
+    }
+  } catch(e) { console.error('[Webhook Verify Error]', e.message); return res.status(400).send('Webhook Error'); }
+
+  try {
+    if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
+      const session = event.data.object;
+      const payAppId = parseInt(session.metadata?.pay_app_id);
+      const paymentToken = session.metadata?.payment_token;
+      const method = session.metadata?.method;
+      if (!payAppId) return res.json({ received: true });
+      const amountPaid = (session.amount_total || 0) / 100;
+      // For CC: subtract processing fee to get actual pay app amount
+      let actualAmount = amountPaid;
+      if (method === 'card') {
+        // Total includes processing fee; back out our fee to get pay app amount
+        const payAppAmount = (await pool.query('SELECT amount FROM payments WHERE stripe_checkout_session_id=$1', [session.id])).rows[0]?.amount;
+        if (payAppAmount) actualAmount = parseFloat(payAppAmount);
+      }
+      // For ACH: checkout.session.completed fires first with payment_status='unpaid' (processing).
+      // checkout.session.async_payment_succeeded fires later when ACH clears.
+      // Only mark payment as 'succeeded' when actually paid.
+      const isACH = method === 'ach';
+      const sessionPaid = session.payment_status === 'paid';
+      const isAsyncSuccess = event.type === 'checkout.session.async_payment_succeeded';
+      if (!isACH || isAsyncSuccess || sessionPaid) {
+        // Update payment record to succeeded
+        await pool.query(
+          `UPDATE payments SET payment_status='succeeded', stripe_payment_intent_id=$1, paid_at=NOW(), payer_email=COALESCE(NULLIF(payer_email,''),$2)
+           WHERE stripe_checkout_session_id=$3`,
+          [session.payment_intent, session.customer_details?.email || '', session.id]
+        );
+      } else {
+        // ACH checkout completed but payment still processing — keep as pending
+        await pool.query(
+          `UPDATE payments SET stripe_payment_intent_id=$1, payer_email=COALESCE(NULLIF(payer_email,''),$2)
+           WHERE stripe_checkout_session_id=$3`,
+          [session.payment_intent, session.customer_details?.email || '', session.id]
+        );
+        console.log(`[Payment] ACH payment initiated for PA#${payAppId} — waiting for bank confirmation`);
+      }
+      // Update pay app totals — calculate totalDue from line items if amount_due not set
+      const currentPaid = (await pool.query('SELECT COALESCE(SUM(amount),0) as total FROM payments WHERE pay_app_id=$1 AND payment_status=\'succeeded\'', [payAppId])).rows[0].total;
+      const pa = (await pool.query('SELECT amount_due FROM pay_apps WHERE id=$1', [payAppId])).rows[0];
+      let totalDue = parseFloat(pa?.amount_due) || 0;
+      // If amount_due not snapshotted, calculate from line items (G702 math)
+      if (totalDue <= 0) {
+        const linesResult = await pool.query(
+          `SELECT pal.*, sl.scheduled_value FROM pay_app_lines pal
+           JOIN sov_lines sl ON pal.sov_line_id=sl.id WHERE pal.pay_app_id=$1`, [payAppId]);
+        linesResult.rows.forEach(l => {
+          const sv = parseFloat(l.scheduled_value) || 0;
+          const prevP = parseFloat(l.prev_pct) || 0;
+          const thisP = parseFloat(l.this_pct) || 0;
+          const retP = parseFloat(l.retainage_pct) || 10;
+          const d2 = sv * (prevP + thisP) / 100;
+          const e2 = d2 * retP / 100;
+          const f2 = d2 - e2;
+          const g2 = sv * prevP / 100 * (1 - retP / 100);
+          totalDue += (f2 - g2);
+        });
+        // Snapshot it for future lookups
+        if (totalDue > 0) await pool.query('UPDATE pay_apps SET amount_due=$1 WHERE id=$2', [totalDue.toFixed(2), payAppId]);
+      }
+      const paidNum = parseFloat(currentPaid);
+      const newStatus = paidNum >= totalDue && totalDue > 0 ? 'paid' : paidNum > 0 ? 'partial' : 'unpaid';
+      await pool.query(
+        'UPDATE pay_apps SET amount_paid=$1, payment_status=$2, payment_received=$3, payment_received_at=CASE WHEN $2=\'paid\' THEN NOW() ELSE payment_received_at END WHERE id=$4',
+        [paidNum, newStatus, newStatus === 'paid', payAppId]
+      );
+      // Log event
+      const userId = (await pool.query('SELECT user_id FROM payments WHERE stripe_checkout_session_id=$1', [session.id])).rows[0]?.user_id;
+      if (userId) await logEvent(userId, 'payment_received', { pay_app_id: payAppId, amount: actualAmount, method, total_paid: paidNum });
+      console.log(`[Payment] ${event.type}: ${method} $${actualAmount} for PA#${payAppId} (total paid: $${paidNum}, status: ${newStatus})`);
+    }
+    // Handle async ACH payment failure
+    if (event.type === 'checkout.session.async_payment_failed') {
+      const session = event.data.object;
+      const payAppId = parseInt(session.metadata?.pay_app_id);
+      await pool.query(
+        "UPDATE payments SET payment_status='failed', failed_at=NOW(), failure_reason='ACH bank transfer failed' WHERE stripe_checkout_session_id=$1",
+        [session.id]
+      );
+      if (payAppId) {
+        await pool.query("UPDATE pay_apps SET payment_status='unpaid' WHERE id=$1 AND payment_status != 'paid'", [payAppId]);
+      }
+      console.log(`[Payment] ACH payment FAILED for PA#${payAppId}`);
+    }
+    if (event.type === 'checkout.session.expired' || event.type === 'payment_intent.payment_failed') {
+      const session = event.data.object;
+      const sessionId = session.id || session.metadata?.checkout_session_id;
+      await pool.query("UPDATE payments SET payment_status='failed', failed_at=NOW(), failure_reason=$1 WHERE stripe_checkout_session_id=$2",
+        [event.type === 'payment_intent.payment_failed' ? (session.last_payment_error?.message || 'Payment failed') : 'Session expired', sessionId]);
+    }
+
+    // ── Subscription lifecycle events ──────────────────────────────────────
+    if (event.type === 'invoice.paid') {
+      const invoice = event.data.object;
+      const customerId = invoice.customer;
+      const subscriptionId = invoice.subscription;
+      if (customerId && subscriptionId) {
+        const userRow = (await pool.query('SELECT id FROM users WHERE stripe_customer_id=$1', [customerId])).rows[0];
+        if (userRow) {
+          await pool.query(
+            "UPDATE users SET subscription_status='active', plan_type='pro', stripe_subscription_id=$1 WHERE id=$2",
+            [subscriptionId, userRow.id]
+          );
+          console.log(`[Subscription] User ${userRow.id} → active (invoice paid: ${invoice.id})`);
+        }
+      }
+    }
+    if (event.type === 'invoice.payment_failed') {
+      const invoice = event.data.object;
+      const customerId = invoice.customer;
+      if (customerId) {
+        const userRow = (await pool.query('SELECT id FROM users WHERE stripe_customer_id=$1', [customerId])).rows[0];
+        if (userRow) {
+          await pool.query("UPDATE users SET subscription_status='past_due' WHERE id=$1", [userRow.id]);
+          console.log(`[Subscription] User ${userRow.id} → past_due (invoice payment failed)`);
+        }
+      }
+    }
+    if (event.type === 'customer.subscription.deleted') {
+      const subscription = event.data.object;
+      const customerId = subscription.customer;
+      if (customerId) {
+        const userRow = (await pool.query('SELECT id FROM users WHERE stripe_customer_id=$1', [customerId])).rows[0];
+        if (userRow) {
+          await pool.query("UPDATE users SET subscription_status='canceled', plan_type='free_trial' WHERE id=$1", [userRow.id]);
+          console.log(`[Subscription] User ${userRow.id} → canceled`);
+        }
+      }
+    }
+    if (event.type === 'customer.subscription.updated') {
+      const subscription = event.data.object;
+      const customerId = subscription.customer;
+      if (customerId && subscription.status === 'active') {
+        const userRow = (await pool.query('SELECT id FROM users WHERE stripe_customer_id=$1', [customerId])).rows[0];
+        if (userRow) {
+          await pool.query(
+            "UPDATE users SET subscription_status='active', plan_type='pro', stripe_subscription_id=$1 WHERE id=$2",
+            [subscription.id, userRow.id]
+          );
+        }
+      }
+    }
+  } catch(e) { console.error('[Webhook Processing Error]', e.message); }
+  res.json({ received: true });
+});
+
+// ── GC: List payments for their pay apps ────────────────────────────────────
+app.get('/api/payments', auth, async (req, res) => {
+  try {
+    const payments = (await pool.query(
+      `SELECT pm.*, pa.app_number, p.name as project_name
+       FROM payments pm
+       JOIN pay_apps pa ON pm.pay_app_id=pa.id
+       JOIN projects p ON pm.project_id=p.id
+       WHERE pm.user_id=$1
+       ORDER BY pm.created_at DESC
+       LIMIT 100`, [req.user.id]
+    )).rows;
+    // Summary stats
+    const stats = (await pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE payment_status='succeeded') as received_count,
+         COALESCE(SUM(amount) FILTER (WHERE payment_status='succeeded'),0) as total_received,
+         COUNT(*) FILTER (WHERE payment_status='pending') as pending_count,
+         COALESCE(SUM(amount) FILTER (WHERE payment_status='pending'),0) as total_pending
+       FROM payments WHERE user_id=$1`, [req.user.id]
+    )).rows[0];
+    res.json({ payments, summary: stats, count: payments.length });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GC: Mark pay app as bad debt ────────────────────────────────────────────
+app.post('/api/pay-apps/:id/bad-debt', auth, async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const pa = (await pool.query(
+      'SELECT pa.*, p.user_id FROM pay_apps pa JOIN projects p ON pa.project_id=p.id WHERE pa.id=$1', [req.params.id]
+    )).rows[0];
+    if (!pa || pa.user_id !== req.user.id) return res.status(404).json({ error: 'Pay app not found' });
+    await pool.query('UPDATE pay_apps SET bad_debt=TRUE, bad_debt_at=NOW(), bad_debt_reason=$1, payment_status=\'bad_debt\' WHERE id=$2', [reason || 'Marked as uncollectable', req.params.id]);
+    await logEvent(req.user.id, 'bad_debt_marked', { pay_app_id: pa.id, reason });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GC: Undo bad debt ──────────────────────────────────────────────────────
+app.post('/api/pay-apps/:id/undo-bad-debt', auth, async (req, res) => {
+  try {
+    const pa = (await pool.query(
+      'SELECT pa.*, p.user_id FROM pay_apps pa JOIN projects p ON pa.project_id=p.id WHERE pa.id=$1', [req.params.id]
+    )).rows[0];
+    if (!pa || pa.user_id !== req.user.id) return res.status(404).json({ error: 'Pay app not found' });
+    const amountPaid = parseFloat(pa.amount_paid) || 0;
+    const newStatus = amountPaid > 0 ? 'partial' : 'unpaid';
+    await pool.query('UPDATE pay_apps SET bad_debt=FALSE, bad_debt_at=NULL, bad_debt_reason=NULL, payment_status=$1 WHERE id=$2', [newStatus, req.params.id]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Other Invoices: Non-contract items (permits, materials, misc) ───────────
+
+// List other invoices for a project
+app.get('/api/projects/:id/other-invoices', auth, async (req, res) => {
+  try {
+    const proj = (await pool.query('SELECT id FROM projects WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id])).rows[0];
+    if (!proj) return res.status(404).json({ error: 'Project not found' });
+    const rows = await pool.query(
+      'SELECT * FROM other_invoices WHERE project_id=$1 AND user_id=$2 AND deleted_at IS NULL ORDER BY invoice_date DESC, created_at DESC',
+      [req.params.id, req.user.id]
+    );
+    res.json(rows.rows);
+  } catch(e) {
+    console.error('[GET /api/projects/:id/other-invoices]', e.message);
+    res.status(500).json({ error: 'Failed to load other invoices' });
+  }
+});
+
+// Create other invoice (supports multipart for file attachment)
+app.post('/api/projects/:id/other-invoices', auth, upload.single('file'), async (req, res) => {
+  try {
+    const proj = (await pool.query('SELECT id FROM projects WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id])).rows[0];
+    if (!proj) return res.status(404).json({ error: 'Project not found' });
+    const { invoice_number, category, description, vendor, amount, invoice_date, due_date, notes } = req.body;
+    if (!description || !description.trim()) return res.status(400).json({ error: 'Description is required' });
+    let attachFilename = null, attachOriginalName = null;
+    if (req.file) {
+      attachFilename = req.file.filename;
+      attachOriginalName = req.file.originalname;
+    }
+    const result = await pool.query(
+      `INSERT INTO other_invoices (project_id, user_id, invoice_number, category, description, vendor, amount, invoice_date, due_date, notes, attachment_filename, attachment_original_name, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+      [req.params.id, req.user.id, invoice_number||null, category||'other', description.trim(), vendor||null,
+       parseFloat(amount)||0, invoice_date||new Date().toISOString().slice(0,10), due_date||null, notes||null,
+       attachFilename, attachOriginalName, 'sent']
+    );
+    res.json(result.rows[0]);
+  } catch(e) {
+    console.error('[POST /api/projects/:id/other-invoices]', e.message);
+    res.status(500).json({ error: 'Failed to create invoice' });
+  }
+});
+
+// Update other invoice (supports multipart for file attachment)
+app.put('/api/other-invoices/:id', auth, upload.single('file'), async (req, res) => {
+  try {
+    const inv = (await pool.query('SELECT * FROM other_invoices WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL', [req.params.id, req.user.id])).rows[0];
+    if (!inv) return res.status(404).json({ error: 'Invoice not found' });
+    const { invoice_number, category, description, vendor, amount, invoice_date, due_date, status, notes } = req.body;
+    let attachFilename = inv.attachment_filename;
+    let attachOriginalName = inv.attachment_original_name;
+    if (req.file) {
+      attachFilename = req.file.filename;
+      attachOriginalName = req.file.originalname;
+    }
+    const result = await pool.query(
+      `UPDATE other_invoices SET
+        invoice_number=COALESCE($1,invoice_number), category=COALESCE($2,category),
+        description=COALESCE($3,description), vendor=COALESCE($4,vendor),
+        amount=COALESCE($5,amount), invoice_date=COALESCE($6,invoice_date),
+        due_date=COALESCE($7,due_date), status=COALESCE($8,status), notes=COALESCE($9,notes),
+        attachment_filename=$10, attachment_original_name=$11
+       WHERE id=$12 RETURNING *`,
+      [invoice_number, category, description, vendor, amount!=null?parseFloat(amount):null,
+       invoice_date||null, due_date||null, status||null, notes,
+       attachFilename, attachOriginalName, req.params.id]
+    );
+    res.json(result.rows[0]);
+  } catch(e) {
+    console.error('[PUT /api/other-invoices/:id]', e.message);
+    res.status(500).json({ error: 'Failed to update invoice' });
+  }
+});
+
+// Download other invoice attachment
+app.get('/api/other-invoices/:id/attachment', auth, async (req, res) => {
+  try {
+    const inv = (await pool.query('SELECT * FROM other_invoices WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL', [req.params.id, req.user.id])).rows[0];
+    if (!inv) return res.status(404).json({ error: 'Invoice not found' });
+    if (!inv.attachment_filename) return res.status(404).json({ error: 'No attachment' });
+    const filePath = path.join(uploadDir, inv.attachment_filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found on disk' });
+    res.download(filePath, inv.attachment_original_name || inv.attachment_filename);
+  } catch(e) {
+    console.error('[GET /api/other-invoices/:id/attachment]', e.message);
+    res.status(500).json({ error: 'Failed to download attachment' });
+  }
+});
+
+// Soft-delete other invoice
+app.delete('/api/other-invoices/:id', auth, async (req, res) => {
+  try {
+    const inv = (await pool.query('SELECT * FROM other_invoices WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL', [req.params.id, req.user.id])).rows[0];
+    if (!inv) return res.status(404).json({ error: 'Invoice not found' });
+    await pool.query('UPDATE other_invoices SET deleted_at=NOW() WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch(e) {
+    console.error('[DELETE /api/other-invoices/:id]', e.message);
+    res.status(500).json({ error: 'Failed to delete invoice' });
+  }
+});
+
+// Download other invoice as professional one-page PDF
+app.get('/api/other-invoices/:id/pdf', auth, async (req, res) => {
+  try {
+    const inv = (await pool.query(
+      `SELECT oi.*, p.name as project_name, p.number as project_number, p.owner as project_owner,
+              p.contractor, p.contact_name, p.contact_phone, p.contact_email,
+              p.job_number, p.address, p.owner_email, p.owner_phone
+       FROM other_invoices oi JOIN projects p ON p.id=oi.project_id
+       WHERE oi.id=$1 AND oi.user_id=$2 AND oi.deleted_at IS NULL`,
+      [req.params.id, req.user.id]
+    )).rows[0];
+    if (!inv) return res.status(404).json({ error: 'Invoice not found' });
+
+    // Get company settings for logo/contact
+    const settings = (await pool.query('SELECT * FROM company_settings WHERE user_id=$1', [req.user.id])).rows[0] || {};
+
+    // Check if user has Stripe Connect for pay link
+    const connAcct = (await pool.query('SELECT * FROM connected_accounts WHERE user_id=$1 AND charges_enabled=true', [req.user.id])).rows[0];
+
+    const PDFDocument = require('pdfkit');
+    const doc = new PDFDocument({ size: 'LETTER', margins: { top: 50, bottom: 50, left: 60, right: 60 } });
+    const chunks = [];
+    doc.on('data', c => chunks.push(c));
+    doc.on('end', () => {
+      const pdf = Buffer.concat(chunks);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="invoice-${inv.invoice_number||inv.id}.pdf"`);
+      res.send(pdf);
+    });
+
+    // Company logo
+    const logoPath = settings.logo_filename ? path.join(uploadDir, settings.logo_filename) : null;
+    if (logoPath && fs.existsSync(logoPath)) {
+      try { doc.image(logoPath, 60, 40, { width: 100 }); } catch(e) {}
+    }
+
+    // Header
+    doc.fontSize(22).font('Helvetica-Bold').text('INVOICE', 0, 50, { align: 'right', width: 552 });
+    doc.moveDown(0.3);
+    const catDisplay = inv.category ? inv.category.charAt(0).toUpperCase() + inv.category.slice(1) : 'Other';
+    doc.fontSize(10).font('Helvetica').fillColor('#666').text(
+      catDisplay + '  ·  Non-contract item',
+      0, doc.y, { align: 'right', width: 552 }
+    );
+
+    // Invoice details box (left side)
+    const yStart = 110;
+    doc.fillColor('#000');
+    doc.fontSize(9).font('Helvetica-Bold');
+    doc.text('Invoice #:', 60, yStart); doc.font('Helvetica').text(inv.invoice_number || 'N/A', 140, yStart);
+    doc.font('Helvetica-Bold').text('Date:', 60, yStart + 16); doc.font('Helvetica').text(inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString() : 'N/A', 140, yStart + 16);
+    if (inv.due_date) {
+      doc.font('Helvetica-Bold').text('Due Date:', 60, yStart + 32); doc.font('Helvetica').text(new Date(inv.due_date).toLocaleDateString(), 140, yStart + 32);
+    }
+
+    // Project info (right side) — includes job #, address for long-term record keeping
+    let rightY = yStart;
+    doc.font('Helvetica-Bold').fontSize(9).text('Project:', 340, rightY); doc.font('Helvetica').text(inv.project_name || '', 410, rightY);
+    rightY += 16;
+    if (inv.job_number) { doc.font('Helvetica-Bold').text('Job #:', 340, rightY); doc.font('Helvetica').text(inv.job_number, 410, rightY); rightY += 16; }
+    if (inv.project_number) { doc.font('Helvetica-Bold').text('Project #:', 340, rightY); doc.font('Helvetica').text(inv.project_number, 410, rightY); rightY += 16; }
+    if (inv.address) { doc.font('Helvetica-Bold').text('Address:', 340, rightY); doc.font('Helvetica').text(inv.address, 410, rightY, { width: 142 }); rightY += 16; }
+    if (inv.project_owner) { doc.font('Helvetica-Bold').text('Owner:', 340, rightY); doc.font('Helvetica').text(inv.project_owner, 410, rightY); }
+
+    // Divider
+    const divY = yStart + 72;
+    doc.moveTo(60, divY).lineTo(552, divY).strokeColor('#ccc').lineWidth(0.5).stroke();
+
+    // From / To
+    let curY = divY + 16;
+    if (inv.contractor || settings.company_name) {
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('#888').text('FROM', 60, curY);
+      doc.fillColor('#000').font('Helvetica').text(settings.company_name || inv.contractor || '', 60, curY + 14);
+      if (settings.contact_name || inv.contact_name) doc.text(settings.contact_name || inv.contact_name, 60, curY + 26);
+      if (settings.contact_phone || inv.contact_phone) doc.text(settings.contact_phone || inv.contact_phone, 60, curY + 38);
+      if (settings.contact_email || inv.contact_email) doc.text(settings.contact_email || inv.contact_email, 60, curY + 50);
+    }
+    if (inv.vendor) {
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('#888').text('TO / PAYEE', 340, curY);
+      doc.fillColor('#000').font('Helvetica').text(inv.vendor, 340, curY + 14);
+    }
+
+    // Description & amount table
+    curY += 76;
+    doc.moveTo(60, curY).lineTo(552, curY).strokeColor('#ccc').lineWidth(0.5).stroke();
+    curY += 8;
+    doc.font('Helvetica-Bold').fontSize(9).fillColor('#888');
+    doc.text('DESCRIPTION', 60, curY); doc.text('AMOUNT', 440, curY, { width: 112, align: 'right' });
+    curY += 18;
+    doc.moveTo(60, curY).lineTo(552, curY).strokeColor('#e0e0e0').lineWidth(0.3).stroke();
+    curY += 8;
+    doc.font('Helvetica').fontSize(10).fillColor('#000');
+    doc.text(inv.description || '', 60, curY, { width: 360 });
+    const amtStr = '$' + (parseFloat(inv.amount)||0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    doc.font('Helvetica-Bold').text(amtStr, 440, curY, { width: 112, align: 'right' });
+
+    // Total box — highlighted
+    curY += 40;
+    doc.rect(330, curY, 222, 30).fill('#f0f7ff').stroke('#c0d8f0');
+    doc.font('Helvetica-Bold').fontSize(12).fillColor('#1a365d').text('TOTAL DUE', 340, curY + 8);
+    doc.text(amtStr, 440, curY + 8, { width: 102, align: 'right' });
+
+    // Payment info
+    curY += 45;
+    if (connAcct) {
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('#1d4ed8').text('PAY THIS INVOICE', 60, curY);
+      curY += 14;
+      doc.font('Helvetica').fontSize(9).fillColor('#333').text(
+        'Pay online via ACH bank transfer at: ' + (process.env.BASE_URL || 'https://constructinv.varshyl.com'),
+        60, curY, { width: 492 }
+      );
+      curY += 16;
+    }
+
+    // Notes
+    if (inv.notes) {
+      curY += 8;
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('#888').text('NOTES', 60, curY);
+      curY += 14;
+      doc.font('Helvetica').fontSize(9).fillColor('#000').text(inv.notes, 60, curY, { width: 492 });
+    }
+
+    // Footer
+    doc.fontSize(8).fillColor('#999').text(
+      'Generated by ConstructInvoice AI  ·  Non-contract item — not included in G702/G703 contract billing',
+      60, 720, { width: 492, align: 'center' }
+    );
+
+    doc.end();
+  } catch(e) {
+    console.error('[GET /api/other-invoices/:id/pdf]', e.message);
+    res.status(500).json({ error: 'Failed to generate PDF' });
+  }
+});
+
+// ── Serve public payment page ───────────────────────────────────────────────
+app.get('/pay/:token', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'pay.html'));
+});
+
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
+
+// ── Exports for route modules ──────────────────────────────────────────────
+global.__serverHelpers = {
+  generatePayAppHTML,
+  renderLienWaiverContent,
+  generateLienDocPDF,
+  generatePaymentToken,
+  fetchEmail
+};
+
+module.exports = {
+  generatePayAppHTML,
+  renderLienWaiverContent,
+  generateLienDocPDF,
+  generatePaymentToken,
+  fetchEmail
+};
 
 initDB()
   .then(() => app.listen(PORT, () => console.log(`Construction AI Billing running on port ${PORT}`)))

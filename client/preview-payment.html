@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ConstructInvoice AI - Payment Page Preview</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+* { font-family: 'Inter', sans-serif; }
+body { background: linear-gradient(180deg, #f8f9fb 0%, #f0f1f5 50%, #e8eaef 100%); margin: 0; min-height: 100vh; }
+
+@keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+.fade-up { animation: fadeUp 0.5s ease forwards; opacity: 0; }
+.fade-up-1 { animation-delay: 0.15s; }
+.fade-up-2 { animation-delay: 0.3s; }
+.fade-up-3 { animation-delay: 0.45s; }
+
+/* 3D method card selection */
+.method-card {
+  transition: all 0.3s cubic-bezier(0.03, 0.98, 0.52, 0.99);
+  transform-style: preserve-3d;
+}
+.method-card:hover {
+  transform: perspective(800px) rotateY(2deg) translateZ(4px);
+}
+.method-card.selected {
+  border-color: rgb(99 102 241);
+  background: rgb(238 242 255);
+  box-shadow: 0 8px 25px rgba(99,102,241,0.15);
+  transform: perspective(800px) translateZ(6px);
+}
+
+/* Glowing pay button */
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(99,102,241,0.3); }
+  50% { box-shadow: 0 0 40px rgba(99,102,241,0.5); }
+}
+.pay-btn:hover { animation: glow 2s ease-in-out infinite; }
+
+.trust-badge { transition: all 0.2s; }
+.trust-badge:hover { transform: translateY(-2px); }
+</style>
+</head>
+<body class="py-12 px-4">
+<div class="max-w-2xl mx-auto">
+  <!-- Security + Header -->
+  <div class="fade-up text-center mb-8">
+    <div class="flex items-center justify-center gap-2 text-xs text-gray-500 mb-4">
+      <svg class="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+      256-bit SSL encrypted
+    </div>
+    <div class="mb-4">
+      <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center mx-auto">
+        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16"></path></svg>
+      </div>
+    </div>
+    <h1 class="text-3xl font-bold text-gray-900">Pay Invoice</h1>
+    <p class="text-gray-500 mt-2">Secure payment processing via Stripe</p>
+  </div>
+
+  <!-- Invoice Details Card -->
+  <div class="fade-up fade-up-1 bg-white rounded-2xl border border-gray-200 shadow-sm p-8 mb-6">
+    <div class="grid grid-cols-2 gap-4 mb-6 pb-6 border-b border-gray-200">
+      <div>
+        <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Project</p>
+        <p class="font-semibold text-gray-900 mt-1">Elm Street Addition</p>
+        <p class="text-xs text-gray-600 mt-1">#PRJ-001</p>
+      </div>
+      <div>
+        <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Pay Application</p>
+        <p class="font-semibold text-gray-900 mt-1">#7</p>
+        <p class="text-xs text-gray-600 mt-1">March 2026</p>
+      </div>
+      <div>
+        <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">General Contractor</p>
+        <p class="font-semibold text-gray-900 mt-1">ABC General Contractors</p>
+      </div>
+      <div>
+        <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Project Owner</p>
+        <p class="font-semibold text-gray-900 mt-1">Sentinel Properties LLC</p>
+      </div>
+    </div>
+
+    <!-- Amount breakdown -->
+    <div class="space-y-2 mb-4">
+      <div class="flex justify-between text-sm">
+        <span class="text-gray-600">Gross This Period</span>
+        <span class="text-gray-900 font-medium">$15,000.00</span>
+      </div>
+      <div class="flex justify-between text-sm">
+        <span class="text-gray-600">Less: Retainage (10%)</span>
+        <span class="text-gray-900 font-medium">-$1,500.00</span>
+      </div>
+      <div class="border-t border-gray-200 pt-3 flex justify-between">
+        <span class="font-semibold text-gray-900">Amount Due Now</span>
+        <span class="text-2xl font-bold text-indigo-600 font-mono">$13,500.00</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Payment Method Selection (3D cards) -->
+  <div class="fade-up fade-up-2 bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
+    <h2 class="text-xl font-semibold text-gray-900 mb-6">Payment Method</h2>
+
+    <div class="space-y-3 mb-8">
+      <!-- ACH — selected -->
+      <label class="method-card selected flex items-start gap-4 p-5 border-2 rounded-xl cursor-pointer">
+        <input type="radio" name="method" value="ach" checked class="mt-1 w-4 h-4">
+        <div class="flex-1">
+          <div class="flex items-center gap-2">
+            <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z"></path></svg>
+            <p class="font-semibold text-gray-900">ACH Bank Transfer</p>
+            <span class="px-2 py-0.5 bg-green-100 text-green-800 text-xs font-medium rounded-full">Recommended</span>
+          </div>
+          <p class="text-sm text-gray-600 mt-1">1-2 business days · No fee for you</p>
+          <p class="text-xs text-gray-500 mt-2">The $25 processing fee is paid by the contractor. You pay exactly $13,500.00.</p>
+        </div>
+      </label>
+
+      <!-- Card -->
+      <label class="method-card flex items-start gap-4 p-5 border-2 border-gray-200 rounded-xl cursor-pointer bg-white">
+        <input type="radio" name="method" value="card" class="mt-1 w-4 h-4">
+        <div class="flex-1">
+          <div class="flex items-center gap-2">
+            <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
+            <p class="font-semibold text-gray-900">Credit/Debit Card</p>
+          </div>
+          <p class="text-sm text-gray-600 mt-1">Instant · Processing fee added to total</p>
+          <p class="text-xs text-gray-500 mt-2">You'll pay $13,945.90 total (invoice + $445.90 processing fee).</p>
+        </div>
+      </label>
+    </div>
+
+    <!-- Summary -->
+    <div class="bg-gray-50 rounded-xl p-4 mb-8 space-y-2 border border-gray-200">
+      <div class="flex justify-between text-sm">
+        <span class="text-gray-600">Invoice Amount</span>
+        <span class="text-gray-900 font-medium font-mono">$13,500.00</span>
+      </div>
+      <div class="flex justify-between text-sm">
+        <span class="text-gray-600">Processing Fee</span>
+        <span class="text-gray-700">$25.00 (paid by contractor)</span>
+      </div>
+      <div class="border-t border-gray-300 pt-2 flex justify-between font-semibold">
+        <span class="text-gray-900">Total Due</span>
+        <span class="text-lg text-indigo-600 font-mono">$13,500.00</span>
+      </div>
+    </div>
+
+    <!-- Pay Button with glow -->
+    <button class="pay-btn w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white py-4 font-semibold text-base rounded-xl flex items-center justify-center gap-2 transition-all">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+      Pay $13,500.00
+    </button>
+
+    <!-- Trust indicators -->
+    <div class="flex items-center justify-center gap-6 text-xs text-gray-500 mt-5">
+      <span class="trust-badge flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+        Secure Payment
+      </span>
+      <span class="trust-badge flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+        PCI Compliant
+      </span>
+      <span class="trust-badge flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+        Powered by Stripe
+      </span>
+    </div>
+  </div>
+
+  <!-- Contact -->
+  <div class="fade-up fade-up-3 mt-8 text-center text-sm text-gray-600">
+    <p class="font-medium text-gray-900">Questions?</p>
+    <p class="mt-1">
+      Contact <span class="font-medium">Mike Rodriguez</span> at
+      <a href="#" class="text-indigo-600 hover:text-indigo-700 font-medium">mike@abcgeneral.com</a>
+    </p>
+  </div>
+</div>
+</body>
+</html>

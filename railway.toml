@@ -1,9 +1,10 @@
 [build]
 builder = "nixpacks"
-installCommand = "npm install"
+installCommand = "pip install -r requirements.txt && npm install && cd client && npm install"
+buildCommand = "cd client && npm run build"
 
 [deploy]
-startCommand = "node server.js"
+startCommand = "node server/index.js"
 healthcheckPath = "/"
 healthcheckTimeout = 30
 restartPolicyType = "on_failure"
