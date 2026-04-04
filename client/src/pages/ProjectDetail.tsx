@@ -561,7 +561,7 @@ export function ProjectDetail() {
                         : `Variance: ${formatCurrency(Math.abs(reconciliation.summary.variance))} remaining to bill`}
                     </p>
                     <p className={`text-sm mt-0.5 ${reconciliation.summary.is_fully_reconciled ? 'text-emerald-600' : 'text-amber-600'}`}>
-                      Contract: {formatCurrency(reconciliation.adjusted_contract)} | Billed: {formatCurrency(reconciliation.summary.total_billed)}
+                      Contract: {formatCurrency(reconciliation.adjusted_contract)} | Work Completed: {formatCurrency(reconciliation.summary.total_work_completed || (reconciliation.summary.total_billed + reconciliation.summary.total_retainage_held))}
                     </p>
                   </div>
                 </div>
@@ -628,10 +628,24 @@ export function ProjectDetail() {
                         </tr>
                       ))}
                       <tr className="font-semibold bg-primary-50 border-t-2 border-primary-200">
-                        <td colSpan={3} className="py-3 px-3 text-text-primary">Totals</td>
+                        <td colSpan={3} className="py-3 px-3 text-text-primary">Totals (Billed)</td>
                         <td className="py-3 px-3 text-right font-mono tabular-nums">{formatCurrency(reconciliation.summary.total_billed)}</td>
                         <td className="py-3 px-3 text-right font-mono tabular-nums">{formatCurrency(reconciliation.summary.total_retainage_held)}</td>
                         <td className="py-3 px-3 text-right font-mono tabular-nums text-emerald-600">{formatCurrency(reconciliation.summary.total_paid)}</td>
+                      </tr>
+                      {reconciliation.summary.total_retainage_released > 0 && (
+                        <tr className="font-semibold bg-emerald-50/50">
+                          <td colSpan={3} className="py-3 px-3 text-emerald-700">+ Retainage Released</td>
+                          <td className="py-3 px-3 text-right font-mono tabular-nums text-emerald-700">{formatCurrency(reconciliation.summary.total_retainage_released)}</td>
+                          <td className="py-3 px-3"></td>
+                          <td className="py-3 px-3"></td>
+                        </tr>
+                      )}
+                      <tr className="font-bold bg-primary-100 border-t border-primary-300">
+                        <td colSpan={3} className="py-3 px-3 text-text-primary">Work Completed</td>
+                        <td className="py-3 px-3 text-right font-mono tabular-nums">{formatCurrency(reconciliation.summary.total_work_completed || (reconciliation.summary.total_billed + reconciliation.summary.total_retainage_held))}</td>
+                        <td className="py-3 px-3"></td>
+                        <td className="py-3 px-3"></td>
                       </tr>
                     </tbody>
                   </table>

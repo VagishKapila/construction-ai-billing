@@ -169,6 +169,7 @@ export interface ReconciliationReport {
     total_billed: number;
     total_retainage_held: number;
     total_retainage_released: number;
+    total_work_completed: number;
     total_paid: number;
     total_outstanding: number;
     variance: number;

@@ -437,9 +437,9 @@ router.get('/api/projects/:id/reconciliation', auth, async (req, res) => {
     const originalContract = parseFloat(project.original_contract || 0);
     const adjustedContract = originalContract + totalChangeOrders;
 
-    let totalBilled = 0;
-    let totalRetainageHeld = 0;
-    let totalRetainageReleased = 0;
+    let totalBilled = 0;          // sum of amount_due from standard (non-RR) pay apps
+    let totalRetainageHeld = 0;    // cumulative retainage held (from latest non-RR pay app)
+    let totalRetainageReleased = 0; // sum of amount_due from retainage release pay apps
     let totalPaid = 0;
 
     const invoices = payApps.rows.map(pa => {
@@ -449,9 +449,11 @@ router.get('/api/projects/:id/reconciliation', auth, async (req, res) => {
 
       if (pa.is_retainage_release) {
         totalRetainageReleased += amountDue;
+      } else {
+        totalBilled += amountDue;
+        // Use the LATEST non-RR pay app's retention_held as cumulative retainage
+        totalRetainageHeld = retHeld;
       }
-      totalBilled += amountDue;
-      totalRetainageHeld += retHeld;
       totalPaid += amountPaid;
 
       return {
@@ -467,9 +469,11 @@ router.get('/api/projects/:id/reconciliation', auth, async (req, res) => {
       };
     });
 
-    // The variance should be $0 when everything is billed correctly
-    // Total billed (including retainage release) should equal adjusted contract
-    const variance = adjustedContract - totalBilled;
+    // G702 reconciliation: total work completed = billed + retainage held
+    // This should equal the adjusted contract when everything is 100% billed.
+    // Retainage release is NOT added to billed — it releases previously held retainage.
+    const totalWorkCompleted = totalBilled + totalRetainageHeld;
+    const variance = adjustedContract - totalWorkCompleted;
     const isFullyReconciled = Math.abs(variance) < 0.01;
 
     res.json({
@@ -482,8 +486,9 @@ router.get('/api/projects/:id/reconciliation', auth, async (req, res) => {
         total_billed: totalBilled,
         total_retainage_held: totalRetainageHeld,
         total_retainage_released: totalRetainageReleased,
+        total_work_completed: totalWorkCompleted,
         total_paid: totalPaid,
-        total_outstanding: totalBilled - totalPaid,
+        total_outstanding: totalBilled + totalRetainageReleased - totalPaid,
         variance,
         is_fully_reconciled: isFullyReconciled,
       }
