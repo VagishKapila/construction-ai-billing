@@ -478,6 +478,8 @@ router.get('/api/projects/:id/reconciliation', auth, async (req, res) => {
 
     res.json({
       project_name: project.name,
+      project_status: project.status || 'active',
+      completed_at: project.completed_at || null,
       original_contract: originalContract,
       total_change_orders: totalChangeOrders,
       adjusted_contract: adjustedContract,

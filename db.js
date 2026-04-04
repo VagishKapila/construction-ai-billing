@@ -415,6 +415,10 @@ async function initDB() {
 
     -- Final retainage release tracking
     ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS is_retainage_release BOOLEAN DEFAULT FALSE;
+
+    -- Project status: active (default) or completed (job finished, no more pay apps)
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active';
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
   `);
   console.log('Database ready');
 }

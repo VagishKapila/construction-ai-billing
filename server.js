@@ -683,6 +683,28 @@ app.delete('/api/projects/:id', auth, async (req,res) => {
   res.json({ok:true});
 });
 
+// Close (complete) a project — marks job as done, blocks new pay app creation
+app.post('/api/projects/:id/complete', auth, async (req,res) => {
+  const r = await pool.query(
+    'UPDATE projects SET status=$1, completed_at=NOW() WHERE id=$2 AND user_id=$3 RETURNING *',
+    ['completed', req.params.id, req.user.id]
+  );
+  if (!r.rows[0]) return res.status(404).json({ error: 'Project not found' });
+  await logEvent(req.user.id, 'project_completed', { project_id: parseInt(req.params.id) });
+  res.json(r.rows[0]);
+});
+
+// Reopen a completed project — allows new pay apps again
+app.post('/api/projects/:id/reopen', auth, async (req,res) => {
+  const r = await pool.query(
+    'UPDATE projects SET status=$1, completed_at=NULL WHERE id=$2 AND user_id=$3 RETURNING *',
+    ['active', req.params.id, req.user.id]
+  );
+  if (!r.rows[0]) return res.status(404).json({ error: 'Project not found' });
+  await logEvent(req.user.id, 'project_reopened', { project_id: parseInt(req.params.id) });
+  res.json(r.rows[0]);
+});
+
 // SOV
 app.get('/api/projects/:id/sov', auth, async (req,res) => {
   const r = await pool.query('SELECT * FROM sov_lines WHERE project_id=$1 ORDER BY sort_order',[req.params.id]);
@@ -727,6 +749,11 @@ app.get('/api/projects/:id/payapps', auth, async (req,res) => {
 });
 
 app.post('/api/projects/:id/payapps', auth, async (req,res) => {
+  // Block pay app creation for completed projects
+  const projStatus = await pool.query('SELECT status FROM projects WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+  if (projStatus.rows[0]?.status === 'completed') {
+    return res.status(400).json({ error: 'This job is completed. Reopen the project to create new pay applications.' });
+  }
   const {period_label,period_start,period_end,app_number} = req.body;
   const invoiceToken = require('crypto').randomBytes(24).toString('hex');
   const pa = await pool.query(

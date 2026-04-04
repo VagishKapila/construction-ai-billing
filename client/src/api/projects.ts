@@ -161,6 +161,8 @@ export interface ReconciliationInvoice {
 
 export interface ReconciliationReport {
   project_name: string;
+  project_status: 'active' | 'completed';
+  completed_at: string | null;
   original_contract: number;
   total_change_orders: number;
   adjusted_contract: number;
@@ -182,4 +184,18 @@ export interface ReconciliationReport {
  */
 export async function getProjectReconciliation(projectId: number): Promise<ApiResponse<ReconciliationReport>> {
   return api.get<ReconciliationReport>(`/api/projects/${projectId}/reconciliation`);
+}
+
+/**
+ * Mark a project as completed (job done — no more pay apps)
+ */
+export async function completeProject(projectId: number): Promise<ApiResponse<Project>> {
+  return api.post<Project>(`/api/projects/${projectId}/complete`, {});
+}
+
+/**
+ * Reopen a completed project (allow new pay apps again)
+ */
+export async function reopenProject(projectId: number): Promise<ApiResponse<Project>> {
+  return api.post<Project>(`/api/projects/${projectId}/reopen`, {});
 }

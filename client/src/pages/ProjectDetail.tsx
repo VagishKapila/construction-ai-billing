@@ -1,11 +1,11 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Upload, FileText, ChevronRight, Paperclip, CheckCircle2, AlertTriangle, ReceiptText, TableProperties, FolderOpen, Scale, X } from 'lucide-react'
+import { Upload, FileText, ChevronRight, Paperclip, CheckCircle2, AlertTriangle, ReceiptText, TableProperties, FolderOpen, Scale, X, Lock, RotateCcw, Trophy } from 'lucide-react'
 import type { PayApp, SOVLine } from '@/types'
 import { useProject } from '@/hooks/useProject'
 import { useTrial } from '@/hooks/useTrial'
 import { createPayApp } from '@/api/payApps'
-import { getProjectReconciliation, type ReconciliationReport } from '@/api/projects'
+import { getProjectReconciliation, completeProject, reopenProject, type ReconciliationReport } from '@/api/projects'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -212,10 +212,18 @@ export function ProjectDetail() {
   const [reconciliation, setReconciliation] = useState<ReconciliationReport | null>(null)
   const [reconLoading, setReconLoading] = useState(false)
   const [successBanner, setSuccessBanner] = useState<string | null>(null)
+  const [isCompletingJob, setIsCompletingJob] = useState(false)
+  const [isReopeningJob, setIsReopeningJob] = useState(false)
 
-  const { project, sovLines, payApps, changeOrders, attachments, isLoading, error } =
+  const { project, sovLines, payApps, changeOrders, attachments, isLoading, error, refresh } =
     useProject(projectId)
   const { isTrialGated } = useTrial()
+
+  // Derived: is the project completed?
+  const isJobCompleted = project?.status === 'completed'
+
+  // Derived: is the project fully billed? (all SOV lines at 100% from last pay app)
+  const isFullyBilled = reconciliation?.summary?.is_fully_reconciled ?? false
 
   // Show success banner when redirected from email send
   useEffect(() => {
@@ -232,16 +240,17 @@ export function ProjectDetail() {
     }
   }, [searchParams, setSearchParams])
 
-  // Load reconciliation when tab is active
+  // Load reconciliation when tab is active OR eagerly when project has pay apps
+  // (needed to know if job is fully billed for the completed state)
   useEffect(() => {
-    if (activeTab === 'reconciliation' && projectId && !reconciliation) {
+    if (projectId && !reconciliation && (activeTab === 'reconciliation' || payApps.length > 0)) {
       setReconLoading(true)
       getProjectReconciliation(projectId)
         .then(res => { if (res.data) setReconciliation(res.data) })
         .catch(() => {})
         .finally(() => setReconLoading(false))
     }
-  }, [activeTab, projectId, reconciliation])
+  }, [activeTab, projectId, reconciliation, payApps.length])
 
   /**
    * Create a new pay app and navigate to it
@@ -273,6 +282,40 @@ export function ProjectDetail() {
       alert(msg)
     } finally {
       setIsCreatingPayApp(false)
+    }
+  }
+
+  // Mark job as completed
+  const handleCompleteJob = async () => {
+    if (isCompletingJob) return
+    if (!confirm('Mark this job as completed? This will prevent creating new pay applications. You can reopen the project later if needed.')) return
+    setIsCompletingJob(true)
+    try {
+      await completeProject(projectId)
+      await refresh()
+      setReconciliation(null) // Force reload reconciliation data
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to complete project'
+      alert(msg)
+    } finally {
+      setIsCompletingJob(false)
+    }
+  }
+
+  // Reopen a completed job
+  const handleReopenJob = async () => {
+    if (isReopeningJob) return
+    if (!confirm('Reopen this project? This will allow creating new pay applications again.')) return
+    setIsReopeningJob(true)
+    try {
+      await reopenProject(projectId)
+      await refresh()
+      setReconciliation(null) // Force reload reconciliation data
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to reopen project'
+      alert(msg)
+    } finally {
+      setIsReopeningJob(false)
     }
   }
 
@@ -344,6 +387,13 @@ export function ProjectDetail() {
         title={project.name}
         description={`Contract Amount: ${formatCurrency(project.original_contract)}`}
       />
+      {isJobCompleted && (
+        <div className="-mt-4">
+          <Badge variant="success" className="text-xs">
+            <Trophy className="w-3 h-3 mr-1" /> Completed
+          </Badge>
+        </div>
+      )}
 
       {/* Project Info Bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
@@ -401,8 +451,63 @@ export function ProjectDetail() {
       <div>
         {activeTab === 'payapps' && (
           <div className="space-y-4">
-            {/* Create next pay app button — always visible above list */}
-            {!isTrialGated && (
+            {/* Job Completed Banner */}
+            {isJobCompleted && (
+              <div className="rounded-lg bg-emerald-50 border border-emerald-300 p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <Trophy className="w-6 h-6 text-emerald-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-base font-semibold text-emerald-800">Job Completed</p>
+                      <p className="text-sm text-emerald-600 mt-1">
+                        All billing for this project is finished. No new pay applications can be created.
+                        {project?.completed_at && (
+                          <span className="block text-xs text-emerald-500 mt-1">
+                            Completed on {formatDate(project.completed_at)}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isReopeningJob}
+                    onClick={handleReopenJob}
+                    className="flex-shrink-0 text-emerald-700 border-emerald-300 hover:bg-emerald-100"
+                  >
+                    <RotateCcw className="w-4 h-4 mr-1.5" />
+                    {isReopeningJob ? 'Reopening...' : 'Reopen Job'}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Fully billed suggestion — show when reconciled but not yet completed */}
+            {!isJobCompleted && isFullyBilled && payApps.length > 0 && (
+              <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                    <p className="text-sm text-blue-800">
+                      <strong>All billing is complete.</strong> Ready to close out this job?
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={isCompletingJob}
+                    onClick={handleCompleteJob}
+                    className="flex-shrink-0 bg-blue-600 hover:bg-blue-700"
+                  >
+                    <Lock className="w-4 h-4 mr-1.5" />
+                    {isCompletingJob ? 'Completing...' : 'Mark Job Complete'}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Create next pay app button — hidden for completed jobs */}
+            {!isTrialGated && !isJobCompleted && (
               <div className="flex justify-end">
                 <Button
                   disabled={isCreatingPayApp}

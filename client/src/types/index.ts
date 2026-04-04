@@ -79,6 +79,10 @@ export interface Project {
   payment_due_date?: string; // ISO 8601
   retention_due_date?: string; // ISO 8601
 
+  // Project status
+  status?: 'active' | 'completed';
+  completed_at?: string; // ISO 8601
+
   // Settings
   include_architect: boolean;
   include_retainage: boolean;
