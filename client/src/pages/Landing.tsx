@@ -41,46 +41,46 @@ const staggerContainer = {
 const features = [
   {
     icon: FileUp,
-    title: 'Smart SOV Parsing',
-    desc: 'Upload Excel, CSV, PDF, or Word. Our AI detects columns, descriptions, and amounts automatically.',
-    gradient: 'from-indigo-500 to-blue-600',
+    title: 'Upload Any Document',
+    desc: 'Bid, proposal, SOV, Excel, PDF, CSV, or Word. AI maps your line items and generates a perfect billing document in under 5 minutes.',
+    gradient: 'from-emerald-500 to-green-600',
   },
   {
     icon: FileText,
-    title: 'G702/G703 PDFs',
-    desc: 'AIA-standard pay applications generated in seconds. Professional formatting included.',
-    gradient: 'from-purple-500 to-pink-600',
-  },
-  {
-    icon: CheckCircle2,
-    title: 'Auto Lien Waivers',
-    desc: 'Conditional or unconditional waivers generated automatically when you submit. One less thing to track.',
-    gradient: 'from-green-500 to-emerald-600',
-  },
-  {
-    icon: CreditCard,
-    title: 'Get Paid Instantly',
-    desc: 'Built-in ACH and card payments. Owner gets a Pay Now link. You get paid in 1-2 days.',
-    gradient: 'from-amber-500 to-orange-600',
+    title: 'Exact Billing Math',
+    desc: 'G702/G703 computed line by line. Previous certified, this period, stored materials, retainage — all automatic and correct every time.',
+    gradient: 'from-emerald-600 to-teal-600',
   },
   {
     icon: Mail,
-    title: 'One-Click Send',
-    desc: 'Send pay apps directly to owners with PDF auto-attached. Follow-up reminders built in.',
-    gradient: 'from-blue-500 to-cyan-600',
+    title: 'Automated Follow-Up',
+    desc: 'AI sends follow-ups on every unpaid invoice. Automatically. On schedule. Until money hits your account. You focus on the work.',
+    gradient: 'from-green-500 to-emerald-600',
+  },
+  {
+    icon: CheckCircle2,
+    title: 'Leverage Protection',
+    desc: 'AI flags when Phase 1 is unpaid and Phase 2 is starting. That\'s your leverage window — we catch it before it closes.',
+    gradient: 'from-amber-500 to-orange-600',
+  },
+  {
+    icon: CreditCard,
+    title: 'Reduce Receivables',
+    desc: 'Faster billing plus automated follow-up means less money sitting in someone else\'s account. Less disputes. Healthier cash flow.',
+    gradient: 'from-teal-500 to-cyan-600',
   },
   {
     icon: BarChart3,
-    title: 'Smart Reporting',
-    desc: 'Track revenue, filter by project, export to CSV. See your billing pipeline at a glance.',
-    gradient: 'from-rose-500 to-red-600',
+    title: 'Audit-Ready Records',
+    desc: 'Every pay app is locked with a complete audit trail. Protects you in disputes and keeps every billing period documented.',
+    gradient: 'from-emerald-500 to-green-700',
   },
 ]
 
 const steps = [
-  { num: '1', title: 'Create a Project', desc: 'Upload your Schedule of Values and enter project details.' },
-  { num: '2', title: 'Enter Progress', desc: 'Fill in completion percentages, add change orders, track retainage.' },
-  { num: '3', title: 'Send & Get Paid', desc: 'Download PDF, email to owner, accept ACH or card payments.' },
+  { num: '1', title: 'We Bill Right', desc: 'AI takes your bid, proposal, SOV or any document and generates a perfect, error-free billing document in under 5 minutes.' },
+  { num: '2', title: 'We Follow Up Automatically', desc: 'AI sends follow-ups on every unpaid invoice. On schedule. Until money hits your account. You focus on the work.' },
+  { num: '3', title: 'We Protect Your Leverage', desc: 'AI flags when you\'re working on Phase 2 while Phase 1 is unpaid. That\'s your leverage window. We catch it before it closes.' },
 ]
 
 export function Landing() {
@@ -104,12 +104,12 @@ export function Landing() {
 
         {/* Floating gradient orbs — softer on light bg */}
         <motion.div
-          className="absolute top-20 left-10 w-72 h-72 bg-indigo-400/10 rounded-full blur-[120px]"
+          className="absolute top-20 left-10 w-72 h-72 bg-emerald-400/10 rounded-full blur-[120px]"
           animate={{ x: [0, 30, -20, 0], y: [0, -20, 30, 0] }}
           transition={{ duration: 20, repeat: Infinity, ease: 'easeInOut' }}
         />
         <motion.div
-          className="absolute bottom-20 right-10 w-96 h-96 bg-purple-400/8 rounded-full blur-[140px]"
+          className="absolute bottom-20 right-10 w-96 h-96 bg-green-400/8 rounded-full blur-[140px]"
           animate={{ x: [0, -40, 20, 0], y: [0, 30, -20, 0] }}
           transition={{ duration: 25, repeat: Infinity, ease: 'easeInOut' }}
         />
@@ -125,7 +125,7 @@ export function Landing() {
             <motion.div
               whileHover={{ rotateY: 180 }}
               transition={{ duration: 0.6 }}
-              className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center"
+              className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-green-700 flex items-center justify-center"
             >
               <Building2 className="w-5 h-5 text-white" />
             </motion.div>
@@ -148,9 +148,9 @@ export function Landing() {
               <motion.button
                 whileHover={{ scale: 1.05, boxShadow: '0 0 30px rgba(99,102,241,0.3)' }}
                 whileTap={{ scale: 0.95 }}
-                className="px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl hover:from-indigo-400 hover:to-purple-500 transition-all"
+                className="px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-emerald-500 to-green-700 rounded-xl hover:from-emerald-400 hover:to-green-600 transition-all"
               >
-                Start Free Trial
+                Get Started
               </motion.button>
             </Link>
           </div>
@@ -166,29 +166,33 @@ export function Landing() {
           >
             <motion.div
               variants={fadeUp}
-              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-indigo-200 bg-indigo-50 text-indigo-600 text-sm mb-8"
+              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 text-sm mb-8"
             >
               <Zap className="w-3.5 h-3.5" />
               <span>AI-Powered Construction Billing</span>
             </motion.div>
 
             <TextGenerateEffect
-              words="G702/G703 Pay Applications in Minutes, Not Hours"
+              words="Remove Cash Flow Issues with AI"
               className="text-4xl sm:text-5xl md:text-7xl font-bold bg-gradient-to-b from-gray-900 via-gray-800 to-gray-500 bg-clip-text text-transparent leading-tight"
             />
 
-            <motion.p variants={fadeUp} className="mt-6 text-base sm:text-lg text-gray-500 max-w-2xl mx-auto leading-relaxed">
-              Upload your Schedule of Values. Generate AIA-standard pay applications. Get paid faster with built-in ACH and card payments. Built for General Contractors who are done with spreadsheets.
+            <motion.p variants={fadeUp} className="mt-4 text-xl sm:text-2xl font-medium text-gray-700 max-w-2xl mx-auto">
+              Reduce Receivables. Billed Right.
+            </motion.p>
+
+            <motion.p variants={fadeUp} className="mt-3 text-base text-gray-400 italic max-w-2xl mx-auto">
+              AI is here to stay — let's make the best of it.
             </motion.p>
 
             <motion.div variants={fadeUp} className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link to="/register">
                 <motion.button
-                  whileHover={{ scale: 1.05, boxShadow: '0 0 40px rgba(99,102,241,0.35)' }}
+                  whileHover={{ scale: 1.05, boxShadow: '0 0 40px rgba(16,185,129,0.35)' }}
                   whileTap={{ scale: 0.95 }}
-                  className="px-8 py-4 text-white bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl font-semibold text-lg flex items-center gap-2 hover:from-indigo-400 hover:to-purple-500 transition-all"
+                  className="px-8 py-4 text-white bg-gradient-to-r from-emerald-500 to-green-700 rounded-2xl font-semibold text-lg flex items-center gap-2 hover:from-emerald-400 hover:to-green-600 transition-all"
                 >
-                  Start Free — 90 Days <ArrowRight className="w-5 h-5" />
+                  Get Started <ArrowRight className="w-5 h-5" />
                 </motion.button>
               </Link>
               <Link to="/login">
@@ -203,9 +207,9 @@ export function Landing() {
             </motion.div>
 
             <motion.div variants={fadeUp} className="mt-8 flex flex-wrap items-center justify-center gap-6 text-sm text-gray-500">
-              <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-green-500" /> No credit card required</span>
-              <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-green-500" /> 90-day free trial</span>
-              <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-green-500" /> Cancel anytime</span>
+              <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-emerald-500" /> Billed right, every time</span>
+              <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-emerald-500" /> Automated follow-up</span>
+              <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-emerald-500" /> Leverage protection</span>
             </motion.div>
           </motion.div>
         </div>
@@ -275,9 +279,9 @@ export function Landing() {
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
             {[
-              { value: '500+', label: 'Pay Apps Generated' },
-              { value: '$12M+', label: 'in Billing Tracked' },
-              { value: '90 Days', label: 'Free Trial' },
+              { value: '82%', label: 'of failed businesses cite cash flow' },
+              { value: '< 5 min', label: 'to generate a pay app' },
+              { value: '$64', label: 'per month. That\'s it.' },
             ].map((stat, i) => (
               <motion.div
                 key={stat.label}
@@ -286,7 +290,7 @@ export function Landing() {
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.15 }}
               >
-                <p className="text-4xl font-bold bg-gradient-to-r from-indigo-500 to-purple-500 bg-clip-text text-transparent">
+                <p className="text-4xl font-bold bg-gradient-to-r from-emerald-500 to-green-600 bg-clip-text text-transparent">
                   {stat.value}
                 </p>
                 <p className="text-gray-500 text-sm mt-1">{stat.label}</p>
@@ -306,10 +310,10 @@ export function Landing() {
             className="text-center mb-16"
           >
             <h2 className="text-4xl sm:text-5xl font-bold bg-gradient-to-b from-gray-900 to-gray-600 bg-clip-text text-transparent mb-4">
-              Built for Modern Contractors
+              Billed Right. Followed Up Automatically.
             </h2>
             <p className="text-lg text-gray-500 max-w-2xl mx-auto">
-              Everything you need to manage construction billing from start to finish.
+              Paid — before it becomes a dispute.
             </p>
           </motion.div>
 
@@ -323,7 +327,7 @@ export function Landing() {
                 transition={{ delay: i * 0.1 }}
               >
                 <CardContainer>
-                  <CardBody className="relative h-auto w-full rounded-2xl border-2 border-gray-200 bg-white hover:border-indigo-300 transition-colors p-6 shadow-sm hover:shadow-md">
+                  <CardBody className="relative h-auto w-full rounded-2xl border-2 border-gray-200 bg-white hover:border-emerald-300 transition-colors p-6 shadow-sm hover:shadow-md">
                     <CardItem translateZ={40}>
                       <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${feature.gradient} flex items-center justify-center mb-4`}>
                         <feature.icon className="w-6 h-6 text-white" />
@@ -352,8 +356,8 @@ export function Landing() {
             viewport={{ once: true }}
             className="text-center mb-16"
           >
-            <h2 className="text-4xl sm:text-5xl font-bold text-gray-900 mb-4">How It Works</h2>
-            <p className="text-lg text-gray-500">Three simple steps to professional construction billing.</p>
+            <h2 className="text-4xl sm:text-5xl font-bold text-gray-900 mb-4">What We Do</h2>
+            <p className="text-lg text-gray-500">You keep showing up. Make sure you keep getting paid.</p>
           </motion.div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -368,7 +372,7 @@ export function Landing() {
               >
                 <motion.div
                   whileHover={{ scale: 1.1, rotate: 5 }}
-                  className="flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold text-xl mx-auto mb-6 shadow-lg shadow-indigo-500/20"
+                  className="flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-700 text-white font-bold text-xl mx-auto mb-6 shadow-lg shadow-emerald-500/20"
                 >
                   {step.num}
                 </motion.div>
@@ -388,28 +392,26 @@ export function Landing() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
           >
-            <h2 className="text-4xl sm:text-5xl font-bold text-gray-900 mb-4">Simple Pricing</h2>
-            <p className="text-lg text-gray-500 mb-12">One plan. All the features contractors need.</p>
+            <h2 className="text-4xl sm:text-5xl font-bold text-gray-900 mb-4">Pricing</h2>
+            <p className="text-lg text-gray-500 mb-12">One invoice we help you collect covers years of this tool.</p>
           </motion.div>
 
-          <Spotlight className="rounded-3xl" fill="#6366f1">
+          <Spotlight className="rounded-3xl" fill="#10b981">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
-              className="rounded-3xl border-2 border-gray-200 bg-white backdrop-blur-xl p-10 shadow-lg shadow-indigo-500/5"
+              className="rounded-3xl border-2 border-gray-200 bg-white backdrop-blur-xl p-10 shadow-lg shadow-emerald-500/5"
             >
-              <h3 className="text-3xl font-bold text-gray-900 mb-2">Pro Plan</h3>
-              <p className="text-lg mb-8">
-                <span className="text-4xl font-bold bg-gradient-to-r from-indigo-500 to-purple-500 bg-clip-text text-transparent">$40</span>
-                <span className="text-gray-500">/month</span>
+              <p className="text-lg mb-4">
+                <span className="text-6xl font-bold bg-gradient-to-r from-emerald-500 to-green-600 bg-clip-text text-transparent">$64</span>
+                <span className="text-gray-500 text-xl">/month</span>
               </p>
-              <p className="text-gray-500 mb-8">Start with a 90-day free trial. No credit card required.</p>
 
               <div className="space-y-3 mb-10 text-left max-w-sm mx-auto">
-                {['Unlimited projects', 'G702/G703 PDFs', 'Payment collection (ACH + card)', 'Auto lien waivers', 'AI assistant', 'Email delivery', 'Reports & exports', 'Priority support'].map((item) => (
+                {['Unlimited projects', 'G702/G703 PDFs', 'Automated invoice follow-up', 'Leverage protection alerts', 'AI billing assistant', 'Email delivery', 'Reports & exports', 'Priority support'].map((item) => (
                   <div key={item} className="flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-indigo-500 flex-shrink-0" />
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
                     <span className="text-gray-600">{item}</span>
                   </div>
                 ))}
@@ -417,20 +419,20 @@ export function Landing() {
 
               <Link to="/register">
                 <motion.button
-                  whileHover={{ scale: 1.03, boxShadow: '0 0 40px rgba(99,102,241,0.3)' }}
+                  whileHover={{ scale: 1.03, boxShadow: '0 0 40px rgba(16,185,129,0.3)' }}
                   whileTap={{ scale: 0.97 }}
-                  className="w-full py-4 text-white bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl font-semibold text-lg hover:from-indigo-400 hover:to-purple-500 transition-all"
+                  className="w-full py-4 text-white bg-gradient-to-r from-emerald-500 to-green-700 rounded-2xl font-semibold text-lg hover:from-emerald-400 hover:to-green-600 transition-all"
                 >
-                  Start Free Trial
+                  Get Started
                 </motion.button>
               </Link>
 
               <p className="text-sm text-gray-500 mt-6">
-                Can't afford it?{' '}
-                <a href="mailto:vaakapila@gmail.com" className="text-indigo-500 hover:text-indigo-600 transition-colors">
-                  Email us
+                Need help?{' '}
+                <a href="mailto:vaakapila@gmail.com" className="text-emerald-600 hover:text-emerald-700 transition-colors">
+                  Reach out
                 </a>
-                {" — we'll work something out."}
+                {" — we'll figure it out together."}
               </p>
             </motion.div>
           </Spotlight>
@@ -438,7 +440,7 @@ export function Landing() {
       </section>
 
       {/* ═══════════════ CTA BAND ═══════════════ */}
-      <section className="relative py-24 px-6 overflow-hidden bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+      <section className="relative py-24 px-6 overflow-hidden bg-gradient-to-br from-emerald-50 via-white to-green-50">
         <BackgroundBeams className="opacity-10" />
         <div className="relative z-10 max-w-4xl mx-auto text-center">
           <motion.div
@@ -446,19 +448,20 @@ export function Landing() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
           >
+            <p className="text-lg text-gray-500 mb-2">Cash flow positive. That's not a hope.</p>
             <h2 className="text-4xl sm:text-5xl font-bold text-gray-900 mb-4">
-              Ready to simplify your construction billing?
+              That's What We Deliver.
             </h2>
             <p className="text-lg text-gray-500 mb-8">
-              Join hundreds of contractors who save hours every month.
+              Upload your documents. Enter this period's work. Export and submit.<br />Then our AI follows up until money is in your account.
             </p>
             <Link to="/register">
               <motion.button
-                whileHover={{ scale: 1.05, boxShadow: '0 0 40px rgba(99,102,241,0.35)' }}
+                whileHover={{ scale: 1.05, boxShadow: '0 0 40px rgba(16,185,129,0.35)' }}
                 whileTap={{ scale: 0.95 }}
-                className="px-8 py-4 text-white bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl font-semibold text-lg flex items-center gap-2 mx-auto hover:from-indigo-400 hover:to-purple-500 transition-all"
+                className="px-8 py-4 text-white bg-gradient-to-r from-emerald-500 to-green-700 rounded-2xl font-semibold text-lg flex items-center gap-2 mx-auto hover:from-emerald-400 hover:to-green-600 transition-all"
               >
-                Start Free Trial <ArrowRight className="w-5 h-5" />
+                Get Started <ArrowRight className="w-5 h-5" />
               </motion.button>
             </Link>
           </motion.div>
@@ -471,12 +474,13 @@ export function Landing() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-green-700 flex items-center justify-center">
                   <Building2 className="w-4 h-4 text-white" />
                 </div>
                 <span className="font-bold text-gray-900">ConstructInvoice AI</span>
               </div>
               <p className="text-sm text-gray-500">A product of Varshyl Inc.</p>
+              <p className="text-xs text-gray-400 italic mt-1">AI is here to stay. Let's make the best of it.</p>
             </div>
             <div>
               <p className="font-bold text-gray-900 mb-4 text-sm">Product</p>
