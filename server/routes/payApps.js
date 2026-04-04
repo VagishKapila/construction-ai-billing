@@ -66,14 +66,31 @@ router.post('/api/projects/:id/payapps', auth, async (req,res) => {
   );
   const prevMap = {};
   prevLines.rows.forEach(r => prevMap[r.sov_line_id]=r);
-  // Auto-fill default billing %: PA#1→20%, PA#2→25%, PA#3+→20% (matching old app.html behavior)
-  const defaultThisPct = app_number === 1 ? 20 : app_number === 2 ? 25 : 20;
+
+  // Smart auto-fill: check how much is left to bill across all lines
+  // If the remaining % on every line = retainage %, this is the final billing (bill the balance)
+  let totalRemaining = 0;
+  let totalScheduled = 0;
+  for (const line of sovLines.rows) {
+    const prev = prevMap[line.id];
+    const prevPct = prev ? Math.min(100, parseFloat(prev.prev_pct)+parseFloat(prev.this_pct)) : 0;
+    totalRemaining += (100 - prevPct);
+    totalScheduled += 100;
+  }
+  const avgRemainingPct = sovLines.rows.length > 0 ? totalRemaining / sovLines.rows.length : 100;
+
+  // Default billing %: PA#1→20%, PA#2→25%, PA#3+→20%
+  // BUT if average remaining ≤ default, use the exact remaining (bill the balance)
+  const baseDefault = app_number === 1 ? 20 : app_number === 2 ? 25 : 20;
+  const useExactRemaining = avgRemainingPct <= baseDefault && avgRemainingPct > 0;
+
   for(const line of sovLines.rows) {
     const prev = prevMap[line.id];
     const prevPct = prev ? Math.min(100, parseFloat(prev.prev_pct)+parseFloat(prev.this_pct)) : 0;
     const retPct = prev ? parseFloat(prev.retainage_pct) : projDefaultRet;
-    // Auto-fill this_pct, capped so prev+this doesn't exceed 100%
-    const thisPct = Math.min(defaultThisPct, 100 - prevPct);
+    const remaining = 100 - prevPct;
+    // If remaining is ≤ default, fill exact remaining to bill balance; otherwise use default
+    const thisPct = useExactRemaining ? remaining : Math.min(baseDefault, remaining);
     await pool.query(
       'INSERT INTO pay_app_lines(pay_app_id,sov_line_id,prev_pct,this_pct,retainage_pct,stored_materials) VALUES($1,$2,$3,$4,$5,$6)',
       [paId,line.id,prevPct,thisPct,retPct,0]
@@ -146,21 +163,47 @@ router.put('/api/payapps/:id', auth, async (req,res) => {
   if(!r.rows[0]) return res.status(404).json({error:'Not found'});
   if (status === 'submitted') {
     await logEvent(req.user.id, 'payapp_submitted', { pay_app_id: parseInt(req.params.id) });
-    // Snapshot amount_due and retention_held using correct column names
+
+    // Check if this is a retainage release pay app
+    const rrCheck = await pool.query('SELECT is_retainage_release, amount_due FROM pay_apps WHERE id=$1', [req.params.id]);
+    const isRetainageRelease = rrCheck.rows[0]?.is_retainage_release;
+
+    // Snapshot amount_due and retention_held
     try {
-      const snap = await pool.query(`
-        SELECT
-          SUM(sl.scheduled_value * pal.this_pct / 100
-              - sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100
-              + sl.scheduled_value * pal.prev_pct / 100 * pal.retainage_pct / 100) AS amount_due,
-          SUM(sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100) AS retention_held
-        FROM pay_app_lines pal
-        JOIN sov_lines sl ON sl.id = pal.sov_line_id
-        WHERE pal.pay_app_id=$1`, [req.params.id]);
-      if (snap.rows[0]) {
+      if (isRetainageRelease) {
+        // ── Retainage release: preserve the pre-calculated amount_due ──────────
+        // The retainage release amount was set at creation time to the total retainage held.
+        // Lines have this_pct=0 and retainage_pct=0, so the standard formula gives $0.
+        // We keep the existing amount_due and just set retention_held=0 + submitted_at.
+        await pool.query(
+          'UPDATE pay_apps SET retention_held=0, submitted_at=COALESCE(submitted_at, NOW()) WHERE id=$1',
+          [req.params.id]
+        );
+      } else {
+        // ── Standard pay app: calculate from SOV lines + add change orders ─────
+        const snap = await pool.query(`
+          SELECT
+            SUM(sl.scheduled_value * pal.this_pct / 100
+                - sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100
+                + sl.scheduled_value * pal.prev_pct / 100 * pal.retainage_pct / 100) AS amount_due,
+            SUM(sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100) AS retention_held
+          FROM pay_app_lines pal
+          JOIN sov_lines sl ON sl.id = pal.sov_line_id
+          WHERE pal.pay_app_id=$1`, [req.params.id]);
+
+        // Change orders are billed at 100% with NO retainage — add their total to amount_due
+        const coSnap = await pool.query(
+          'SELECT COALESCE(SUM(amount), 0) as co_total FROM change_orders WHERE pay_app_id=$1',
+          [req.params.id]
+        );
+        const lineAmountDue = parseFloat(snap.rows[0]?.amount_due || 0);
+        const coTotal = parseFloat(coSnap.rows[0]?.co_total || 0);
+        const totalAmountDue = lineAmountDue + coTotal;
+        const retentionHeld = parseFloat(snap.rows[0]?.retention_held || 0);
+
         await pool.query(
           'UPDATE pay_apps SET amount_due=$1, retention_held=$2, submitted_at=COALESCE(submitted_at, NOW()) WHERE id=$3',
-          [snap.rows[0].amount_due||0, snap.rows[0].retention_held||0, req.params.id]
+          [totalAmountDue, retentionHeld, req.params.id]
         );
       }
     } catch(snapErr) { console.error('[Snap amount_due]', snapErr.message); }
@@ -260,86 +303,95 @@ router.put('/api/payapps/:id', auth, async (req,res) => {
     } catch(lienErr) { console.error('[Auto lien release]', lienErr.message); }
 
     // Auto-generate Final Retainage Release pay app when project reaches 100% billed
-    try {
-      // Re-check isFinalPayment (we may not be inside the lien block)
-      const compCheck2 = await pool.query(`
-        SELECT SUM(sl.scheduled_value) as total_contract,
-               SUM(sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100) as total_billed
-        FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id
-        WHERE pal.pay_app_id=$1`, [req.params.id]);
-      const tc2 = parseFloat(compCheck2.rows[0]?.total_contract || 0);
-      const tb2 = parseFloat(compCheck2.rows[0]?.total_billed || 0);
-      const isFinal2 = tc2 > 0 && (tb2 / tc2) >= 0.98;
+    // Also skip if this IS the retainage release being submitted
+    if (!isRetainageRelease) {
+      try {
+        const compCheck2 = await pool.query(`
+          SELECT SUM(sl.scheduled_value) as total_contract,
+                 SUM(sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100) as total_billed
+          FROM pay_app_lines pal JOIN sov_lines sl ON sl.id=pal.sov_line_id
+          WHERE pal.pay_app_id=$1`, [req.params.id]);
+        const tc2 = parseFloat(compCheck2.rows[0]?.total_contract || 0);
+        const tb2 = parseFloat(compCheck2.rows[0]?.total_billed || 0);
+        const isFinal2 = tc2 > 0 && (tb2 / tc2) >= 0.98;
 
-      if (isFinal2) {
-        // Check if retainage release already exists for this project
-        const currentPa = await pool.query('SELECT project_id FROM pay_apps WHERE id=$1', [req.params.id]);
-        const projId = currentPa.rows[0]?.project_id;
-        const existingRelease = await pool.query(
-          'SELECT id FROM pay_apps WHERE project_id=$1 AND is_retainage_release=TRUE AND deleted_at IS NULL',
-          [projId]
-        );
-        if (!existingRelease.rows[0] && projId) {
-          // Calculate total retainage held across all submitted pay apps
-          const retHeld = await pool.query(`
-            SELECT SUM(sl.scheduled_value * (pal.prev_pct + pal.this_pct) / 100 * pal.retainage_pct / 100) as total_retainage
-            FROM pay_app_lines pal
-            JOIN sov_lines sl ON sl.id=pal.sov_line_id
-            WHERE pal.pay_app_id=$1`, [req.params.id]);
-          const totalRetainage = parseFloat(retHeld.rows[0]?.total_retainage || 0);
+        if (isFinal2) {
+          const currentPa = await pool.query('SELECT project_id FROM pay_apps WHERE id=$1', [req.params.id]);
+          const projId = currentPa.rows[0]?.project_id;
+          const existingRelease = await pool.query(
+            'SELECT id FROM pay_apps WHERE project_id=$1 AND is_retainage_release=TRUE AND deleted_at IS NULL',
+            [projId]
+          );
+          if (!existingRelease.rows[0] && projId) {
+            // Calculate total retainage held across ALL submitted pay apps for this project
+            // (not just the triggering one — we need project-wide retainage)
+            const retHeld = await pool.query(`
+              SELECT SUM(pa.retention_held) as total_retainage
+              FROM pay_apps pa
+              WHERE pa.project_id=$1 AND pa.deleted_at IS NULL
+                AND pa.status='submitted' AND pa.is_retainage_release=FALSE`,
+              [projId]);
+            // The retention_held on the LATEST pay app is the cumulative retainage for the whole project
+            // (each PA stores the cumulative retainage at that point, not just incremental)
+            // So we use the maximum retention_held value, which is from the most recent PA
+            const retHeldMax = await pool.query(`
+              SELECT retention_held FROM pay_apps
+              WHERE project_id=$1 AND deleted_at IS NULL AND status='submitted'
+                AND is_retainage_release=FALSE AND retention_held IS NOT NULL
+              ORDER BY app_number DESC LIMIT 1`, [projId]);
+            const totalRetainage = parseFloat(retHeldMax.rows[0]?.retention_held || 0);
 
-          if (totalRetainage > 0) {
-            // Create the retainage release pay app
-            const maxNum = await pool.query(
-              'SELECT COALESCE(MAX(app_number), 0) as max_num FROM pay_apps WHERE project_id=$1 AND deleted_at IS NULL',
-              [projId]
-            );
-            const releaseNum = (parseInt(maxNum.rows[0].max_num) || 0) + 1;
-            const releaseToken = require('crypto').randomBytes(24).toString('hex');
-            const now = new Date();
-            const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-            const periodLabel = `${months[now.getMonth()]} ${now.getFullYear()} — Final Retainage`;
-
-            const releasePa = await pool.query(
-              `INSERT INTO pay_apps(project_id, app_number, period_label, period_start, period_end, invoice_token, is_retainage_release, special_notes)
-               VALUES($1, $2, $3, $4, $4, $5, TRUE, $6) RETURNING *`,
-              [projId, releaseNum, periodLabel, now.toISOString().split('T')[0], releaseToken,
-               'Final Retainage Release — This invoice releases all retainage held on the project. All work has been completed and billed at 100%.']
-            );
-            const releasePaId = releasePa.rows[0].id;
-
-            // Create line items: 100% prev_pct, 0% this_pct, 0% retainage (releases retainage)
-            const sovLines = await pool.query('SELECT * FROM sov_lines WHERE project_id=$1 ORDER BY sort_order', [projId]);
-            // Get the final percentages from the current (100%) pay app
-            const finalLines = await pool.query(
-              'SELECT sov_line_id, prev_pct, this_pct FROM pay_app_lines WHERE pay_app_id=$1', [req.params.id]
-            );
-            const finalMap = {};
-            finalLines.rows.forEach(r2 => finalMap[r2.sov_line_id] = r2);
-
-            for (const line of sovLines.rows) {
-              const final = finalMap[line.id];
-              const cumPct = final ? Math.min(100, parseFloat(final.prev_pct) + parseFloat(final.this_pct)) : 100;
-              await pool.query(
-                'INSERT INTO pay_app_lines(pay_app_id, sov_line_id, prev_pct, this_pct, retainage_pct, stored_materials) VALUES($1,$2,$3,$4,$5,$6)',
-                [releasePaId, line.id, cumPct, 0, 0, 0]
+            if (totalRetainage > 0) {
+              const maxNum = await pool.query(
+                'SELECT COALESCE(MAX(app_number), 0) as max_num FROM pay_apps WHERE project_id=$1 AND deleted_at IS NULL',
+                [projId]
               );
+              const releaseNum = (parseInt(maxNum.rows[0].max_num) || 0) + 1;
+              const releaseToken = require('crypto').randomBytes(24).toString('hex');
+              const now = new Date();
+              const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+              const periodLabel = `${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()} — Final Retainage`;
+
+              const releasePa = await pool.query(
+                `INSERT INTO pay_apps(project_id, app_number, period_label, period_start, period_end, invoice_token, is_retainage_release, special_notes)
+                 VALUES($1, $2, $3, $4, $4, $5, TRUE, $6) RETURNING *`,
+                [projId, releaseNum, periodLabel, now.toISOString().split('T')[0], releaseToken,
+                 'Final Retainage Release — This invoice releases all retainage held on the project. All work has been completed and billed at 100%.']
+              );
+              const releasePaId = releasePa.rows[0].id;
+
+              // Create line items: 100% prev_pct, 0% this_pct, 0% retainage (releases retainage)
+              const sovLines2 = await pool.query('SELECT * FROM sov_lines WHERE project_id=$1 ORDER BY sort_order', [projId]);
+              const finalLines = await pool.query(
+                'SELECT sov_line_id, prev_pct, this_pct, retainage_pct FROM pay_app_lines WHERE pay_app_id=$1', [req.params.id]
+              );
+              const finalMap = {};
+              finalLines.rows.forEach(r2 => finalMap[r2.sov_line_id] = r2);
+
+              for (const line of sovLines2.rows) {
+                const final2 = finalMap[line.id];
+                const cumPct = final2 ? Math.min(100, parseFloat(final2.prev_pct) + parseFloat(final2.this_pct)) : 100;
+                await pool.query(
+                  'INSERT INTO pay_app_lines(pay_app_id, sov_line_id, prev_pct, this_pct, retainage_pct, stored_materials) VALUES($1,$2,$3,$4,$5,$6)',
+                  [releasePaId, line.id, cumPct, 0, 0, 0]
+                );
+              }
+
+              // Set amount_due = total retainage being released
+              await pool.query(
+                'UPDATE pay_apps SET amount_due=$1, retention_held=0, status=$3 WHERE id=$2',
+                [totalRetainage, releasePaId, 'draft']
+              );
+
+              await logEvent(req.user.id, 'retainage_release_created', {
+                project_id: projId, pay_app_id: releasePaId, amount: totalRetainage
+              });
+              console.log(`[Retainage Release] Created PA #${releaseNum} for project ${projId}, amount: $${totalRetainage.toFixed(2)}`);
             }
-
-            // Snapshot the retainage release amount_due
-            await pool.query(
-              'UPDATE pay_apps SET amount_due=$1, retention_held=0 WHERE id=$2',
-              [totalRetainage, releasePaId]
-            );
-
-            await logEvent(req.user.id, 'retainage_release_created', {
-              project_id: projId, pay_app_id: releasePaId, amount: totalRetainage
-            });
-            console.log(`[Retainage Release] Created PA #${releaseNum} for project ${projId}, amount: $${totalRetainage.toFixed(2)}`);
           }
         }
-      }
-    } catch(retErr) { console.error('[Auto retainage release]', retErr.message); }
+      } catch(retErr) { console.error('[Auto retainage release]', retErr.message); }
+    }
   }
   res.json(r.rows[0]);
 });
