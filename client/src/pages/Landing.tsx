@@ -498,7 +498,7 @@ export function Landing() {
             viewport={{ once: true }}
           >
             <h2 className="text-4xl sm:text-5xl font-bold text-white mb-3">Simple Pricing</h2>
-            <p className="text-gray-400 mb-12">One invoice we help you collect covers years of this tool.</p>
+            <p className="text-gray-400 mb-12">One recovered invoice pays for years of ConstructInv AI.</p>
           </motion.div>
 
           <motion.div
