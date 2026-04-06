@@ -337,8 +337,8 @@ Retainage is per-line (can vary). Default from project settings.
 ### Module 1: Trial & Subscription System — PRIORITY 1
 **Status: ✅ DONE (Rev 3, Apr 6 2026)**
 **Files:** `server/routes/trial.js`, `server/services/trial.js`, `server/middleware/trialGate.js`, `server/routes/webhook.js` (subscription events), `client/src/hooks/useTrial.ts`, `client/src/api/trial.ts`, `client/src/components/trial/TrialBanner.tsx`, `client/src/components/trial/UpgradeModal.tsx`
-**Stripe:** Product `prod_UHoK09nnd940UV`, Price `price_1TJEhbA9PDiZOpzDJUZiWtd1` ($40/mo)
-**Pricing model:** $40/month, 90-day free trial, NO credit card at signup
+**Stripe:** Product `prod_UHoK09nnd940UV`, Price `price_1TJEhbA9PDiZOpzDJUZiWtd1` ($40/mo — being replaced with $64/mo for Project Hub launch)
+**Pricing model:** $64/month (updated from $40 — see Module 8), 90-day free trial, NO credit card at signup
 
 **Database changes:**
 - Add to `users` table: `trial_start_date` (timestamp, set on registration), `trial_end_date` (timestamp, trial_start + 90 days), `subscription_status` (enum: 'trial', 'active', 'canceled', 'past_due', 'free_override'), `stripe_customer_id` (text, nullable), `stripe_subscription_id` (text, nullable), `plan_type` (enum: 'free_trial', 'pro', 'free_override')
@@ -477,82 +477,99 @@ Retainage is per-line (can vary). Default from project settings.
 
 ---
 
-### Module 8: Subcontractor Portal / Branch System — PRIORITY 8 (BRAINSTORMING Apr 6 2026)
-**Status: 🟡 In design/brainstorm phase**
-**Branch: `feature/sub-portal` (not yet created)**
+### Module 8: Exp1_ConstructInv3 — Project Hub (DESIGNED Apr 6 2026)
+**Status: 🟡 PRD Complete, ready for implementation**
+**Internal codename:** Exp1_ConstructInv3
+**PRD:** `Exp1_ConstructInv3_Project_Hub_PRD.docx` (v2.1, 30KB)
+**Branch:** `staging` (all work goes through staging → main)
 
-**Core concept:** Every project becomes a mini-hub. GC is the admin. Each trade/sub gets a "branch" — a scoped page where they upload invoices, lien releases, photos, drawings, and any project documents. Eliminates the email black hole where construction docs get lost.
+**Core concept:** Project Hub eliminates the "email black hole" in construction. Every project gets a Hub tab where trades (subs, vendors, suppliers) upload invoices, lien waivers, RFIs, photos, submittals, and compliance docs. Zero friction intake via web upload, magic links, AND email aliases. Fully integrated with existing G702/G703 billing, Stripe Connect payments, and QuickBooks sync. AI keeps contractors cash-flow positive.
 
-**The problem being solved:**
-- GCs drowning in emails from 15+ subs per project, each sending invoices, photos, drawings, lien releases
-- Subs/vendors never know if their invoice was received or approved
-- At project close-out, someone spends days hunting through emails to assemble the final document package
-- Material suppliers sending invoices that get lost in email chains
+**This is NOT a separate product** — it's the other half of ConstructInvoice AI. The billing engine handles outgoing money (pay apps, invoicing). Project Hub handles incoming documents from subs/vendors. Together they form one integrated ecosystem.
 
-**Branch = one trade per project:**
-- GC creates project → enables sub branches → adds "Plumbing", "Electrical", "HVAC", etc.
-- One branch per trade. The plumber handles everything (rough-in, finish, etc.) under their single branch
-- Can have multiple subs of the same trade if needed (rare)
+**Pricing (UPDATED):**
+- Pro plan: **$64/month** (replaces previous $40/month)
+- 90-day free trial, NO credit card at signup
+- Need to create new Stripe Price on `prod_UHoK09nnd940UV` at $64/month
+- Existing $40 price (`price_1TJEhbA9PDiZOpzDJUZiWtd1`) will be grandfathered or migrated
 
-**Recursive ecosystem:**
-- GC creates branches for their subs
-- Subs can create branches for THEIR vendors/material suppliers
-- Whoever is "our client" (the person using the product) is always the admin of their chain
-- Same workflow at every level: upload → review → approve/reject/comment → notify
+**Three Fixed Roles (per project):**
+1. **Office/Accountant** — receives invoices, lien waivers, compliance docs
+2. **PM/PMCM** — receives RFIs, submittals, change orders, drawings
+3. **Superintendent** — receives daily reports, photos, safety docs, punch lists
 
-**V1 Feature Set (keep it dead simple):**
-1. **Invite** — GC types sub name + email or phone → sub gets a magic link (NO account creation, no passwords). Sub lands on their branch page immediately.
-2. **Upload + Categorize** — Sub uploads files and tags them: Invoice, Lien Release, Photo, Drawing, or Other. No complex forms.
-3. **Approve / Reject / Comment** — GC sees all uploads across all branches in one dashboard. One-click approve, reject with required comment, or add note. Sub gets notified.
-4. **Notifications** — Email + SMS (construction field guys check texts faster than email). Collect both email and phone on invite.
+No complex role configuration needed. Doc type determines routing automatically.
 
-**Access & Lifecycle:**
-- Magic link access — no account needed for subs (if sub forwards link to office manager, they can also upload — this is a FEATURE, not a bug)
-- Branch auto-expires 60 days after the final retention invoice is created (or GC/admin keeps it open or extends)
-- After expiry: all data moves to read-only archive — GC can still access everything, subs can view but not upload
-- GC can manually extend or close branches at any time
+**Key Features (V1):**
+- Per-project Hub tab with trades management (add "Plumbing", "Electrical", etc.)
+- Magic link invites for subs (zero account creation, zero passwords)
+- Email aliases: `{trade}-{address-slug}@hub.constructinv.com` (e.g., plumbing-123elm@hub.constructinv.com)
+- Document upload + categorization (invoice, lien_waiver, rfi, photo, submittal, daily_report, change_order, compliance, drawing, other)
+- Unified inbox dashboard with filtering by trade, doc type, status
+- Approve/Reject/Comment workflow per document
+- Simple RFI reply system (text + attachment, works on phone)
+- Stale document alerts (2-day warning → 5-day escalation → 7-day urgent)
+- AI SOV guardrails (warn-only when invoices approach/exceed SOV line items)
+- ZIP export for project close-out + long-term archival
+- Full notification system (in-app + email)
 
-**What this is NOT:**
-- NOT a full accounting system — dollar reconciliation stays in the core G702/G703 billing engine
-- NOT a replacement for the pay app workflow — this is the intake/approval layer for sub documents
-- The sub portal feeds INTO the billing system but doesn't duplicate it
+**Email Ingestion:**
+- Mailgun Routes on `hub.constructinv.com` subdomain (~$35/month)
+- Catch-all wildcard → parse trade + project from email alias → route to correct Hub
+- Attachments extracted and auto-categorized
 
-**Database tables (planned):**
-- `project_branches` — branch_id, project_id, trade_name, sub_name, sub_email, sub_phone, magic_link_token, status (active/archived), expires_at, created_at
-- `branch_uploads` — upload_id, branch_id, file_type (invoice/lien_release/photo/drawing/other), filename, file_path, status (pending/approved/rejected), reviewer_comment, uploaded_by, uploaded_at, reviewed_at
-- `branch_comments` — comment_id, upload_id, commenter_role (gc/sub), comment_text, created_at
-- `branch_notifications` — notification_id, branch_id, type (email/sms), recipient, message, sent_at, status
+**Integrated Ecosystem (Hub + Billing + Payments + QB):**
+The full loop: Sub uploads invoice → Hub intake → Client reviews/approves → Approved invoices link to SOV line items → Client creates pay app (billing engine) → Generates G702/G703 PDF → Owner pays via Stripe or check → Payment recorded → Syncs to QuickBooks
+- V1: Auto-link approved invoices to matching SOV trades, manual reconciliation
+- V2 (future): AI auto-fills pay app work-completed from approved invoice amounts
 
-**Potential MCP integrations:**
-- SignNow — for e-signatures on lien releases within the portal
-- Stripe — if subs want to pay through the portal (future)
+**AI Cash Flow Intelligence (3 priorities):**
+1. **Collection Tracking + Follow-Up** (P0) — Track outstanding amounts per payer, flag overdue invoices, learn payer patterns (who pays slow?), automated follow-up emails at configurable intervals
+2. **Cash Flow Forecasting** (P1) — 30-day projections based on active pay apps + payment terms, gap warnings when outgoing > incoming, trend analysis
+3. **SOV Budget Guardian** (P2, existing enhanced) — Warn when trade invoices approach/exceed SOV budget, cumulative tracking across all invoices per trade
+
+**Database tables (5 new):**
+- `project_trades` — trade per project, magic_link_token, email_alias, sub info, status
+- `hub_uploads` — all documents with doc_type enum, approval status, stale alerts, source (web_app|magic_link|email_ingest)
+- `hub_comments` — comments and RFI replies (is_rfi_reply boolean)
+- `hub_team_roles` — 3 fixed roles per project (office|pm|superintendent)
+- `hub_notifications` — all notifications with trigger_type enum (upload|approval|rejection|stale_warning|stale_escalation|rfi_reply|comment|mention)
+
+**API routes (18 endpoints):**
+- Trade management: POST/GET/PUT trades, POST invite
+- Hub documents: POST upload, GET inbox, GET/PUT single upload, POST reply, POST comment, GET download, GET export ZIP
+- Magic link (no auth): GET /hub/:token, GET/POST trade/:token
+- Team routing: GET/POST/DELETE team members
+- AI + Email: GET sov-check, POST inbound/email, POST stale-check
+
+**Implementation Timeline (7 phases, ~10 weeks):**
+- Phase 1 (Wk 1-2): Core Hub — trades, magic links, upload/categorize, 3 roles, approve/reject
+- Phase 2 (Wk 3): Inbox + RFI — unified inbox, RFI reply, stale alerts
+- Phase 3 (Wk 4-5): Email Ingestion — Mailgun setup, alias routing, attachment extraction
+- Phase 4 (Wk 5-6): AI Layer — SOV guardrails, collection tracking, follow-up engine
+- Phase 5 (Wk 6-7): Billing Integration — Hub → Pay App linking, reconciliation views
+- Phase 6 (Wk 7-8): Cash Flow Intelligence — forecasting, AI dashboard, payer patterns
+- Phase 7 (Wk 9-10): Polish — ZIP export, notifications tuning, mobile optimization, QA
+
+**Competitive landscape:** Procore ($500+/mo), Autodesk Build ($$$), GCPay, Textura — ALL focus on outgoing billing. NONE solve the incoming document intake side. This is the gap.
 
 ---
 
-### Module 9: Smart AI Agent (Enhanced Aria) — PRIORITY 9 (BRAINSTORMING Apr 6 2026)
-**Status: 🟡 In design/brainstorm phase**
+### Module 9: Smart AI Agent (Enhanced Aria) — PRIORITY 9
+**Status: 🟡 Partially designed, merging into Module 8 AI layer**
 
-**Core concept:** Upgrade the existing Aria AI chat into a multi-capable agent that can answer product questions AND construction billing questions, store conversation history and insights, and feed actionable data to the super admin dashboard for feature development.
+**Core concept:** Upgrade the existing Aria AI chat into a multi-capable agent. Now being designed as part of the Project Hub AI Cash Flow Intelligence layer (Module 8, Phase 4+6). The agent will handle product help, construction billing questions, collection tracking intelligence, cash flow forecasting, and SOV budget warnings.
 
 **What the enhanced agent does:**
 1. **Product Help** — answers "how do I..." questions about the app (merges with Module 4)
 2. **Construction Billing Intelligence** — answers industry questions (retainage rules, lien deadlines by state, AIA form guidance)
-3. **Knowledge Storage** — every question asked gets stored, categorized, and analyzed
-4. **Admin Insights Feed** — aggregated question patterns, common pain points, and feature requests are surfaced to super admin dashboard
-5. **Per-user context** — remembers user's projects, common workflows, and past questions
+3. **Collection Intelligence** — tracks who owes what, flags overdue, suggests follow-up actions
+4. **Cash Flow Forecasting** — 30-day projections, gap warnings
+5. **Knowledge Storage** — every question asked gets stored, categorized, and analyzed
+6. **Admin Insights Feed** — aggregated question patterns surfaced to super admin dashboard
+7. **Per-user context** — remembers user's projects, common workflows, and past questions
 
-**How it feeds product development:**
-- Admin dashboard shows: "Top 10 questions users ask Aria this week"
-- Clusters questions into themes: "42% of questions are about lien waivers → users need better lien waiver UX"
-- Flags feature requests: "12 users asked about subcontractor management this month"
-- Tracks resolution rate: did the AI actually help, or did the user give up?
-
-**Implementation approach (TBD):**
-- Enhanced system prompt with full product documentation
-- Conversation history stored in `ai_conversations` table
-- Question categorization (product_help / billing_question / feature_request / complaint)
-- Admin API endpoints for aggregated insights
-- Weekly digest email to admin with top insights
+**Implementation:** Folded into Module 8 Phases 4 and 6. Standalone enhancements (admin insights, question categorization) remain as Module 9 post-Hub work.
 
 ---
 
@@ -707,7 +724,7 @@ All protected by `adminAuth` middleware. For creating realistic Stripe payment t
 - **Subscription webhook:** `we_1TJEhdA9PDiZOpzDveIZZHCA` — listens for `invoice.paid`, `invoice.payment_failed`, `customer.subscription.deleted`, `customer.subscription.updated`
 - **Checkout flow:** `POST /api/trial/upgrade` → creates Stripe Checkout Session → redirects to Stripe → webhook confirms payment → updates `subscription_status` to 'active'
 - **Railway env var needed:** `STRIPE_PRO_PRICE_ID=price_1TJEhbA9PDiZOpzDJUZiWtd1` (set on both staging and production)
-- **Webhook secret:** `STRIPE_WEBHOOK_SECRET=whsec_Pa9WTxJ9YErjkkFFz3Nz8XcNDjkgORxr` (set on Railway)
+- **Webhook secret:** `STRIPE_WEBHOOK_SECRET=whsec_...` (set on Railway — DO NOT commit the actual value here)
 
 ### Going Live Checklist
 - [x] Stripe Connect payment flow working end-to-end in test mode
