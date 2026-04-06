@@ -117,8 +117,24 @@ app.use('/oauth', require('./routes/oauth'));
 // Admin routes (relative paths — mount at /api/admin)
 app.use('/api/admin', require('./routes/admin'));
 
+// Extended admin routes — trial management, subscription controls (Module 2)
+app.use('/api/admin', require('./routes/admin-extended'));
+
 // QuickBooks routes (relative paths — mount at /api/quickbooks)
 app.use('/api/quickbooks', require('./routes/quickbooks'));
+
+// Trial & Subscription routes (relative paths — mount at /api/trial)
+// GET /api/trial/status is public (works with or without token)
+// POST /api/trial/upgrade requires auth
+const { auth: trialAuth } = require('./middleware/auth');
+app.use('/api/trial', (req, res, next) => {
+  // Apply auth middleware only to POST routes (upgrade needs auth, status is public)
+  if (req.method === 'POST') {
+    return trialAuth(req, res, next);
+  }
+  // For GET, try to extract user but don't block if no token
+  trialAuth(req, res, () => next());
+}, require('./routes/trial').router);
 
 // All other routes use full paths — mount at root
 app.use(require('./routes/projects'));

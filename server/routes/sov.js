@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { pool } = require('../../db');
 const { auth } = require('../middleware/auth');
+const { trialGate } = require('../middleware/trialGate');
 const { upload } = require('../middleware/fileValidation');
 const { logEvent } = require('../lib/logEvent');
 const XLSX = require('xlsx');
@@ -377,7 +378,7 @@ async function parseSOVFromText(filePath, ext) {
 // ──────────────────────────────────────────────────────────────────────────────
 
 // POST /api/sov/parse - Parse SOV file (Excel, CSV, PDF, Word)
-router.post('/api/sov/parse', auth, upload.single('file'), async (req, res) => {
+router.post('/api/sov/parse', auth, trialGate, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   if (rejectFile(req, res, MIME_SOV, 'SOV')) return;
   const cleanup = () => { try { if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); } catch(_){} };

@@ -168,6 +168,7 @@ function AppRouter() {
 
 /**
  * Root App component with providers
+ * useTrial hook reads directly from AuthContext — no separate TrialProvider needed
  */
 export default function App() {
   return (

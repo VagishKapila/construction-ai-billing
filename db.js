@@ -242,9 +242,10 @@ async function initDB() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_subscription_id VARCHAR(200);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS has_completed_onboarding BOOLEAN DEFAULT FALSE;
 
-    -- Backfill existing users: set trial dates based on their registration date
-    UPDATE users SET trial_start_date = created_at WHERE trial_start_date IS NULL;
-    UPDATE users SET trial_end_date = created_at + INTERVAL '90 days' WHERE trial_end_date IS NULL;
+    -- Backfill existing users: give them 90 days from NOW (not from signup)
+    -- This prevents instant-expiry for users who registered before the trial system existed
+    UPDATE users SET trial_start_date = NOW() WHERE trial_start_date IS NULL;
+    UPDATE users SET trial_end_date = NOW() + INTERVAL '90 days' WHERE trial_end_date IS NULL;
     UPDATE users SET subscription_status = 'trial' WHERE subscription_status IS NULL;
     UPDATE users SET plan_type = 'free_trial' WHERE plan_type IS NULL;
 
@@ -419,6 +420,58 @@ async function initDB() {
     -- Project status: active (default) or completed (job finished, no more pay apps)
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active';
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+
+    -- Module 1: Trial & Subscription System (additional columns for full implementation)
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_completed_at TIMESTAMPTZ;
+
+    -- Module 3: Onboarding Walkthrough (tracked per user)
+    -- Note: has_completed_onboarding already added above (line 243)
+
+    -- Module 4: AI Assistant Training — conversation history
+    CREATE TABLE IF NOT EXISTS ai_conversations (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      messages JSONB DEFAULT '[]',
+      context_type VARCHAR(50) DEFAULT 'general',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_ai_conversations_user ON ai_conversations(user_id);
+    CREATE INDEX IF NOT EXISTS idx_ai_conversations_context ON ai_conversations(context_type);
+
+    -- Module 5: Reporting Module — saved reports
+    CREATE TABLE IF NOT EXISTS saved_reports (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      name VARCHAR(300) NOT NULL,
+      filters JSONB DEFAULT '{}',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_saved_reports_user ON saved_reports(user_id);
+
+    -- Module 6: Pro Upgrade Nudges — nudge tracking per user
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_nudge_shown_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS nudge_dismissed_until TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS total_nudges_shown INTEGER DEFAULT 0;
+
+    -- Nudge analytics tracking
+    CREATE TABLE IF NOT EXISTS nudge_analytics (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      nudge_type VARCHAR(100),
+      shown_at TIMESTAMPTZ DEFAULT NOW(),
+      dismissed_at TIMESTAMPTZ,
+      clicked_at TIMESTAMPTZ,
+      action VARCHAR(50),
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_nudge_analytics_user ON nudge_analytics(user_id);
+    CREATE INDEX IF NOT EXISTS idx_nudge_analytics_type ON nudge_analytics(nudge_type);
+
+    -- Module 7: QA & Testing (optional: tracking for test data identification)
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_test_account BOOLEAN DEFAULT FALSE;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_test_project BOOLEAN DEFAULT FALSE;
   `);
   console.log('Database ready');
 }

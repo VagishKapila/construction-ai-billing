@@ -5,6 +5,11 @@ import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
 import { MobileNav } from './MobileNav'
 import { AIChatWidget } from '@/components/ai'
+import { TrialBanner } from '@/components/trial/TrialBanner'
+import { UpgradeModal } from '@/components/trial/UpgradeModal'
+import { UpgradeNudge } from '@/components/trial/UpgradeNudge'
+import { GuidedTour } from '@/components/onboarding/GuidedTour'
+import { useOnboarding } from '@/hooks/useOnboarding'
 import { cn } from '@/lib/cn'
 
 /**
@@ -18,6 +23,8 @@ import { cn } from '@/lib/cn'
  */
 export function Shell({ children }: { children?: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false)
+  const { showTour, completeTour, skipTour } = useOnboarding()
 
   return (
     <div className="min-h-screen bg-[#fafafe]">
@@ -81,10 +88,15 @@ export function Shell({ children }: { children?: React.ReactNode }) {
         onMenuToggle={(open) => setSidebarOpen(open)}
       />
 
+      {/* Trial Banner — shows above content when trial nearing expiry */}
+      <div className="md:ml-[260px] pt-[64px]">
+        <TrialBanner onUpgradeClick={() => setUpgradeModalOpen(true)} />
+      </div>
+
       {/* Main Content Area */}
       <main
         className={cn(
-          'pt-[64px] pb-20 md:pb-4',
+          'pt-0 pb-20 md:pb-4',
           'md:ml-[260px] transition-all duration-300',
           'overflow-x-hidden',
         )}
@@ -100,6 +112,15 @@ export function Shell({ children }: { children?: React.ReactNode }) {
 
       {/* AI Chat Widget */}
       <AIChatWidget />
+
+      {/* Upgrade Modal — triggered by trial banner or nudge */}
+      <UpgradeModal isOpen={upgradeModalOpen} onClose={() => setUpgradeModalOpen(false)} />
+
+      {/* Upgrade Nudge Toast — subtle bottom-right prompt */}
+      <UpgradeNudge onUpgradeClick={() => setUpgradeModalOpen(true)} />
+
+      {/* Onboarding Guided Tour — shows on first login */}
+      <GuidedTour isOpen={showTour} onComplete={completeTour} onSkip={skipTour} />
     </div>
   )
 }

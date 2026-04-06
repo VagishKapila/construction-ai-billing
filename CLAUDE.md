@@ -6,6 +6,35 @@
 
 ---
 
+## ⚡ AGENT ORCHESTRATION — USE BY DEFAULT
+
+**ALWAYS use parallel agents for any task that touches multiple layers (frontend, backend, database, deployment).** Do NOT ask Vagish if you should use agents — just use them. This is the default workflow.
+
+### When to launch parallel agents:
+- **Any feature work** → spawn agents for: backend routes, frontend components, database migrations, and deployment/wiring
+- **Bug fixes touching 2+ files** → spawn agents for each file/layer in parallel
+- **Audit/review tasks** → spawn an agent to read and report on each module simultaneously
+- **Stripe/QB/external API work** → use Stripe SDK via curl (NOT browser — Stripe Dashboard is blocked). Use Stripe CLI or REST API for all Stripe operations.
+
+### Agent roles (use these names):
+| Agent | Scope | Tools |
+|-------|-------|-------|
+| **Backend Architect** | Express routes, services, middleware, API design | server/, db.js |
+| **Frontend Developer** | React components, pages, hooks, types | client/src/ |
+| **Database Architect** | PostgreSQL schema, migrations, indexes | db.js |
+| **Deployment Engineer** | Railway config, server/app.js wiring, env vars, build verification | railway.toml, nixpacks.toml, server/app.js |
+| **QA Engineer** | Run qa_test.js, TypeScript check, Vite build, integration tests | qa_test.js, client/ |
+
+### Orchestration rules:
+1. **Read CLAUDE.md first** — every session, every time
+2. **Launch 2-4 agents in parallel** for any non-trivial task
+3. **After agents complete** — verify integration, fix wiring issues, run QA
+4. **Stripe operations** — ALWAYS via SDK/API (curl), NEVER browser automation
+5. **QuickBooks** — NEVER use browser automation for Intuit Developer portal
+6. **All new features go to `staging` branch** → test → merge to `main`
+
+---
+
 ## What This Project Is
 
 A web-based G702/G703 construction billing platform for General Contractors.
@@ -23,7 +52,7 @@ Users create projects, upload a Schedule of Values (SOV), then generate G702/G70
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | **Two files**: `public/index.html` (landing/marketing) + `public/app.html` (billing app) |
+| Frontend | React 19 + TypeScript + Vite 6 SPA (`client/`) + legacy `public/app.html` (billing app) + `public/index.html` (legacy landing) |
 | Backend | Node.js + Express (`server.js`) |
 | Database | PostgreSQL via Railway (`db.js` runs migrations on startup) |
 | SOV parsing | Node.js XLSX.js (Excel/CSV) + Python `parse_sov.py` (PDF/DOCX) |
@@ -33,9 +62,10 @@ Users create projects, upload a Schedule of Values (SOV), then generate G702/G70
 | Hosting | Railway (auto-deploy from GitHub `main` branch → production, `staging` branch → staging) |
 | Domain | constructinv.varshyl.com → IONOS DNS CNAME + TXT verification |
 | Payments | Stripe Connect Express (ACH + card via Checkout), `stripe` npm v21+ |
+| QuickBooks | OAuth 2.0 integration via `intuit-oauth` + REST API v3 (`server/services/quickbooks.js`) |
 | File storage | Railway Volume `construction-ai-billing-volume` mounted at `/app/uploads` (persistent across deploys) |
 
-### Rev 2 Frontend Stack (constructinv-2.0 branch)
+### Rev 3 Frontend Stack (constructinv-3.0 branch → merged to main)
 
 | Library | Purpose | Version |
 |---------|---------|---------|
@@ -61,9 +91,63 @@ construction-ai-billing/
 ├── server.js          ← ALL backend routes, SOV parser, PDF generator
 ├── db.js              ← DB schema + ALTER TABLE migrations (runs on startup)
 ├── parse_sov.py       ← Python parser for PDF and DOCX SOV files only
+├── server/
+│   ├── app.js             ← Express app setup, route mounting, middleware wiring
+│   ├── routes/
+│   │   ├── projects.js    ← Project routes including reconciliation, complete/reopen
+│   │   ├── quickbooks.js  ← All QB API routes (OAuth, sync, estimates)
+│   │   ├── trial.js       ← Trial status + Stripe upgrade checkout (Rev 3)
+│   │   ├── admin-extended.js ← Super admin: extend trial, free override, manual upgrade (Rev 3)
+│   │   ├── onboarding.js  ← Onboarding complete/reset endpoints (Rev 3)
+│   │   ├── reports.js     ← Reports module: filter, sort, export pay apps (Rev 3)
+│   │   ├── ai.js          ← AI assistant: product help + billing intelligence (Rev 3)
+│   │   └── webhook.js     ← Stripe webhook handler (signature verified, SINGLE handler)
+│   ├── services/
+│   │   ├── quickbooks.js  ← QB service layer (OAuth, API calls, token encryption)
+│   │   └── trial.js       ← Trial logic: getTrialStatus, createProSubscription (Rev 3)
+│   ├── middleware/
+│   │   ├── auth.js        ← JWT auth + adminAuth middleware
+│   │   └── trialGate.js   ← Blocks expired trial users from write operations (Rev 3)
+│   └── lib/
+│       └── logEvent.js    ← Audit event logging helper
+├── client/            ← Rev 3 React frontend (Vite + React 19 + TypeScript)
+│   └── src/
+│       ├── App.tsx            ← Root: ErrorBoundary + BrowserRouter + AuthProvider
+│       ├── pages/
+│       │   ├── ProjectDetail.tsx  ← Project view with pay apps, SOV, reconciliation
+│       │   ├── Settings.tsx       ← Company settings, Stripe, QB, subscription
+│       │   ├── Reports.tsx        ← Reports page: filter/sort/export pay apps (Rev 3)
+│       │   └── AdminDashboard.tsx ← Super admin with trial/subscription controls (Rev 3)
+│       ├── components/
+│       │   ├── layout/
+│       │   │   └── Shell.tsx      ← Main layout: sidebar, topbar, trial banner, tour
+│       │   ├── quickbooks/
+│       │   │   ├── QBConnectionCard.tsx   ← OAuth connect/disconnect UI
+│       │   │   ├── QBSyncButton.tsx       ← Sync project to QB button
+│       │   │   ├── QBSyncLog.tsx          ← Sync history table
+│       │   │   └── QBEstimateImport.tsx   ← Import QB estimates as SOV
+│       │   ├── trial/                     ← Rev 3 trial/subscription UI
+│       │   │   ├── TrialBanner.tsx        ← Top banner when trial nearing expiry
+│       │   │   ├── UpgradeModal.tsx       ← Stripe Checkout upgrade modal
+│       │   │   └── UpgradeNudge.tsx       ← Gentle bottom-right nudge toast
+│       │   ├── onboarding/                ← Rev 3 onboarding
+│       │   │   └── GuidedTour.tsx         ← Step-by-step overlay tour
+│       │   └── ai/
+│       │       └── AIChatWidget.tsx       ← AI assistant (product help + billing)
+│       ├── hooks/
+│       │   ├── useTrial.ts       ← Trial state: daysRemaining, isExpired, isPro (Rev 3)
+│       │   ├── useOnboarding.ts  ← Tour lifecycle: show, complete, skip, reset (Rev 3)
+│       │   ├── useNudge.ts       ← Nudge triggers: 30d, 60d, 5 pay apps (Rev 3)
+│       │   └── useReports.ts     ← Reports data fetching + filtering (Rev 3)
+│       ├── api/
+│       │   ├── projects.ts       ← Project API client
+│       │   └── trial.ts          ← Trial/subscription API client (Rev 3)
+│       ├── contexts/
+│       │   └── AuthContext.tsx    ← Auth state (includes trial fields on user)
+│       └── types/index.ts        ← TypeScript interfaces (Project, PayApp, User w/ trial fields)
 ├── public/
 │   ├── index.html     ← Landing/marketing page ONLY — no app logic here
-│   ├── app.html       ← ENTIRE billing app (auth, projects, pay apps, settings, admin)
+│   ├── app.html       ← Legacy billing app (auth, projects, pay apps, settings, admin)
 │   ├── pay.html       ← Public payment page (no auth — accessed by payer via /pay/:token)
 │   ├── varshyl-logo.png        ← ConstructInvoice AI logo (white bg, 35KB, 400×266px)
 │   └── constructinvoice-logo.png  ← Same logo, alternate filename (35KB)
@@ -114,6 +198,9 @@ The app was split from one file into two. **Any server-side redirect must point 
   - User table with block/unblock/delete/verify controls
 - **Railway Volume** — uploads (logos, signatures, lien waiver PDFs) persist across deploys on both production and staging
 - **payment_due_date** — auto-calculated on pay app submit based on payment terms (Net 30 → today + 30 days)
+- **Job Completed** — when all SOV lines are 100% billed, "Create Pay Application" button is hidden, green "Job Completed" banner shows with trophy icon. Projects can be reopened (Reopen Job button) to resume billing. DB columns: `projects.status` ('active'|'completed'), `projects.completed_at`
+- **Reconciliation** — per-project reconciliation report showing total_work_completed vs total_billed + total_retainage_held. Uses < $0.02 threshold for "Fully Reconciled" status (green banner). Accessible from Pay Apps tab.
+- **QuickBooks Integration (UI wired, backend built, NOT YET CONNECTED)** — QB components wired into Settings page (QBConnectionCard, QBSyncLog) and ProjectDetail page (QBSyncButton, QBEstimateImport). Backend routes in `server/routes/quickbooks.js`, service layer in `server/services/quickbooks.js`. **BLOCKED: needs QB env vars on Railway to activate** (see QuickBooks section below).
 
 ### ⚠️ Known Behavior
 - "By Others" in SOV amount column → treated as $0 (skipped), correct behavior
@@ -206,19 +293,18 @@ Retainage is per-line (can vary). Default from project settings.
 | Branch | Environment | Purpose |
 |--------|-------------|---------|
 | `main` | Production (constructinv.varshyl.com) | **Only merge when fully tested on staging** |
-| `staging` | Staging (railway staging env) | Bug fixes, small UI/copy changes, pre-production testing |
-| `feature/followup` | Local only until tested | Payment follow-up emails + "Mark as Paid" — DO NOT merge to staging without full review |
-| `feature/stripe` | Local only until discussed | Stripe $129/month subscription — NOT STARTED, discuss first |
-| `feature/stripe-connect` | Future | Contractor payment pipeline — NOT STARTED, major feature |
+| `staging` | Staging (railway staging env) | **ALL new features and bug fixes go here FIRST** → test → merge to `main` |
+| `constructinv-3.0` | Local | Rev 3 build branch (7 modules). Ready to merge to main after Vagish pushes. |
 
-### What goes where
+### What goes where (updated Apr 6 2026)
 
-- **Small bug fixes, copy changes, UI tweaks** → `staging` branch → test → merge to `main`
-- **New features touching billing, email, or payments** → `feature/*` branch → staging → discuss → main
-- **Payment processing (Stripe, escrow model)** → completely isolated `feature/stripe-connect` branch, never touches `staging` or `main` until production-ready and explicitly approved
+- **ALL new features** → `staging` branch → test on staging env → merge to `main`
+- **Bug fixes** → `staging` branch → test → merge to `main`
+- **Hotfixes only** → directly to `main` (only if staging is broken or blocked)
+- The old `feature/*` branch pattern is retired. Everything goes through `staging`.
 
 ### What NEVER goes to staging or main without explicit approval
-- Any payment processing code (Stripe, Chase, escrow)
+- Any payment processing code (Stripe live mode switch)
 - Any email sending changes (risk of spamming users)
 - Any database schema changes that can't be rolled back
 - Any auth changes
@@ -230,27 +316,28 @@ Retainage is per-line (can vary). Default from project settings.
 - Vagish pushes via **GitHub Desktop → "Push origin"** → Railway auto-deploys
 - `staging` branch → staging environment → test here first
 - `main` branch → production (constructinv.varshyl.com)
-- Claude NEVER pushes to GitHub — Vagish controls all deploys via GitHub Desktop
 - After any code change, run `node qa_test.js` — must be 109/109 before pushing
+- **NOTE:** Vagish has explicitly authorized Claude to push to GitHub for this project
 
-### Current Branch Status (updated Apr 1 2026)
-- `main` = production — has all fixes through Stripe Connect payment integration, test harness, payment bug fixes, ACH webhook improvements
-- `staging` = same as main (all recent changes committed and pushed, latest commit `969fe1a`)
-- `feature/followup` = NOT CREATED YET — planned next sprint
-- **NOTE:** Vagish has explicitly authorized Claude to push to GitHub for this project (overrode CLAUDE.md rule 3 times in Mar 31 session)
+### Current Branch Status (updated Apr 6 2026)
+- `constructinv-3.0` = Rev 3 with all 7 modules built, all bugs fixed, ready to push
+- `main` = production — Rev 2 + QB integration + Stripe Connect + Job Completed + Reconciliation
+- `staging` = same as main (will receive all future work after Rev 3 merges to main)
 
 ---
 
-## Pending Features — Master Roadmap (updated Mar 28 2026)
+## Modules — Master Roadmap (updated Apr 6 2026)
 
-> **THIS IS THE SINGLE SOURCE OF TRUTH for all planned features.**
+> **THIS IS THE SINGLE SOURCE OF TRUTH for all features.**
 > Every new Claude session should read this section first.
 > Features are organized by module. Status: ⬜ Not started | 🟡 In progress | ✅ Done
 
 ---
 
-### Module 1: Trial & Subscription System (`feature/trial`) — PRIORITY 1
-**Status: ⬜ Not started**
+### Module 1: Trial & Subscription System — PRIORITY 1
+**Status: ✅ DONE (Rev 3, Apr 6 2026)**
+**Files:** `server/routes/trial.js`, `server/services/trial.js`, `server/middleware/trialGate.js`, `server/routes/webhook.js` (subscription events), `client/src/hooks/useTrial.ts`, `client/src/api/trial.ts`, `client/src/components/trial/TrialBanner.tsx`, `client/src/components/trial/UpgradeModal.tsx`
+**Stripe:** Product `prod_UHoK09nnd940UV`, Price `price_1TJEhbA9PDiZOpzDJUZiWtd1` ($40/mo)
 **Pricing model:** $40/month, 90-day free trial, NO credit card at signup
 
 **Database changes:**
@@ -267,8 +354,8 @@ Retainage is per-line (can vary). Default from project settings.
 - Stripe Checkout for payment collection (NOT at signup — only when they choose to upgrade or trial ends)
 - Stripe Customer created when they first pay, not at registration
 - Stripe Subscription with no trial (since our trial is managed in-app)
-- Webhooks: `invoice.paid`, `invoice.payment_failed`, `customer.subscription.deleted`
-- Branch: `feature/trial`
+- Webhooks: `invoice.paid`, `invoice.payment_failed`, `customer.subscription.deleted`, `customer.subscription.updated`
+- All subscription webhooks handled in `server/routes/webhook.js` (single handler with Stripe signature verification)
 
 **Pro tier extras (beyond free trial features):**
 - Accept payments through invoices (Stripe Connect — future)
@@ -282,7 +369,8 @@ Retainage is per-line (can vary). Default from project settings.
 ---
 
 ### Module 2: Super Admin Controls — PRIORITY 2
-**Status: ⬜ Not started**
+**Status: ✅ DONE (Rev 3, Apr 6 2026)**
+**Files:** `server/routes/admin-extended.js` (6 routes, all secured with `adminAuth`), `client/src/pages/AdminDashboard.tsx`
 **Requires:** Module 1 (trial system DB schema)
 
 **Admin dashboard additions (ADMIN_EMAILS users only):**
@@ -295,7 +383,8 @@ Retainage is per-line (can vary). Default from project settings.
 ---
 
 ### Module 3: Onboarding Walkthrough (Guided Tour) — PRIORITY 3
-**Status: ⬜ Not started**
+**Status: ✅ DONE (Rev 3, Apr 6 2026)**
+**Files:** `client/src/components/onboarding/GuidedTour.tsx`, `client/src/hooks/useOnboarding.ts`, `server/routes/onboarding.js`
 
 **First-time user overlay/tooltip tour:**
 - Triggers on first login (track via `has_completed_onboarding` boolean in users table)
@@ -316,7 +405,8 @@ Retainage is per-line (can vary). Default from project settings.
 ---
 
 ### Module 4: AI Assistant Training (Product Help) — PRIORITY 4
-**Status: ⬜ Not started**
+**Status: ✅ DONE (Rev 3, Apr 6 2026)**
+**Files:** `client/src/components/ai/AIChatWidget.tsx`, `server/routes/ai.js`, `db.js` (ai_conversations table)
 
 **Enhance the existing AI chat to answer product questions:**
 - "How do I create a lien waiver?"
@@ -334,7 +424,8 @@ Retainage is per-line (can vary). Default from project settings.
 ---
 
 ### Module 5: Reporting Module (Sort/Filter Invoices) — PRIORITY 5
-**Status: ⬜ Not started**
+**Status: ✅ DONE (Rev 3, Apr 6 2026)**
+**Files:** `client/src/pages/Reports.tsx`, `server/routes/reports.js`, `client/src/hooks/useReports.ts`
 
 **Expand existing revenue/billing views:**
 - Currently: admin dashboard shows total pipeline, total billed, revenue charts
@@ -348,7 +439,8 @@ Retainage is per-line (can vary). Default from project settings.
 ---
 
 ### Module 6: Pro Upgrade Nudges + Early Payment — PRIORITY 6
-**Status: ⬜ Not started**
+**Status: ✅ DONE (Rev 3, Apr 6 2026)**
+**Files:** `client/src/components/trial/UpgradeNudge.tsx`, `client/src/hooks/useNudge.ts`, `client/src/components/trial/TrialBanner.tsx`, `client/src/components/trial/UpgradeModal.tsx`
 **Requires:** Module 1 (trial system)
 
 **During trial, occasional gentle prompts:**
@@ -364,7 +456,8 @@ Retainage is per-line (can vary). Default from project settings.
 ---
 
 ### Module 7: QA & Testing Automation — ONGOING
-**Status: ⬜ Not started**
+**Status: ✅ DONE (Rev 3, Apr 6 2026) — Phase A complete, Phase B planned**
+**Files:** `qa_test.js` (109 tests), TypeScript strict mode, Vite build verification
 
 **Phase A: API Integration Tests (expand qa_test.js)**
 - Test every critical endpoint with real HTTP requests
@@ -384,6 +477,85 @@ Retainage is per-line (can vary). Default from project settings.
 
 ---
 
+### Module 8: Subcontractor Portal / Branch System — PRIORITY 8 (BRAINSTORMING Apr 6 2026)
+**Status: 🟡 In design/brainstorm phase**
+**Branch: `feature/sub-portal` (not yet created)**
+
+**Core concept:** Every project becomes a mini-hub. GC is the admin. Each trade/sub gets a "branch" — a scoped page where they upload invoices, lien releases, photos, drawings, and any project documents. Eliminates the email black hole where construction docs get lost.
+
+**The problem being solved:**
+- GCs drowning in emails from 15+ subs per project, each sending invoices, photos, drawings, lien releases
+- Subs/vendors never know if their invoice was received or approved
+- At project close-out, someone spends days hunting through emails to assemble the final document package
+- Material suppliers sending invoices that get lost in email chains
+
+**Branch = one trade per project:**
+- GC creates project → enables sub branches → adds "Plumbing", "Electrical", "HVAC", etc.
+- One branch per trade. The plumber handles everything (rough-in, finish, etc.) under their single branch
+- Can have multiple subs of the same trade if needed (rare)
+
+**Recursive ecosystem:**
+- GC creates branches for their subs
+- Subs can create branches for THEIR vendors/material suppliers
+- Whoever is "our client" (the person using the product) is always the admin of their chain
+- Same workflow at every level: upload → review → approve/reject/comment → notify
+
+**V1 Feature Set (keep it dead simple):**
+1. **Invite** — GC types sub name + email or phone → sub gets a magic link (NO account creation, no passwords). Sub lands on their branch page immediately.
+2. **Upload + Categorize** — Sub uploads files and tags them: Invoice, Lien Release, Photo, Drawing, or Other. No complex forms.
+3. **Approve / Reject / Comment** — GC sees all uploads across all branches in one dashboard. One-click approve, reject with required comment, or add note. Sub gets notified.
+4. **Notifications** — Email + SMS (construction field guys check texts faster than email). Collect both email and phone on invite.
+
+**Access & Lifecycle:**
+- Magic link access — no account needed for subs (if sub forwards link to office manager, they can also upload — this is a FEATURE, not a bug)
+- Branch auto-expires 60 days after the final retention invoice is created (or GC/admin keeps it open or extends)
+- After expiry: all data moves to read-only archive — GC can still access everything, subs can view but not upload
+- GC can manually extend or close branches at any time
+
+**What this is NOT:**
+- NOT a full accounting system — dollar reconciliation stays in the core G702/G703 billing engine
+- NOT a replacement for the pay app workflow — this is the intake/approval layer for sub documents
+- The sub portal feeds INTO the billing system but doesn't duplicate it
+
+**Database tables (planned):**
+- `project_branches` — branch_id, project_id, trade_name, sub_name, sub_email, sub_phone, magic_link_token, status (active/archived), expires_at, created_at
+- `branch_uploads` — upload_id, branch_id, file_type (invoice/lien_release/photo/drawing/other), filename, file_path, status (pending/approved/rejected), reviewer_comment, uploaded_by, uploaded_at, reviewed_at
+- `branch_comments` — comment_id, upload_id, commenter_role (gc/sub), comment_text, created_at
+- `branch_notifications` — notification_id, branch_id, type (email/sms), recipient, message, sent_at, status
+
+**Potential MCP integrations:**
+- SignNow — for e-signatures on lien releases within the portal
+- Stripe — if subs want to pay through the portal (future)
+
+---
+
+### Module 9: Smart AI Agent (Enhanced Aria) — PRIORITY 9 (BRAINSTORMING Apr 6 2026)
+**Status: 🟡 In design/brainstorm phase**
+
+**Core concept:** Upgrade the existing Aria AI chat into a multi-capable agent that can answer product questions AND construction billing questions, store conversation history and insights, and feed actionable data to the super admin dashboard for feature development.
+
+**What the enhanced agent does:**
+1. **Product Help** — answers "how do I..." questions about the app (merges with Module 4)
+2. **Construction Billing Intelligence** — answers industry questions (retainage rules, lien deadlines by state, AIA form guidance)
+3. **Knowledge Storage** — every question asked gets stored, categorized, and analyzed
+4. **Admin Insights Feed** — aggregated question patterns, common pain points, and feature requests are surfaced to super admin dashboard
+5. **Per-user context** — remembers user's projects, common workflows, and past questions
+
+**How it feeds product development:**
+- Admin dashboard shows: "Top 10 questions users ask Aria this week"
+- Clusters questions into themes: "42% of questions are about lien waivers → users need better lien waiver UX"
+- Flags feature requests: "12 users asked about subcontractor management this month"
+- Tracks resolution rate: did the AI actually help, or did the user give up?
+
+**Implementation approach (TBD):**
+- Enhanced system prompt with full product documentation
+- Conversation history stored in `ai_conversations` table
+- Question categorization (product_help / billing_question / feature_request / complaint)
+- Admin API endpoints for aggregated insights
+- Weekly digest email to admin with top insights
+
+---
+
 ### Previously Approved (Still Valid)
 
 #### Net 30 as default payment terms (tiny, safe)
@@ -400,12 +572,12 @@ Retainage is per-line (can vary). Default from project settings.
 - New pay app status: `paid` / `payment_received`
 - Branch: `feature/followup`
 
-#### Stripe Connect Payment Pipeline (`feature/stripe-connect`) — FUTURE
-- Escrow model: owner pays contractor through platform
-- Stripe Connect handles contractor KYC/onboarding
-- ACH preferred for large amounts
-- Major feature — 2-3 week build minimum
-- Part of Pro tier — DO NOT START until Modules 1-2 are complete and stable
+#### ✅ Stripe Connect Payment Pipeline (`feature/stripe-connect`) — COMPLETED Apr 1 2026
+- Owner pays contractor through platform via Stripe Checkout (ACH + card)
+- Stripe Connect Express handles contractor KYC/onboarding
+- ACH recommended for large amounts ($25 flat fee), card option with 3.3%+$0.40
+- Fully working in test mode with test accounts (Mike Rodriguez, Sarah Chen)
+- See "Stripe Connect — Payment Integration" section for full details
 
 ---
 
@@ -429,6 +601,16 @@ Retainage is per-line (can vary). Default from project settings.
 16. **ACH payments never confirmed** — webhook was missing `checkout.session.async_payment_succeeded` event. ACH payments stayed as 'pending' forever because `checkout.session.completed` fires when session completes but ACH bank transfer takes 1-2 days. Fixed: added `async_payment_succeeded` and `async_payment_failed` to webhook events list and handler.
 17. **Stripe Express accounts can't be API-onboarded** — tried to set `company`, `tos_acceptance` via API on Express accounts. Error: "This application does not have the required permissions". Fixed: use `type: 'custom'` with `business_type: 'individual'` for programmatic test account creation.
 18. **Stripe company.phone rejected** — Custom accounts with `business_type: 'company'` kept rejecting phone number in every format. Fixed: switched to `business_type: 'individual'` which doesn't require company.phone.
+19. **Reconciliation rounding mismatch** — floating point math caused $0.01 variance showing "Not Reconciled" (red). Fixed: changed threshold from exact 0 to < $0.02 for "Fully Reconciled" status.
+20. **Intuit Developer portal SPA routing** — `developer.intuit.com` redirects `/dashboard`, `/myapps` back to `/homepage` when accessed via browser automation. The SPA client-side routing doesn't work in automation context. Must be navigated manually by Vagish.
+21. **TrialProvider import crash (Rev 3)** — App.tsx imported TrialProvider from TrialContext but the file only re-exported hooks, not a Provider component. Fixed: removed TrialProvider dependency entirely — useTrial hook reads directly from AuthContext user object.
+22. **Wrong upgrade API endpoint (Rev 3)** — UpgradeModal and trial.ts API client called `/api/subscription/checkout` but the actual backend route is `/api/trial/upgrade`. Fixed both files to use correct endpoint.
+23. **Admin-extended routes UNPROTECTED (Rev 3 CRITICAL)** — All 6 admin-extended routes had zero auth middleware. Any unauthenticated user could extend trials, upgrade users, send emails. Fixed by adding `adminAuth` middleware to every route handler.
+24. **SQL injection in extend-trial (Rev 3 CRITICAL)** — Used string interpolation `INTERVAL '${days} days'` for the days parameter. Fixed to parameterized `($1 || ' days')::INTERVAL`.
+25. **logEvent import broken (Rev 3)** — admin-extended.js used `require('../../server').logEvent` which doesn't exist as an export. Fixed to `require('../lib/logEvent')` matching existing admin.js pattern.
+26. **Trial routes had no auth middleware (Rev 3)** — server/app.js mounted trial router without any auth. POST /upgrade was accessible without login. Fixed with conditional middleware: POST gets full auth, GET tries auth but allows anonymous for /status.
+27. **Existing user instant trial expiry (Rev 3 BUG)** — Backfill migration set `trial_end_date = created_at + 90 days` which would immediately expire users who registered months ago. Fixed to `NOW() + 90 days` to give all existing users a fresh 90-day trial from the deploy date.
+28. **GuidedTour never rendered (Rev 3 GAP)** — GuidedTour component was built but never imported into Shell.tsx. Tour would never appear. Fixed by importing GuidedTour and useOnboarding into Shell.tsx and wiring them up.
 
 ---
 
@@ -519,6 +701,14 @@ All protected by `adminAuth` middleware. For creating realistic Stripe payment t
 - **Downtown Bathroom Remodel** ($42K) → Pay App $11,340 due → ACH payment processing
 - **Oak Street Kitchen Renovation** ($85K) → Pay App $22,950 due → ACH payment processing
 
+### Stripe Subscription (Pro Plan — Rev 3, Apr 6 2026)
+- **Product:** `prod_UHoK09nnd940UV` — "ConstructInvoice AI Pro"
+- **Price:** `price_1TJEhbA9PDiZOpzDJUZiWtd1` — $40/month recurring
+- **Subscription webhook:** `we_1TJEhdA9PDiZOpzDveIZZHCA` — listens for `invoice.paid`, `invoice.payment_failed`, `customer.subscription.deleted`, `customer.subscription.updated`
+- **Checkout flow:** `POST /api/trial/upgrade` → creates Stripe Checkout Session → redirects to Stripe → webhook confirms payment → updates `subscription_status` to 'active'
+- **Railway env var needed:** `STRIPE_PRO_PRICE_ID=price_1TJEhbA9PDiZOpzDJUZiWtd1` (set on both staging and production)
+- **Webhook secret:** `STRIPE_WEBHOOK_SECRET=whsec_Pa9WTxJ9YErjkkFFz3Nz8XcNDjkgORxr` (set on Railway)
+
 ### Going Live Checklist
 - [x] Stripe Connect payment flow working end-to-end in test mode
 - [x] ACH and card payment flows verified with test accounts
@@ -535,6 +725,71 @@ All protected by `adminAuth` middleware. For creating realistic Stripe payment t
 
 ---
 
+## QuickBooks Online Integration (added Apr 6 2026)
+
+### Status: UI WIRED + BACKEND BUILT, BLOCKED ON ENV VARS
+
+The entire QuickBooks integration is built and committed to `main` but **non-functional** because the 5 required environment variables are not yet set on Railway production.
+
+### Architecture
+- **OAuth 2.0 flow**: User clicks "Connect to QuickBooks" in Settings → redirects to Intuit OAuth → callback saves encrypted tokens
+- **Token encryption**: AES-256-GCM, tokens stored encrypted in `qb_connections` table
+- **Token refresh**: Automatic refresh when access token expires (1 hour), refresh token lasts 100 days
+- **Service layer**: `server/services/quickbooks.js` (687 lines) — handles all QB API calls
+- **Routes**: `server/routes/quickbooks.js` (459 lines) — all QB endpoints
+
+### Sync Paths
+| Direction | What | How |
+|-----------|------|-----|
+| Push | Project → QB Customer | Creates/updates Customer in QBO |
+| Push | Pay App → QB Invoice | Creates Invoice with line items from SOV |
+| Push | Payment → QB Payment | Records payment against Invoice |
+| Pull | QB Estimate → SOV | Imports estimate line items as Schedule of Values |
+
+### Database Tables
+- `qb_connections` — OAuth tokens (encrypted), company_id, realm_id per user
+- `qb_sync_log` — Sync history with status, entity type, error messages
+- `projects` additions: `qb_customer_id`, `qb_project_id`, `qb_sync_status`, `qb_last_synced_at`
+
+### Frontend Components (all in `client/src/components/quickbooks/`)
+- `QBConnectionCard.tsx` — OAuth connect/disconnect UI (in Settings page)
+- `QBSyncLog.tsx` — Sync history table (in Settings page)
+- `QBSyncButton.tsx` — Per-project sync button (in ProjectDetail page header)
+- `QBEstimateImport.tsx` — Import QB estimates as SOV (in ProjectDetail SOV tab, shown when no SOV lines)
+
+### API Routes
+- `GET /api/quickbooks/auth-url` — Generate OAuth authorization URL
+- `GET /api/quickbooks/callback` — OAuth callback (saves tokens)
+- `GET /api/quickbooks/status` — Check connection status
+- `POST /api/quickbooks/disconnect` — Disconnect QB
+- `POST /api/quickbooks/sync/project/:id` — Sync project to QB
+- `POST /api/quickbooks/sync/payapp/:id` — Sync pay app as QB Invoice
+- `POST /api/quickbooks/sync/payment/:id` — Sync payment to QB
+- `GET /api/quickbooks/estimates` — List QB estimates for import
+- `POST /api/quickbooks/import-estimate` — Import estimate as SOV
+- `GET /api/quickbooks/sync-log` — Get sync history
+
+### Railway Environment Variables NEEDED (NOT YET SET)
+| Variable | Value | Status |
+|----------|-------|--------|
+| `QB_CLIENT_ID` | *(get from Intuit Developer Portal → App → Keys & credentials)* | ❌ Not set |
+| `QB_CLIENT_SECRET` | *(get from Intuit Developer Portal → App → Keys & credentials)* | ❌ Not set |
+| `QB_REDIRECT_URI` | `https://constructinv.varshyl.com/api/quickbooks/callback` | ❌ Not set |
+| `QB_SANDBOX` | `true` | ❌ Not set |
+| `QB_ENCRYPTION_KEY` | `4ec2a6691499900c175b09b066eefd61f8c4a82d60c088925947a2bfe42aa497` | ❌ Not set |
+
+### Setup Steps to Complete
+1. **Get QB Client ID and Secret** — Go to developer.intuit.com → My Hub → App dashboard → your app → Keys & credentials → copy Client ID and Client Secret (Development/Sandbox section)
+2. **Set redirect URI in Intuit app** — In the same Keys page, add redirect URI: `https://constructinv.varshyl.com/api/quickbooks/callback`
+3. **Add all 5 env vars to Railway production** — Variables tab on Railway
+4. **Wait for Railway deploy** — auto-deploys after env var change
+5. **Test OAuth flow** — Settings → Connect to QuickBooks → authorize → verify connected state
+
+### Intuit Developer Portal Note
+The Intuit Developer portal (developer.intuit.com) has SPA routing that doesn't work well with browser automation — clicking "App dashboard" from My Hub redirects back to homepage. Vagish must navigate to the app dashboard manually in his own browser to get the Client ID and Client Secret.
+
+---
+
 ## Project Boundaries — What NOT to Touch
 
 - **Do NOT** modify the G702/G703 math formulas without running the full pay app test
@@ -547,6 +802,7 @@ All protected by `adminAuth` middleware. For creating realistic Stripe payment t
 - **Do NOT** modify Stripe fee amounts (ACH $25, CC 3.3%+$0.40) without discussing with Vagish
 - **Do NOT** switch Stripe from test mode to live mode without explicit approval from Vagish
 - **Do NOT** make changes to email sending logic without discussing first (risk of spamming users)
+- **Do NOT** use browser automation for Intuit Developer portal — `developer.intuit.com` SPA routing breaks in automation. Vagish must navigate manually.
 - **Do NOT** use browser automation for Stripe — `dashboard.stripe.com` and `checkout.stripe.com` are blocked. ALL Stripe operations (creating products, webhook endpoints, checking account status, etc.) must be done via Stripe SDK, Stripe CLI, or direct API calls (`curl`) through the terminal. Vagish handles anything that requires the Stripe Dashboard UI manually in his own browser.
 
 ---

@@ -36,7 +36,7 @@ export function UpgradeModal({ isOpen, onClose }: UpgradeModalProps): ReactNode 
     try {
       setLoading(true)
 
-      const response = await api.post<{ url: string }>('/api/subscription/checkout', {})
+      const response = await api.post<{ url: string }>('/api/trial/upgrade', {})
 
       if (response.data?.url) {
         window.location.href = response.data.url

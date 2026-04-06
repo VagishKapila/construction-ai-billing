@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const PDFDocument = require('pdfkit');
 const { pool } = require('../../db');
 const { auth } = require('../middleware/auth');
+const { trialGate } = require('../middleware/trialGate');
 const { logEvent } = require('../lib/logEvent');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret';
@@ -30,7 +31,7 @@ router.get('/api/projects/:id/lien-docs', auth, async (req, res) => {
 });
 
 // POST /api/projects/:id/lien-docs — Generate lien document PDF
-router.post('/api/projects/:id/lien-docs', auth, async (req, res) => {
+router.post('/api/projects/:id/lien-docs', auth, trialGate, async (req, res) => {
   const proj = await pool.query(
     `SELECT p.*, cs.company_name, cs.logo_filename
      FROM projects p

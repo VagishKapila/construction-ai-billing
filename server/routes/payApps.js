@@ -5,6 +5,7 @@ const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const { pool } = require('../../db');
 const { auth } = require('../middleware/auth');
+const { trialGate } = require('../middleware/trialGate');
 const { upload } = require('../middleware/fileValidation');
 const { logEvent } = require('../lib/logEvent');
 const { fmt } = require('../lib/format');
@@ -40,7 +41,7 @@ router.get('/api/projects/:id/payapps', auth, async (req,res) => {
 });
 
 // POST /api/projects/:id/payapps - Create new pay app
-router.post('/api/projects/:id/payapps', auth, async (req,res) => {
+router.post('/api/projects/:id/payapps', auth, trialGate, async (req,res) => {
   let {period_label,period_start,period_end,app_number} = req.body;
   // Auto-calculate app_number if not provided (React UI calls without it)
   if (app_number === undefined || app_number === null) {
@@ -1003,7 +1004,7 @@ router.get('/api/payapps/:id/pdf', async (req,res) => {
 // ──────────────────────────────────────────────────────────────────────────────
 
 // POST /api/payapps/:id/email - Send pay app via email with PDF
-router.post('/api/payapps/:id/email', auth, async (req, res) => {
+router.post('/api/payapps/:id/email', auth, trialGate, async (req, res) => {
   const { to, cc, subject, message, attach_lien_waiver, include_lien_waiver, include_payment_link } = req.body;
   const shouldAttachLien = (attach_lien_waiver ?? include_lien_waiver) !== false;
   const shouldIncludePayLink = include_payment_link !== false;

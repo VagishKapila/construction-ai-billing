@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { pool } = require('../../db');
 const { auth } = require('../middleware/auth');
+const { trialGate } = require('../middleware/trialGate');
 const { upload, rejectFile, MIME_CONTRACT } = require('../middleware/fileValidation');
 const { logEvent } = require('../lib/logEvent');
 
@@ -25,7 +26,7 @@ router.get('/api/projects', auth, async (req, res) => {
 });
 
 // POST /api/projects — Create new project
-router.post('/api/projects', auth, async (req, res) => {
+router.post('/api/projects', auth, trialGate, async (req, res) => {
   const {
     name, number, owner, owner_email, owner_phone, contractor, architect, contact,
     contact_name, contact_phone, contact_email, building_area, original_contract,
