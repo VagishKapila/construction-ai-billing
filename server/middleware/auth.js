@@ -24,6 +24,16 @@ function adminAuth(req, res, next) {
   } catch(e) { res.status(401).json({ error: 'Invalid token' }); }
 }
 
+function optionalAuth(req, res, next) {
+  const token = (req.headers.authorization && req.headers.authorization.split(' ')[1]) || req.query.token;
+  if (!token) return next(); // no token = continue as anonymous
+  try { req.user = jwt.verify(token, JWT_SECRET); }
+  catch(e) {
+    // invalid token = continue as anonymous (don't 401)
+  }
+  next();
+}
+
 function requireStripe(req, res, next) {
   const { stripe } = require('../services/stripe');
   if (!stripe) return res.status(503).json({ error: 'Payment features not configured. Set STRIPE_SECRET_KEY.' });
@@ -32,4 +42,4 @@ function requireStripe(req, res, next) {
 
 const { trialGate } = require('./trialGate');
 
-module.exports = { auth, adminAuth, requireStripe, trialGate, JWT_SECRET };
+module.exports = { auth, adminAuth, optionalAuth, requireStripe, trialGate, JWT_SECRET };

@@ -3400,7 +3400,7 @@ app.post('/api/admin/test/create-test-gc', adminAuth, async (req, res) => {
         type: 'express',
         country: 'US',
         email: email,
-        business_type: 'company',
+        business_type: 'individual',
         capabilities: {
           card_payments: { requested: true },
           transfers: { requested: true },
@@ -6115,7 +6115,7 @@ app.post('/api/stripe/connect', auth, requireStripe, async (req, res) => {
         type: 'express',
         country: 'US',
         email: user.email,
-        business_type: 'company',
+        business_type: 'individual',
         capabilities: {
           card_payments: { requested: true },
           transfers: { requested: true },
