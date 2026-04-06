@@ -70,7 +70,7 @@
 | Apr 6, 2026 | Pro pricing increased to $64/month (from $40) | Project Hub adds significant value; competitive pricing still well below Procore ($500+) |
 | Apr 6, 2026 | Project Hub uses 3 fixed roles: Office/Accountant, PM/PMCM, Superintendent | Simplicity over configurability; doc type determines routing automatically |
 | Apr 6, 2026 | Email aliases format: {trade}-{address-slug}@hub.constructinv.com | Address-based because construction projects are always address-based |
-| Apr 6, 2026 | Mailgun Routes chosen for email ingestion (~$35/mo) | Best balance of cost, DX, and wildcard email support vs SendGrid/Postmark/SES |
+| Apr 6, 2026 | Email ingestion: Hostinger catch-all + Cloudflare Email Workers (FREE) instead of Mailgun ($35/mo) | Early-stage decision — migrate to Mailgun when user base reaches ~100-200 users. See Infrastructure Decisions section. |
 | Apr 6, 2026 | AI focus: Collection tracking + follow-up is P0 | Keep contractors cash-flow positive; pattern detection for slow payers |
 | Apr 6, 2026 | Hub → Billing: V1 = auto-link + manual reconcile; V2 = AI auto-fill | Start simple, add intelligence as usage grows |
 | Apr 6, 2026 | Payment flexibility: Stripe AND manual check payments | Let clients decide; most construction companies still write checks |
@@ -97,7 +97,7 @@
 - **Hosting**: Railway (auto-deploy from GitHub)
 - **Payments**: Stripe Connect Express (ACH + card)
 - **Email (outbound)**: Resend API (billing@varshyl.com)
-- **Email (inbound, planned)**: Mailgun Routes (hub.constructinv.com)
+- **Email (inbound, Phase 3)**: Hostinger catch-all + Cloudflare Email Workers → Railway webhook (FREE — see Infrastructure Decisions)
 - **Accounting sync**: QuickBooks Online OAuth 2.0 (built, pending activation)
 - **PDF generation**: PDFKit (server-side)
 - **SOV parsing**: XLSX.js (Node) + Python parse_sov.py (PDF/DOCX)
@@ -113,6 +113,7 @@
 - Railway (hosting, PostgreSQL, volumes)
 - GitHub (VagishKapila/construction-ai-billing)
 - IONOS (DNS for constructinv.varshyl.com, hosting for snapclaps.com)
+- Hostinger (Business plan — varshylinc.com WordPress, Starter Business Email @varshylinc.com 5 mailboxes)
 - Stripe (payments + subscriptions)
 - Resend (transactional email)
 - HeyGen (AI avatar videos)
@@ -124,7 +125,7 @@
 ### Development Workflow
 - ALL new features → `staging` branch → test on staging env → merge to `main`
 - Run `node qa_test.js` (109/109 tests) before any push
-- Vagish pushes via GitHub Desktop (Claude authorized to push for this project)
+- Claude handles all git commits and pushes — Vagish never pushes manually
 - Railway auto-deploys from GitHub
 
 ### Video Factory Pipeline (Varshyl marketing)
@@ -144,9 +145,69 @@
 ## Partnerships & Integrations
 - **Stripe Connect**: Live (test mode) — ACH + card payments between owners and contractors
 - **QuickBooks Online**: Built, pending activation (needs env vars on Railway)
-- **Mailgun**: Planned for Project Hub email ingestion
+- **Cloudflare Email Workers**: Planned for Project Hub email ingestion Phase 3 (replaces Mailgun until scale justifies it)
 - **Fora/InteleTravel**: Planned for SnapClaps travel advisor revenue
 - **Affiliate networks**: CJ (active), Villiers Jets (active), Travelpayouts (25 programs declined, reapplying after blog content)
+
+## Infrastructure Decisions
+
+### Project Hub Email Ingestion — Hostinger → Mailgun Migration Path
+
+**Decision date:** April 6, 2026
+**Status:** Phase 3 (not yet built) — current implementation uses magic links only
+
+---
+
+#### What we decided and why
+
+The original PRD called for Mailgun Routes on `hub.constructinv.com` at ~$35/month. After reviewing Vagish's existing Hostinger Business plan (which includes email hosting for `@varshylinc.com`), we chose a **free alternative** for the early-stage launch:
+
+**Current plan (0 → ~100-200 users): Hostinger + Cloudflare Email Workers = $0/month**
+- Add `hub.constructinv.com` as a domain on the existing Hostinger Business email plan
+- Set a catch-all rule: `*@hub.constructinv.com` → Cloudflare Email Worker (free tier, unlimited routing)
+- Cloudflare Worker forwards the parsed email + attachments to `POST /api/hub/inbound-email` on Railway
+- Our inbound handler parses the trade + project from the alias (`plumbing-123elm@hub.constructinv.com`), extracts attachments, creates a `hub_upload` record with `source: 'email_ingest'`
+
+**Why it works at small scale:** Cloudflare Email Workers free tier handles up to 100 messages/day — more than enough for early users. Hostinger Business plan already paid for.
+
+---
+
+#### When to switch to Mailgun (migration trigger)
+
+Switch when ANY of these are true:
+- **100+ active users** regularly using email ingestion
+- Hitting Cloudflare's 100 messages/day free tier limit
+- Need webhook retry logic, bounce handling, or spam filtering at scale
+- Deliverability issues (Mailgun has enterprise-grade IP reputation)
+
+**Migration is a 1-day job — no code changes needed, just infrastructure:**
+
+1. **Create Mailgun account** → add `hub.constructinv.com` domain → verify DNS
+2. **Update DNS on IONOS**: swap the MX records from Hostinger → Mailgun mail servers
+3. **Create Mailgun catch-all route**: `match_recipient(".*@hub.constructinv.com")` → forward to `POST /api/hub/inbound-email`
+4. **Add Railway env var**: `MAILGUN_SIGNING_KEY` for webhook signature verification
+5. **Update inbound handler** in `server/routes/hub.js`: change signature verification from Cloudflare to Mailgun format (15 min of code)
+6. **Test**: Send a test email to any alias → confirm it hits the inbox
+
+That's it. The rest of the system (DB, API, frontend) doesn't change at all. The `source: 'email_ingest'` flag in `hub_uploads` already tracks where docs came from.
+
+---
+
+#### Inbound email handler location
+`server/routes/hub.js` → `POST /api/hub/inbound-email` (to be built in Phase 3)
+
+#### Email alias format (unchanged regardless of provider)
+`{trade-slug}-{project-id}@hub.constructinv.com`
+Example: `plumbing-123@hub.constructinv.com`
+
+#### Hostinger account details
+- Plan: Business
+- Email plan: Starter Business Email Free Trial (expires 2027-03-09, auto-renewal ON)
+- Current domain: `@varshylinc.com`, 1/5 mailboxes used
+- `varshylinc.com` domain is registered at another provider (not Hostinger)
+- hPanel: hpanel.hostinger.com
+
+---
 
 ## Notes & Ideas (parking lot)
 - Switch Stripe to live mode (needs Vagish approval)
@@ -161,3 +222,5 @@
 | Date | Changes | Summary |
 |------|---------|---------|
 | Apr 6, 2026 | Initial Brain creation | Created from ConstructInvoice AI project context + Exp1_ConstructInv3 Project Hub PRD session. Captured all product state, tech stack, decisions, and strategy. |
+| Apr 6, 2026 | Infrastructure decision: email ingestion | Replaced Mailgun plan with Hostinger + Cloudflare Email Workers (free). Full migration path to Mailgun documented for when user base hits 100-200 users. |
+| Apr 6, 2026 | Project Hub Phase 1 shipped to staging | Full backend (18 endpoints, 5 DB tables) + frontend (Hub tab, DocDetail, Trades, MagicLink) pushed to staging branch. |
