@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import * as paymentsApi from '@/api/payments'
+import { QBConnectionCard, QBSyncLog } from '@/components/quickbooks'
 import { PAYMENT_TERMS, PRO_PRICE_MONTHLY, SUPPORT_EMAIL } from '@/lib/constants'
 import {
   Upload,
@@ -667,7 +668,11 @@ export function Settings() {
           </CardContent>
         </Card>
 
-        {/* Section 5: Subscription & Billing */}
+        {/* Section 5: QuickBooks Integration */}
+        <QBConnectionCard />
+        <QBSyncLog />
+
+        {/* Section 6: Subscription & Billing */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

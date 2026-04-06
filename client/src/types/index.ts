@@ -91,6 +91,12 @@ export interface Project {
   contract_filename?: string;
   contract_original_name?: string;
 
+  // QuickBooks integration
+  qb_customer_id?: string;
+  qb_project_id?: string;
+  qb_sync_status?: string; // 'not_synced' | 'syncing' | 'synced'
+  qb_last_synced_at?: string;
+
   // Aggregates (from projects list query)
   pay_app_count?: number;
 

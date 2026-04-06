@@ -6,6 +6,7 @@ import { useProject } from '@/hooks/useProject'
 import { useTrial } from '@/hooks/useTrial'
 import { createPayApp } from '@/api/payApps'
 import { getProjectReconciliation, completeProject, reopenProject, type ReconciliationReport } from '@/api/projects'
+import { QBSyncButton, QBEstimateImport } from '@/components/quickbooks'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -387,13 +388,19 @@ export function ProjectDetail() {
         title={project.name}
         description={`Contract Amount: ${formatCurrency(project.original_contract)}`}
       />
-      {isJobCompleted && (
-        <div className="-mt-4">
+      <div className="-mt-4 flex items-center gap-3">
+        {isJobCompleted && (
           <Badge variant="success" className="text-xs">
             <Trophy className="w-3 h-3 mr-1" /> Completed
           </Badge>
-        </div>
-      )}
+        )}
+        <QBSyncButton
+          projectId={projectId}
+          qbSyncStatus={project.qb_sync_status}
+          variant="button"
+          onSyncComplete={() => refresh()}
+        />
+      </div>
 
       {/* Project Info Bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
@@ -543,7 +550,16 @@ export function ProjectDetail() {
         )}
 
         {activeTab === 'sov' && (
-          <SOVTable lines={sovLines} isLoading={isLoading} />
+          <div className="space-y-6">
+            <SOVTable lines={sovLines} isLoading={isLoading} />
+            {/* Import from QuickBooks Estimate */}
+            {sovLines.length === 0 && (
+              <QBEstimateImport
+                projectId={projectId}
+                onImportComplete={() => refresh()}
+              />
+            )}
+          </div>
         )}
 
         {activeTab === 'changeorders' && (
