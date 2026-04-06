@@ -18,6 +18,7 @@ import { PayAppEditor } from '@/pages/PayAppEditor'
 import { PaymentPage } from '@/pages/PaymentPage'
 import { PaymentsDashboard } from '@/pages/PaymentsDashboard'
 import { Reports } from '@/pages/Reports'
+import { CashFlow } from '@/pages/CashFlow'
 import { Settings } from '@/pages/Settings'
 import { AdminDashboard } from '@/pages/AdminDashboard'
 import { Help } from '@/pages/Help'
@@ -132,6 +133,14 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             <Reports />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/cash-flow"
+        element={
+          <ProtectedRoute>
+            <CashFlow />
           </ProtectedRoute>
         }
       />

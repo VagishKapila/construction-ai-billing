@@ -9,6 +9,7 @@ import { TrialBanner } from '@/components/trial/TrialBanner'
 import { UpgradeModal } from '@/components/trial/UpgradeModal'
 import { UpgradeNudge } from '@/components/trial/UpgradeNudge'
 import { GuidedTour } from '@/components/onboarding/GuidedTour'
+import { InstallPrompt } from '@/components/pwa'
 import { useOnboarding } from '@/hooks/useOnboarding'
 import { cn } from '@/lib/cn'
 
@@ -121,6 +122,9 @@ export function Shell({ children }: { children?: React.ReactNode }) {
 
       {/* Onboarding Guided Tour — shows on first login */}
       <GuidedTour isOpen={showTour} onComplete={completeTour} onSkip={skipTour} />
+
+      {/* PWA Install Prompt — shows 30s after mobile page load */}
+      <InstallPrompt />
     </div>
   )
 }

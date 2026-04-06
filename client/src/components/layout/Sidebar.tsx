@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   CreditCard,
   BarChart3,
+  TrendingUp,
   Settings,
   HelpCircle,
   Shield,
@@ -56,6 +57,11 @@ export function Sidebar({ isCollapsed = false }: { isCollapsed?: boolean }) {
         label: 'Reports',
         href: '/reports',
         icon: <BarChart3 size={20} />,
+      },
+      {
+        label: 'Cash Flow',
+        href: '/cash-flow',
+        icon: <TrendingUp size={20} />,
       },
       {
         label: 'Settings',

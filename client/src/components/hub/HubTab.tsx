@@ -5,11 +5,8 @@ import {
   Settings as SettingsIcon,
   CreditCard,
   Plus,
-  Filter,
   Clock,
-  FileIcon,
   AlertCircle,
-  Loader,
   Eye,
 } from 'lucide-react';
 import type { HubUpload, Trade, HubStats } from '@/types/hub';
@@ -292,7 +289,7 @@ export function HubTab({ projectId }: HubTabProps) {
                               upload.status === 'approved'
                                 ? 'success'
                                 : upload.status === 'rejected'
-                                  ? 'destructive'
+                                  ? 'danger'
                                   : 'warning'
                             }
                           >

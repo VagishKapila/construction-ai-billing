@@ -300,7 +300,7 @@ export function MagicLinkHub() {
                           upload.status === 'approved'
                             ? 'success'
                             : upload.status === 'rejected'
-                              ? 'destructive'
+                              ? 'danger'
                               : 'warning'
                         }
                         className="text-xs"

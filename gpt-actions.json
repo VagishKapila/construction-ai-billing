@@ -1,0 +1,18 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "ConstructInvoice AI",
+  "name_for_model": "constructinvoice_ai",
+  "description_for_human": "AI-powered construction billing for contractors. Manage G702/G703 pay applications, track payments, forecast cash flow, and get AI insights on outstanding invoices and payer patterns—all from ChatGPT.",
+  "description_for_model": "ConstructInvoice AI is a web-based construction billing platform for General Contractors. It helps contractors manage projects, create G702/G703 pay applications, track payments, and understand cash flow. Use this API to help contractors: (1) View their projects and pay applications, (2) Check outstanding invoices and overdue payments with aging analysis, (3) Get 30-day cash flow forecasts, (4) Analyze payer patterns (who pays late, who pays on time), (5) Answer construction billing questions (retainage rules, lien deadlines by state, AIA form guidance, G702/G703 math), (6) Get their subscription and trial status. Always authenticate users first by asking for their email and password using the loginUser action, then store the returned JWT token and include it as Authorization: Bearer <token> header on all subsequent requests.",
+  "auth": {
+    "type": "user_http",
+    "authorization_type": "bearer"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://constructinv.varshyl.com/openapi.yaml"
+  },
+  "logo_url": "https://constructinv.varshyl.com/varshyl-logo.png",
+  "contact_email": "support@varshyl.com",
+  "legal_info_url": "https://constructinv.varshyl.com/privacy"
+}

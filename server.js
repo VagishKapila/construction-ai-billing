@@ -342,6 +342,19 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+// ── OpenAPI Spec for ChatGPT Actions ──────────────────────────────────────
+app.get('/openapi.yaml', (req, res) => {
+  res.setHeader('Content-Type', 'application/yaml');
+  res.setHeader('Access-Control-Allow-Origin', '*'); // OpenAI needs CORS access
+  const specPath = path.join(__dirname, 'openapi.yaml');
+  if (fs.existsSync(specPath)) {
+    const spec = fs.readFileSync(specPath, 'utf8');
+    res.send(spec);
+  } else {
+    res.status(404).json({ error: 'OpenAPI spec not found' });
+  }
+});
+
 // ── Email helper (Resend or SendGrid via fetch — no extra npm needed) ───────
 async function sendVerificationEmail(email, name, token) {
   const verifyUrl = `${process.env.APP_URL || 'http://localhost:3000'}/api/auth/verify/${token}`;

@@ -143,6 +143,7 @@ app.use(require('./routes/payments'));
 app.use(require('./routes/settings'));
 app.use(require('./routes/lienWaivers'));
 app.use(auth, require('./routes/reports')); // Reports requires auth
+app.use(auth, require('./routes/collection')); // Collection Intelligence requires auth
 app.use(require('./routes/otherInvoices'));
 app.use(require('./routes/team'));
 app.use(require('./routes/feedback'));

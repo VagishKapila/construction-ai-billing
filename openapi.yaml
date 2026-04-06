@@ -1,0 +1,1270 @@
+openapi: 3.1.0
+info:
+  title: ConstructInvoice AI API
+  description: |
+    AI-powered G702/G703 construction billing platform for General Contractors and Subcontractors.
+    Manage projects, create pay applications, track payments, and get AI-powered billing intelligence.
+  version: "3.0"
+  contact:
+    name: ConstructInvoice AI Support
+    email: support@varshyl.com
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://constructinv.varshyl.com
+    description: Production
+  - url: https://construction-ai-billing-staging.up.railway.app
+    description: Staging
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from login endpoint
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: User ID
+        email:
+          type: string
+          format: email
+          description: User email address
+        name:
+          type: string
+          description: User's full name
+        created_at:
+          type: string
+          format: date-time
+        trial_start_date:
+          type: string
+          format: date-time
+          nullable: true
+        trial_end_date:
+          type: string
+          format: date-time
+          nullable: true
+        subscription_status:
+          type: string
+          enum: [trial, active, canceled, past_due, free_override, none]
+        plan_type:
+          type: string
+          enum: [free_trial, pro, free_override]
+        stripe_customer_id:
+          type: string
+          nullable: true
+
+    Project:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        number:
+          type: string
+          description: Project number/identifier
+        owner_name:
+          type: string
+        owner_email:
+          type: string
+          format: email
+        owner_phone:
+          type: string
+        original_contract:
+          type: number
+          format: double
+          description: Total contract amount in USD
+        status:
+          type: string
+          enum: [active, completed]
+        payment_terms:
+          type: string
+          example: "Net 30"
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    SOVLine:
+      type: object
+      properties:
+        id:
+          type: integer
+        project_id:
+          type: integer
+        trade:
+          type: string
+          description: Trade/work item name (e.g., Plumbing, Electrical)
+        description:
+          type: string
+        scheduled_value:
+          type: number
+          format: double
+          description: Total contract amount for this line item
+
+    PayApp:
+      type: object
+      properties:
+        id:
+          type: integer
+        project_id:
+          type: integer
+        app_number:
+          type: integer
+          description: Pay application number
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+        period_label:
+          type: string
+          description: "e.g., 'November 2024'"
+        status:
+          type: string
+          enum: [draft, submitted]
+        amount_due:
+          type: number
+          format: double
+          description: Current payment due (net of retainage)
+        retention_held:
+          type: number
+          format: double
+          description: Total retainage held
+        payment_status:
+          type: string
+          enum: [unpaid, pending, partial, processing, paid]
+        amount_paid:
+          type: number
+          format: double
+          nullable: true
+        payment_due_date:
+          type: string
+          format: date
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        submitted_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    PayAppLine:
+      type: object
+      properties:
+        id:
+          type: integer
+        pay_app_id:
+          type: integer
+        sov_line_id:
+          type: integer
+        trade:
+          type: string
+        description:
+          type: string
+        scheduled_value:
+          type: number
+          format: double
+        work_this_period_pct:
+          type: number
+          format: double
+          description: Work completed this period (0-100)
+        total_work_pct:
+          type: number
+          format: double
+          description: Total work completed to date (0-100)
+        retainage_pct:
+          type: number
+          format: double
+          description: Retainage percentage for this line
+        amount_this_period:
+          type: number
+          format: double
+          description: Amount billed this period (before retainage)
+        retainage_this_period:
+          type: number
+          format: double
+
+    ReportsSummary:
+      type: object
+      properties:
+        summary:
+          type: object
+          properties:
+            period:
+              type: string
+              description: "YYYY-MM"
+            total_billed_month:
+              type: number
+              format: double
+            total_outstanding:
+              type: number
+              format: double
+            total_paid:
+              type: number
+              format: double
+            payapp_count:
+              type: integer
+        projects:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+              total_scheduled:
+                type: number
+                format: double
+              total_work_completed:
+                type: number
+                format: double
+              total_retainage:
+                type: number
+                format: double
+
+    TrialStatus:
+      type: object
+      properties:
+        trial_start_date:
+          type: string
+          format: date-time
+          nullable: true
+        trial_end_date:
+          type: string
+          format: date-time
+          nullable: true
+        subscription_status:
+          type: string
+          enum: [trial, active, canceled, past_due, free_override, none]
+        plan_type:
+          type: string
+          enum: [free_trial, pro, free_override]
+        days_remaining:
+          type: integer
+        is_expired:
+          type: boolean
+        is_blocked:
+          type: boolean
+        authenticated:
+          type: boolean
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+          nullable: true
+
+security:
+  - BearerAuth: []
+
+paths:
+  /api/auth/login:
+    post:
+      operationId: loginUser
+      summary: Login with email and password
+      tags:
+        - Authentication
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login successful, JWT token returned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  token:
+                    type: string
+                    description: JWT token for future requests
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Invalid credentials
+        '429':
+          description: Too many login attempts, try again later
+
+  /api/auth/register:
+    post:
+      operationId: registerUser
+      summary: Register a new account
+      tags:
+        - Authentication
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                name:
+                  type: string
+      responses:
+        '201':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  user:
+                    $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid input or user already exists
+
+  /api/auth/me:
+    get:
+      operationId: getCurrentUser
+      summary: Get current authenticated user
+      tags:
+        - Authentication
+      responses:
+        '200':
+          description: Current user information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+
+  /api/projects:
+    get:
+      operationId: listProjects
+      summary: List all projects for authenticated user
+      tags:
+        - Projects
+      responses:
+        '200':
+          description: Array of projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Project'
+        '401':
+          description: Unauthorized
+
+    post:
+      operationId: createProject
+      summary: Create a new project
+      tags:
+        - Projects
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, owner_name, original_contract]
+              properties:
+                name:
+                  type: string
+                owner_name:
+                  type: string
+                owner_email:
+                  type: string
+                  format: email
+                owner_phone:
+                  type: string
+                original_contract:
+                  type: number
+                  format: double
+                payment_terms:
+                  type: string
+      responses:
+        '201':
+          description: Project created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          description: Invalid input
+
+  /api/projects/{id}:
+    get:
+      operationId: getProject
+      summary: Get project details
+      tags:
+        - Projects
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Project details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '404':
+          description: Project not found
+
+    put:
+      operationId: updateProject
+      summary: Update project details
+      tags:
+        - Projects
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                owner_name:
+                  type: string
+                owner_email:
+                  type: string
+                owner_phone:
+                  type: string
+                payment_terms:
+                  type: string
+      responses:
+        '200':
+          description: Project updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+
+    delete:
+      operationId: deleteProject
+      summary: Delete a project
+      tags:
+        - Projects
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Project deleted
+
+  /api/projects/{id}/complete:
+    post:
+      operationId: completeProject
+      summary: Mark project as completed (100% billed)
+      tags:
+        - Projects
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Project marked as completed
+
+  /api/projects/{id}/reopen:
+    post:
+      operationId: reopenProject
+      summary: Reopen a completed project to add more pay applications
+      tags:
+        - Projects
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Project reopened
+
+  /api/projects/{id}/sov:
+    get:
+      operationId: getSOV
+      summary: Get Schedule of Values for project
+      tags:
+        - Schedule of Values
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: SOV line items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SOVLine'
+
+    post:
+      operationId: uploadSOV
+      summary: Upload Schedule of Values file (Excel, CSV, PDF, or Word)
+      tags:
+        - Schedule of Values
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: SOV parsed and uploaded
+        '400':
+          description: Invalid file format
+
+  /api/projects/{id}/payapps:
+    get:
+      operationId: listPayApps
+      summary: List all pay applications for a project
+      tags:
+        - Pay Applications
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Array of pay applications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PayApp'
+
+    post:
+      operationId: createPayApp
+      summary: Create a new pay application
+      tags:
+        - Pay Applications
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                period_start:
+                  type: string
+                  format: date
+                period_end:
+                  type: string
+                  format: date
+                period_label:
+                  type: string
+      responses:
+        '201':
+          description: Pay application created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayApp'
+
+  /api/payapps/{id}:
+    get:
+      operationId: getPayApp
+      summary: Get pay application details with all line items
+      tags:
+        - Pay Applications
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Pay application with line items
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PayApp'
+                  - type: object
+                    properties:
+                      lines:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PayAppLine'
+
+    put:
+      operationId: updatePayApp
+      summary: Update pay application (save progress, change retainage, etc.)
+      tags:
+        - Pay Applications
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes:
+                  type: string
+                po_number:
+                  type: string
+      responses:
+        '200':
+          description: Pay application updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayApp'
+
+  /api/payapps/{id}/lines:
+    put:
+      operationId: updatePayAppLines
+      summary: Update work completed percentages for pay app lines
+      tags:
+        - Pay Applications
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                lines:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        description: PAY_APP_LINE id
+                      this_pct:
+                        type: number
+                        format: double
+                        description: Work completed this period (0-100)
+                      retainage_pct:
+                        type: number
+                        format: double
+                        description: Retainage percentage for this line
+      responses:
+        '200':
+          description: Lines updated
+        '400':
+          description: Invalid percentages
+
+  /api/payapps/{id}/pdf:
+    get:
+      operationId: downloadPayAppPDF
+      summary: Download pay application as PDF (G702 + G703)
+      tags:
+        - Pay Applications
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: PDF file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Pay application not found
+
+  /api/payapps/{id}/email:
+    post:
+      operationId: emailPayApp
+      summary: Send pay application PDF to owner via email
+      tags:
+        - Pay Applications
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                recipient_email:
+                  type: string
+                  format: email
+                  description: Email to send to (defaults to project owner_email)
+                subject:
+                  type: string
+                message:
+                  type: string
+      responses:
+        '200':
+          description: Email sent successfully
+        '400':
+          description: Invalid recipient or missing email config
+
+  /api/payapps/{id}/payment-link:
+    post:
+      operationId: generatePaymentLink
+      summary: Generate payment link for owner to pay online
+      tags:
+        - Payments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Payment link generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment_link:
+                    type: string
+                    format: uri
+                  token:
+                    type: string
+
+  /api/pay/{token}:
+    get:
+      operationId: getPaymentInfo
+      summary: Get pay app info for public payment page (no auth required)
+      tags:
+        - Payments
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Payment information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pay_app_id:
+                    type: integer
+                  amount_due:
+                    type: number
+                  project_name:
+                    type: string
+                  contractor_name:
+                    type: string
+                  payment_status:
+                    type: string
+                  payment_due_date:
+                    type: string
+                    format: date
+        '404':
+          description: Payment link expired or not found
+
+  /api/pay/{token}/checkout:
+    post:
+      operationId: createCheckoutSession
+      summary: Create Stripe Checkout session for payment (ACH or card)
+      tags:
+        - Payments
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payment_method:
+                  type: string
+                  enum: [ach, card]
+                  description: ACH recommended for large amounts ($25 flat fee), card 3.3%+$0.40
+      responses:
+        '200':
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id:
+                    type: string
+                  checkout_url:
+                    type: string
+        '400':
+          description: Invalid payment method or amount
+
+  /api/reports/summary:
+    get:
+      operationId: getReportsSummary
+      summary: Get billing summary - total billed, outstanding, paid for current month
+      tags:
+        - Reporting
+      parameters:
+        - name: month
+          in: query
+          schema:
+            type: string
+            description: "YYYY-MM format, defaults to current month"
+      responses:
+        '200':
+          description: Revenue summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportsSummary'
+
+  /api/reports/pay-apps:
+    get:
+      operationId: listPayAppsFiltered
+      summary: Filter and sort pay applications by project, date, status
+      tags:
+        - Reporting
+      parameters:
+        - name: project_id
+          in: query
+          schema:
+            type: integer
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, submitted, paid]
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [created_at, period_end, amount_due, status]
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [ASC, DESC]
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            maximum: 100
+      responses:
+        '200':
+          description: Filtered pay applications with pagination
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PayApp'
+                  pagination:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                      pages:
+                        type: integer
+
+  /api/reports/export:
+    get:
+      operationId: exportPayAppsCSV
+      summary: Export filtered pay applications as CSV
+      tags:
+        - Reporting
+      parameters:
+        - name: project_id
+          in: query
+          schema:
+            type: integer
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, submitted, paid]
+      responses:
+        '200':
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  /api/reports/trends:
+    get:
+      operationId: getBillingTrends
+      summary: Get monthly billing trends for last 12 months
+      tags:
+        - Reporting
+      responses:
+        '200':
+          description: Monthly trend data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trends:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        month:
+                          type: string
+                          format: date
+                        month_label:
+                          type: string
+                        payapp_count:
+                          type: integer
+                        total_billed:
+                          type: number
+                          format: double
+                        total_paid:
+                          type: number
+                          format: double
+
+  /api/trial/status:
+    get:
+      operationId: getTrialStatus
+      summary: Get subscription and trial status
+      tags:
+        - Trial & Subscription
+      security: []
+      responses:
+        '200':
+          description: Trial status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrialStatus'
+
+  /api/trial/upgrade:
+    post:
+      operationId: upgradeToPro
+      summary: Create Stripe Checkout session to upgrade to Pro plan ($64/month)
+      tags:
+        - Trial & Subscription
+      responses:
+        '200':
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  session_id:
+                    type: string
+                  url:
+                    type: string
+        '401':
+          description: Authentication required
+        '503':
+          description: Stripe not configured
+
+  /api/ai/ask:
+    post:
+      operationId: askBillingAI
+      summary: Ask construction billing AI questions
+      tags:
+        - AI Assistant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message:
+                  type: string
+                  description: Question about billing, G702/G703 forms, retainage, liens, cash flow, etc.
+      responses:
+        '200':
+          description: AI response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  response:
+                    type: string
+                  sources:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          description: Invalid question
+
+  /api/settings:
+    get:
+      operationId: getSettings
+      summary: Get company settings (logo, signature, contact info)
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Company settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  company_name:
+                    type: string
+                  contact_name:
+                    type: string
+                  contact_phone:
+                    type: string
+                  contact_email:
+                    type: string
+                  default_payment_terms:
+                    type: string
+                  default_retainage:
+                    type: number
+                    format: double
+                  logo_filename:
+                    type: string
+                    nullable: true
+                  signature_filename:
+                    type: string
+                    nullable: true
+
+    post:
+      operationId: updateSettings
+      summary: Update company settings
+      tags:
+        - Settings
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                company_name:
+                  type: string
+                contact_name:
+                  type: string
+                contact_phone:
+                  type: string
+                contact_email:
+                  type: string
+                default_payment_terms:
+                  type: string
+                default_retainage:
+                  type: number
+      responses:
+        '200':
+          description: Settings updated
+
+  /api/payments:
+    get:
+      operationId: listPayments
+      summary: List all payments received with summary stats
+      tags:
+        - Payments
+      responses:
+        '200':
+          description: Payments list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payments:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        pay_app_id:
+                          type: integer
+                        amount:
+                          type: number
+                          format: double
+                        payment_method:
+                          type: string
+                          enum: [ach, card, check, other]
+                        status:
+                          type: string
+                        paid_at:
+                          type: string
+                          format: date-time
+                  summary:
+                    type: object
+                    properties:
+                      total_received:
+                        type: number
+                        format: double
+                      total_outstanding:
+                        type: number
+                        format: double
+                      average_days_to_pay:
+                        type: number
+
+  /api/stripe/connect:
+    post:
+      operationId: initializeStripeConnect
+      summary: Start Stripe Connect Express onboarding for contractor
+      tags:
+        - Payments
+      responses:
+        '200':
+          description: Onboarding link generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  onboarding_url:
+                    type: string
+                    format: uri
+
+  /api/stripe/account-status:
+    get:
+      operationId: getStripeAccountStatus
+      summary: Check if contractor has Stripe account enabled
+      tags:
+        - Payments
+      responses:
+        '200':
+          description: Account status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connected:
+                    type: boolean
+                  account_id:
+                    type: string
+                    nullable: true
+                  charges_enabled:
+                    type: boolean
+                  payouts_enabled:
+                    type: boolean

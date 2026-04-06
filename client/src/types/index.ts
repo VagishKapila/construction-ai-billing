@@ -502,3 +502,53 @@ export interface StripeWebhookEvent {
     previous_attributes?: Record<string, unknown>;
   };
 }
+
+// ============================================================================
+// CASH FLOW INTELLIGENCE (Module 9)
+// ============================================================================
+
+export interface OutstandingInvoice {
+  id: number;
+  pay_app_number: number;
+  amount_due: number;
+  amount_paid: number;
+  payment_due_date: string | null;
+  payment_status: string;
+  days_overdue: number;
+  urgency: 'overdue' | 'due_soon' | 'current';
+  project_name: string;
+  project_id: number;
+  owner_name: string;
+  owner_email: string;
+  payment_link_token: string | null;
+}
+
+export interface ForecastDay {
+  due_date: string;
+  expected_incoming: number;
+  invoice_count: number;
+  projects: string[];
+}
+
+export interface CashFlowForecast {
+  daily_forecast: ForecastDay[];
+  summary: {
+    total_expected_30d: number;
+    already_overdue: number;
+    total_outstanding: number;
+    projected_cash_position: number;
+  };
+  risk_flags: string[];
+}
+
+export interface PayerPattern {
+  owner_name: string;
+  owner_email: string;
+  total_invoices: number;
+  paid_count: number;
+  avg_days_from_due: number | null;
+  total_paid: number;
+  currently_owed: number;
+  bad_debt_count: number;
+  payment_rating: 'reliable' | 'slow' | 'very_slow' | 'new_client';
+}

@@ -317,6 +317,7 @@ async function initDB() {
       id SERIAL PRIMARY KEY,
       payment_id INTEGER REFERENCES payments(id) ON DELETE CASCADE,
       pay_app_id INTEGER REFERENCES pay_apps(id) ON DELETE CASCADE,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
       followup_type VARCHAR(50) NOT NULL,
       scheduled_date DATE,
       sent_at TIMESTAMPTZ,
@@ -326,6 +327,7 @@ async function initDB() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_followups_payapp ON payment_followups(pay_app_id);
+    ALTER TABLE payment_followups ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
 
     -- User Stripe Connect columns
     ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_connect_id VARCHAR(200);

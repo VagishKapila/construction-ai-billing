@@ -111,9 +111,10 @@ export function DocDetailModal({
         rejectionReason,
       );
       if (res.data) {
+        const updatedUpload = res.data;
         setRevisionStep(2);
         setTimeout(() => {
-          onStatusChange(res.data);
+          onStatusChange(updatedUpload);
         }, 2000);
       }
     } catch (err) {
@@ -191,7 +192,7 @@ export function DocDetailModal({
                       upload.status === 'approved'
                         ? 'success'
                         : upload.status === 'rejected'
-                          ? 'destructive'
+                          ? 'danger'
                           : 'warning'
                     }
                     className="mt-1"
