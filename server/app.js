@@ -142,8 +142,8 @@ app.use(require('./routes/sov'));
 app.use(require('./routes/payments'));
 app.use(require('./routes/settings'));
 app.use(require('./routes/lienWaivers'));
-app.use(auth, require('./routes/reports')); // Reports requires auth
-app.use(auth, require('./routes/collection')); // Collection Intelligence requires auth
+app.use('/api/reports', auth, require('./routes/reports')); // Reports requires auth — mounted at /api/reports/*
+app.use('/api/collection', auth, require('./routes/collection')); // Collection Intelligence requires auth — mounted at /api/collection/*
 app.use(require('./routes/otherInvoices'));
 app.use(require('./routes/team'));
 app.use(require('./routes/feedback'));
