@@ -558,18 +558,25 @@ function Step1G703({
                   <td className="px-3 py-2 text-right font-mono tabular-nums text-text-secondary">{formatCurrency(line.prevAmount)}</td>
                   <td className="px-3 py-2 text-center font-mono tabular-nums text-text-secondary">{formatPercent(line.prev_pct, 0)}</td>
                   <td className="px-3 py-2 bg-primary-50 border-x border-primary-200">
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={Number(line.this_pct) || 0}
-                      onChange={(e) => {
-                        const pct = parseFloat(e.target.value) || 0
-                        onLinePercentChange(line.sov_line_id, Math.max(0, Math.min(100, pct)))
-                      }}
-                      className="w-20 px-2 py-1 text-center text-sm font-mono border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-                    />
+                    {(() => {
+                      const maxPct = 100 - (line.prev_pct || 0)
+                      return (
+                        <input
+                          type="number"
+                          min={0}
+                          max={maxPct}
+                          step={1}
+                          value={Number(line.this_pct) || 0}
+                          placeholder={`max ${maxPct}%`}
+                          onChange={(e) => {
+                            const pct = parseFloat(e.target.value) || 0
+                            const clampedValue = Math.min(Math.max(0, pct), maxPct)
+                            onLinePercentChange(line.sov_line_id, clampedValue)
+                          }}
+                          className="w-20 px-2 py-1 text-center text-sm font-mono border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                        />
+                      )
+                    })()}
                   </td>
                   <td className="px-3 py-2 text-right font-mono tabular-nums font-medium">{formatCurrency(line.thisAmount)}</td>
                   <td className="px-3 py-2">

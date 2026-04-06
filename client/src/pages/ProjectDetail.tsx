@@ -217,6 +217,7 @@ export function ProjectDetail() {
   const [successBanner, setSuccessBanner] = useState<string | null>(null)
   const [isCompletingJob, setIsCompletingJob] = useState(false)
   const [isReopeningJob, setIsReopeningJob] = useState(false)
+  const [qbConnected, setQbConnected] = useState(false)
 
   const { project, sovLines, payApps, changeOrders, attachments, isLoading, error, refresh } =
     useProject(projectId)
@@ -254,6 +255,30 @@ export function ProjectDetail() {
         .finally(() => setReconLoading(false))
     }
   }, [activeTab, projectId, reconciliation, payApps.length])
+
+  // Check QB connection status on mount
+  useEffect(() => {
+    const checkQBStatus = async () => {
+      try {
+        // Try to fetch QB status — if successful, QB is connected
+        // This endpoint returns { connected: true/false }
+        const response = await fetch('/api/quickbooks/status', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}`,
+          },
+        })
+        if (response.ok) {
+          const data = await response.json()
+          setQbConnected(data.connected === true)
+        }
+      } catch {
+        // If check fails, assume not connected
+        setQbConnected(false)
+      }
+    }
+
+    checkQBStatus()
+  }, [])
 
   /**
    * Create a new pay app and navigate to it
@@ -399,6 +424,7 @@ export function ProjectDetail() {
         <QBSyncButton
           projectId={projectId}
           qbSyncStatus={project.qb_sync_status}
+          qbConnected={qbConnected}
           variant="button"
           onSyncComplete={() => refresh()}
         />

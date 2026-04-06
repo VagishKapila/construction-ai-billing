@@ -52,8 +52,15 @@ export function useOnboarding(): UseOnboardingReturn {
 
   /**
    * Initialize tour on mount if user is logged in and hasn't completed onboarding
+   * Skip if localStorage indicates onboarding was dismissed in current session
    */
   React.useEffect(() => {
+    // Early exit if tour was dismissed in this session
+    if (localStorage.getItem('onboarding_dismissed') === 'true') {
+      setLocalShowTour(false);
+      return;
+    }
+
     if (user && !user.has_completed_onboarding) {
       // Small delay to ensure page is fully loaded before showing tour
       const timer = setTimeout(() => {
@@ -72,21 +79,23 @@ export function useOnboarding(): UseOnboardingReturn {
 
   /**
    * Complete the tour — calls API and updates user state
+   * Sets localStorage flag immediately to prevent re-showing in current session
    */
   const completeTour = useCallback(async () => {
     try {
+      // Set localStorage flag FIRST to prevent tour re-appearing while API processes
+      localStorage.setItem('onboarding_dismissed', 'true');
+      setLocalShowTour(false);
       setIsLoading(true);
+
+      // Call API in background
       await api.post('/api/onboarding/complete');
 
       // Refresh user to update has_completed_onboarding flag
       await refreshUser();
-
-      // Close tour
-      setLocalShowTour(false);
     } catch (error) {
       console.error('Failed to complete onboarding:', error);
-      // Still close tour even if API call fails
-      setLocalShowTour(false);
+      // Tour stays closed due to localStorage flag
     } finally {
       setIsLoading(false);
     }
@@ -94,21 +103,23 @@ export function useOnboarding(): UseOnboardingReturn {
 
   /**
    * Skip the tour — same as complete (marks as done)
+   * Sets localStorage flag immediately to prevent re-showing in current session
    */
   const skipTour = useCallback(async () => {
     try {
+      // Set localStorage flag FIRST to prevent tour re-appearing while API processes
+      localStorage.setItem('onboarding_dismissed', 'true');
+      setLocalShowTour(false);
       setIsLoading(true);
+
+      // Call API in background
       await api.post('/api/onboarding/complete');
 
       // Refresh user to update has_completed_onboarding flag
       await refreshUser();
-
-      // Close tour
-      setLocalShowTour(false);
     } catch (error) {
       console.error('Failed to skip onboarding:', error);
-      // Still close tour even if API call fails
-      setLocalShowTour(false);
+      // Tour stays closed due to localStorage flag
     } finally {
       setIsLoading(false);
     }

@@ -13,6 +13,7 @@ import * as QB from '@/api/quickbooks';
 interface QBSyncButtonProps {
   projectId: number;
   qbSyncStatus?: string; // 'not_synced' | 'syncing' | 'synced' | 'error'
+  qbConnected?: boolean; // Whether QB is connected for this user
   onSyncComplete?: (result: QB.QBSyncResult) => void;
   onSyncError?: (error: string) => void;
   variant?: 'icon' | 'button';
@@ -21,6 +22,7 @@ interface QBSyncButtonProps {
 export function QBSyncButton({
   projectId,
   qbSyncStatus = 'not_synced',
+  qbConnected = false,
   onSyncComplete,
   onSyncError,
   variant = 'button',
@@ -28,6 +30,42 @@ export function QBSyncButton({
   const [syncing, setSyncing] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [result, setResult] = useState<QB.QBSyncResult | null>(null);
+
+  // If QB is not connected, show disabled state with helpful message
+  if (!qbConnected) {
+    if (variant === 'icon') {
+      return (
+        <button
+          disabled
+          className="p-2 opacity-40 cursor-not-allowed"
+          title="Connect QuickBooks in Settings to sync"
+        >
+          <AlertCircle className="w-4 h-4 text-gray-400" />
+        </button>
+      );
+    }
+
+    return (
+      <div className="flex items-center gap-2">
+        <Button
+          disabled
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          title="Connect QuickBooks in Settings to sync"
+        >
+          <AlertCircle className="w-4 h-4" />
+          QuickBooks not connected
+        </Button>
+        <a
+          href="/settings?tab=quickbooks"
+          className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+        >
+          Connect →
+        </a>
+      </div>
+    );
+  }
 
   async function handleSync() {
     try {

@@ -125,9 +125,6 @@ interface ProjectRowProps {
 }
 
 function ProjectRow({ project, index }: ProjectRowProps) {
-  // Use actual billed data if available, otherwise show 0%
-  const progress = 0
-
   const statusDisplay =
     project.payment_terms === 'draft'
       ? 'Draft'
@@ -171,19 +168,6 @@ function ProjectRow({ project, index }: ProjectRowProps) {
           </p>
         </div>
         <div className="flex items-center gap-4">
-          <div className="w-32 hidden sm:block">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-gray-500">{progress}%</span>
-            </div>
-            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${progress}%` }}
-                transition={{ duration: 1, delay: 0.5 + index * 0.1 }}
-                className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full"
-              />
-            </div>
-          </div>
           <span
             className={`px-2.5 py-1 text-xs font-medium rounded-full ${statusColor}`}
           >
@@ -267,7 +251,7 @@ export function Dashboard() {
 
   // Compute total pipeline from actual project contract amounts
   const totalPipeline = useMemo(
-    () => projects.reduce((sum, p) => sum + (p.original_contract || 0), 0),
+    () => projects.reduce((sum, p) => sum + parseFloat(String(p.original_contract || '0')), 0),
     [projects],
   )
 

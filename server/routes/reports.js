@@ -373,7 +373,7 @@ router.get('/stats', async (req, res) => {
         (SELECT COUNT(*) FROM projects WHERE user_id = $1) as projects,
         (SELECT COUNT(*) FROM pay_apps pa JOIN projects p ON pa.project_id = p.id WHERE p.user_id = $1 AND pa.deleted_at IS NULL) as payapps,
         COALESCE((SELECT SUM(pa.amount_due) FROM pay_apps pa JOIN projects p ON pa.project_id = p.id WHERE p.user_id = $1 AND pa.deleted_at IS NULL AND pa.status = 'submitted'), 0) as total_billed,
-        COALESCE((SELECT SUM(pa.amount_due) FROM pay_apps pa JOIN projects p ON pa.project_id = p.id WHERE p.user_id = $1 AND pa.deleted_at IS NULL AND pa.payment_status IN ('pending', 'unpaid') AND pa.status = 'submitted'), 0) as outstanding`,
+        COALESCE((SELECT SUM(pa.amount_due) FROM pay_apps pa JOIN projects p ON pa.project_id = p.id WHERE p.user_id = $1 AND pa.deleted_at IS NULL AND pa.status = 'submitted' AND COALESCE(pa.payment_status, 'unpaid') NOT IN ('paid', 'partial', 'processing')), 0) as outstanding`,
       [req.user.id]
     );
 
