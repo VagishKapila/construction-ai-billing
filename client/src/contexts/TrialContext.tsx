@@ -1,17 +1,12 @@
 /**
- * Trial Context — Provides access to useTrial hook and upgrade helpers
+ * Trial Context — Re-exports useTrial hook for convenience
  * This context is primarily a convenience wrapper around useTrial hook
  * and is NOT a replacement for useAuth
  */
 
-import React from 'react'
-import { useTrial } from '@/hooks/useTrial'
-import { useTrialContext as useTrialContextHook } from '@/hooks/useTrial'
-
-export { useTrial, useTrialContext }
+export { useTrial } from '@/hooks/useTrial';
 
 /**
- * Re-export from hooks for convenience
- * This file maintains backward compatibility
+ * Re-export types for convenience
  */
-export type { UseTrialReturn } from '@/hooks/useTrial'
+export type { UseTrialReturn } from '@/hooks/useTrial';
