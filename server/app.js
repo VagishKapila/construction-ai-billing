@@ -136,6 +136,9 @@ app.use('/api/trial', (req, res, next) => {
   trialAuth(req, res, () => next());
 }, require('./routes/trial').router);
 
+// Import auth middleware for protected routes
+const { auth } = require('./middleware/auth');
+
 // All other routes use full paths — mount at root
 app.use(require('./routes/projects'));
 app.use(require('./routes/payApps'));
@@ -143,7 +146,7 @@ app.use(require('./routes/sov'));
 app.use(require('./routes/payments'));
 app.use(require('./routes/settings'));
 app.use(require('./routes/lienWaivers'));
-app.use(require('./routes/reports'));
+app.use(auth, require('./routes/reports')); // Reports requires auth
 app.use(require('./routes/otherInvoices'));
 app.use(require('./routes/team'));
 app.use(require('./routes/feedback'));
