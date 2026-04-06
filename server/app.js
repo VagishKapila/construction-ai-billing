@@ -126,14 +126,10 @@ app.use('/api/quickbooks', require('./routes/quickbooks'));
 // Trial & Subscription routes (relative paths — mount at /api/trial)
 // GET /api/trial/status is public (works with or without token)
 // POST /api/trial/upgrade requires auth
-const { auth: trialAuth } = require('./middleware/auth');
+const { auth: trialAuth, optionalAuth } = require('./middleware/auth');
 app.use('/api/trial', (req, res, next) => {
-  // Apply auth middleware only to POST routes (upgrade needs auth, status is public)
-  if (req.method === 'POST') {
-    return trialAuth(req, res, next);
-  }
-  // For GET, try to extract user but don't block if no token
-  trialAuth(req, res, () => next());
+  // Apply optional auth to all trial routes (allows GET without token, POST checks in route)
+  optionalAuth(req, res, next);
 }, require('./routes/trial').router);
 
 // Import auth middleware for protected routes
@@ -152,6 +148,9 @@ app.use(require('./routes/team'));
 app.use(require('./routes/feedback'));
 app.use(require('./routes/onboarding'));
 app.use(require('./routes/ai'));
+
+// Hub routes — Project document intake (Phase 1)
+app.use(require('./routes/hub'));
 
 // ── Emergency admin reset (standalone) ────────────────────────────────────
 const bcrypt = require('bcryptjs');

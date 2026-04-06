@@ -472,6 +472,82 @@ async function initDB() {
     -- Module 7: QA & Testing (optional: tracking for test data identification)
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_test_account BOOLEAN DEFAULT FALSE;
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_test_project BOOLEAN DEFAULT FALSE;
+
+    -- Module 8: Project Hub — Phase 1 Document Intake (Apr 2026)
+    CREATE TABLE IF NOT EXISTS project_trades (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+      name VARCHAR(200) NOT NULL,
+      company_name VARCHAR(300),
+      contact_name VARCHAR(200),
+      contact_email VARCHAR(200),
+      magic_link_token VARCHAR(100) UNIQUE,
+      email_alias VARCHAR(300),
+      status VARCHAR(50) DEFAULT 'active',
+      invite_sent_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS hub_uploads (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+      trade_id INTEGER REFERENCES project_trades(id) ON DELETE CASCADE,
+      filename VARCHAR(300),
+      original_name VARCHAR(300),
+      file_size INTEGER,
+      mime_type VARCHAR(100),
+      doc_type VARCHAR(50) DEFAULT 'other',
+      status VARCHAR(50) DEFAULT 'pending',
+      amount NUMERIC(14,2),
+      version INTEGER DEFAULT 1,
+      parent_upload_id INTEGER REFERENCES hub_uploads(id),
+      rejection_reason TEXT,
+      source VARCHAR(50) DEFAULT 'web_app',
+      uploaded_by VARCHAR(200),
+      approved_by INTEGER REFERENCES users(id),
+      approved_at TIMESTAMPTZ,
+      stale_warning_sent_at TIMESTAMPTZ,
+      stale_escalation_sent_at TIMESTAMPTZ,
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS hub_comments (
+      id SERIAL PRIMARY KEY,
+      upload_id INTEGER REFERENCES hub_uploads(id) ON DELETE CASCADE,
+      user_id INTEGER REFERENCES users(id),
+      author_name VARCHAR(200),
+      text TEXT NOT NULL,
+      is_rfi_reply BOOLEAN DEFAULT false,
+      is_rejection BOOLEAN DEFAULT false,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS hub_team_roles (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      role VARCHAR(50) NOT NULL,
+      UNIQUE(project_id, role)
+    );
+
+    CREATE TABLE IF NOT EXISTS hub_notifications (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+      upload_id INTEGER REFERENCES hub_uploads(id),
+      user_id INTEGER REFERENCES users(id),
+      trigger_type VARCHAR(50),
+      message TEXT,
+      read BOOLEAN DEFAULT false,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_project_trades_project ON project_trades(project_id);
+    CREATE INDEX IF NOT EXISTS idx_hub_uploads_project ON hub_uploads(project_id);
+    CREATE INDEX IF NOT EXISTS idx_hub_uploads_trade ON hub_uploads(trade_id);
+    CREATE INDEX IF NOT EXISTS idx_hub_uploads_status ON hub_uploads(status);
+    CREATE INDEX IF NOT EXISTS idx_hub_comments_upload ON hub_comments(upload_id);
+    CREATE INDEX IF NOT EXISTS idx_hub_notifications_user ON hub_notifications(user_id, read);
   `);
   console.log('Database ready');
 }

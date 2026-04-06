@@ -21,6 +21,7 @@ import { Reports } from '@/pages/Reports'
 import { Settings } from '@/pages/Settings'
 import { AdminDashboard } from '@/pages/AdminDashboard'
 import { Help } from '@/pages/Help'
+import { MagicLinkHub } from '@/pages/MagicLinkHub'
 import { NotFound } from '@/pages/NotFound'
 
 /**
@@ -81,6 +82,9 @@ function AppRouter() {
 
       {/* Public payment page (no auth, no shell) */}
       <Route path="/pay/:token" element={<PageTransition><PaymentPage /></PageTransition>} />
+
+      {/* Public magic link hub page (no auth, no shell) */}
+      <Route path="/hub/:token" element={<PageTransition><MagicLinkHub /></PageTransition>} />
 
       {/* Protected routes (auth required + shell layout) */}
       <Route

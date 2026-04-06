@@ -284,9 +284,10 @@ Retainage is per-line (can vary). Default from project settings.
 ### ⚠️ CRITICAL RULES — READ BEFORE EVERY CHANGE
 
 1. **Always discuss with Vagish before making any code change** — no surprises, no assumptions
-2. **Claude NEVER pushes to GitHub** — Vagish pushes via GitHub Desktop only
-3. **Run `node qa_test.js` (109/109) before flagging any change as ready to push**
-4. **Product is live with real users** — treat every change as production risk
+2. **Claude pushes to GitHub** — Claude handles all git commits and pushes. Vagish never pushes manually.
+3. **Workflow: staging first** — all work goes to `staging` branch → test → after bug fixes, push to `main`
+4. **Run `node qa_test.js` (109/109) before any push**
+5. **Product is live with real users** — treat every change as production risk
 
 ### Branch Map
 
@@ -313,7 +314,7 @@ Retainage is per-line (can vary). Default from project settings.
 
 ## Deployment Workflow
 
-- Vagish pushes via **GitHub Desktop → "Push origin"** → Railway auto-deploys
+- Claude commits and pushes via git CLI → Railway auto-deploys
 - `staging` branch → staging environment → test here first
 - `main` branch → production (constructinv.varshyl.com)
 - After any code change, run `node qa_test.js` — must be 109/109 before pushing
@@ -813,7 +814,7 @@ The Intuit Developer portal (developer.intuit.com) has SPA routing that doesn't 
 - **Do NOT** remove the `_commaSetup` guard on `setupCommaInput`
 - **Do NOT** change `parse_sov.py` for Excel files — Excel is handled by Node.js only
 - **Do NOT** change the Railway/GitHub deploy setup — Vagish manages this
-- **Do NOT** push to GitHub — Vagish does this via GitHub Desktop
+- **Do NOT** push to `main` without full staging test + explicit approval from Vagish
 - **Do NOT** use display name format in Resend `from` field — plain email only
 - **Do NOT** redirect to `/` or `/?` from server — always use `/app.html` or `/app.html?`
 - **Do NOT** modify Stripe fee amounts (ACH $25, CC 3.3%+$0.40) without discussing with Vagish

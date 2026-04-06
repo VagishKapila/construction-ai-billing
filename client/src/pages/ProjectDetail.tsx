@@ -1,12 +1,13 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Upload, FileText, ChevronRight, Paperclip, CheckCircle2, AlertTriangle, ReceiptText, TableProperties, FolderOpen, Scale, X, Lock, RotateCcw, Trophy } from 'lucide-react'
+import { Upload, FileText, ChevronRight, Paperclip, CheckCircle2, AlertTriangle, ReceiptText, TableProperties, FolderOpen, Scale, X, Lock, RotateCcw, Trophy, Inbox } from 'lucide-react'
 import type { PayApp, SOVLine } from '@/types'
 import { useProject } from '@/hooks/useProject'
 import { useTrial } from '@/hooks/useTrial'
 import { createPayApp } from '@/api/payApps'
 import { getProjectReconciliation, completeProject, reopenProject, type ReconciliationReport } from '@/api/projects'
 import { QBSyncButton, QBEstimateImport } from '@/components/quickbooks'
+import { HubTab } from '@/components/hub/HubTab'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -26,6 +27,7 @@ const TABS: TabConfig[] = [
   { id: 'payapps', label: 'Pay Applications', icon: ReceiptText },
   { id: 'sov', label: 'Schedule of Values', icon: TableProperties },
   { id: 'changeorders', label: 'Change Orders', icon: FileText },
+  { id: 'hub', label: 'Project Hub', icon: Inbox },
   { id: 'documents', label: 'Documents', icon: FolderOpen },
   { id: 'reconciliation', label: 'Reconciliation', icon: Scale, accent: true },
 ]
@@ -611,6 +613,10 @@ export function ProjectDetail() {
               </div>
             </Card>
           )
+        )}
+
+        {activeTab === 'hub' && (
+          <HubTab projectId={projectId} />
         )}
 
         {activeTab === 'documents' && (
