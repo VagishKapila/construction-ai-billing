@@ -85,7 +85,7 @@ export interface OtherInvoiceReport {
  * Returns high-level stats: project count, pay app count, billed, outstanding
  */
 export async function getStats(): Promise<ApiResponse<DashboardStats>> {
-  return api.get<DashboardStats>('/api/stats');
+  return api.get<DashboardStats>('/api/reports/stats');
 }
 
 /**
@@ -95,7 +95,7 @@ export async function getStats(): Promise<ApiResponse<DashboardStats>> {
 export async function getRevenueSummary(
   period?: string,
 ): Promise<ApiResponse<RevenueSummary>> {
-  const url = period ? `/api/revenue/summary?period=${period}` : '/api/revenue/summary';
+  const url = period ? `/api/reports/summary?month=${period}` : '/api/reports/summary';
   return api.get<RevenueSummary>(url);
 }
 
@@ -152,7 +152,7 @@ export async function exportCSV(filters?: ReportExportFilters): Promise<Blob> {
   if (filters?.from) params.append('from', filters.from);
   if (filters?.to) params.append('to', filters.to);
 
-  const url = `/api/reports/export/csv${params.toString() ? `?${params}` : ''}`;
+  const url = `/api/reports/export${params.toString() ? `?${params}` : ''}`;
   const res = await fetch(url, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
@@ -166,7 +166,7 @@ export async function exportCSV(filters?: ReportExportFilters): Promise<Blob> {
  */
 export async function exportReportPDF(): Promise<Blob> {
   const token = api.getToken();
-  const res = await fetch('/api/revenue/report/pdf', {
+  const res = await fetch('/api/reports/export?format=pdf', {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) throw new Error('Failed to export report PDF');

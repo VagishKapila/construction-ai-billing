@@ -358,6 +358,43 @@ router.get('/export', async (req, res) => {
 });
 
 /**
+ * GET /api/stats
+ * Dashboard KPI stats for the current user (non-admin version of /admin/stats)
+ * Returns: projects count, payapps count, total_billed, outstanding
+ */
+router.get('/stats', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'No token' });
+    }
+
+    const statsResult = await pool.query(
+      `SELECT
+        (SELECT COUNT(*) FROM projects WHERE user_id = $1) as projects,
+        (SELECT COUNT(*) FROM pay_apps pa JOIN projects p ON pa.project_id = p.id WHERE p.user_id = $1 AND pa.deleted_at IS NULL) as payapps,
+        COALESCE((SELECT SUM(pa.amount_due) FROM pay_apps pa JOIN projects p ON pa.project_id = p.id WHERE p.user_id = $1 AND pa.deleted_at IS NULL AND pa.status = 'submitted'), 0) as total_billed,
+        COALESCE((SELECT SUM(pa.amount_due) FROM pay_apps pa JOIN projects p ON pa.project_id = p.id WHERE p.user_id = $1 AND pa.deleted_at IS NULL AND pa.payment_status IN ('pending', 'unpaid') AND pa.status = 'submitted'), 0) as outstanding`,
+      [req.user.id]
+    );
+
+    const row = statsResult.rows[0] || { projects: 0, payapps: 0, total_billed: 0, outstanding: 0 };
+
+    res.json({
+      ok: true,
+      data: {
+        projects: parseInt(row.projects) || 0,
+        payapps: parseInt(row.payapps) || 0,
+        total_billed: parseFloat(row.total_billed) || 0,
+        outstanding: parseFloat(row.outstanding) || 0
+      }
+    });
+  } catch (e) {
+    console.error('[Reports API] /stats error:', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * GET /api/reports/trends
  * Monthly billing trend data for charts (last 12 months)
  */

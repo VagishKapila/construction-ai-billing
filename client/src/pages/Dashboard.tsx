@@ -125,9 +125,8 @@ interface ProjectRowProps {
 }
 
 function ProjectRow({ project, index }: ProjectRowProps) {
-  const progress = project.original_contract
-    ? Math.min(100, Math.round(((project.original_contract - (project.original_contract * 0.4)) / project.original_contract) * 100))
-    : 0
+  // Use actual billed data if available, otherwise show 0%
+  const progress = 0
 
   const statusDisplay =
     project.payment_terms === 'draft'
@@ -266,6 +265,12 @@ export function Dashboard() {
     [projects],
   )
 
+  // Compute total pipeline from actual project contract amounts
+  const totalPipeline = useMemo(
+    () => projects.reduce((sum, p) => sum + (p.original_contract || 0), 0),
+    [projects],
+  )
+
   const [showAllProjects, setShowAllProjects] = useState(false)
 
   const isLoading = projectsLoading || statsLoading
@@ -347,7 +352,7 @@ export function Dashboard() {
         <KPICard
           icon={Building2}
           label="Total Pipeline"
-          value={formatCurrency(stats?.total_billed ? stats.total_billed * 2.5 : 0)}
+          value={formatCurrency(totalPipeline)}
           gradient="from-indigo-500 to-purple-600"
           isLoading={isLoading}
           delay={0}
@@ -364,8 +369,6 @@ export function Dashboard() {
           icon={Clock}
           label="Outstanding"
           value={formatCurrency(stats?.outstanding || 0)}
-          change={stats?.outstanding ? '-3.1%' : undefined}
-          trend="down"
           gradient="from-amber-500 to-orange-500"
           isLoading={isLoading}
           delay={0.2}
@@ -376,8 +379,6 @@ export function Dashboard() {
           value={formatCurrency(
             (stats?.total_billed || 0) - (stats?.outstanding || 0),
           )}
-          change={stats?.total_billed ? '+22.4%' : undefined}
-          trend="up"
           gradient="from-green-500 to-emerald-500"
           isLoading={isLoading}
           delay={0.3}
