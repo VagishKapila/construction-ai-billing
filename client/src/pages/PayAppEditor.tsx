@@ -82,42 +82,46 @@ function RichTextNotes({ value, onChange, color = '#1a1a1a', onColorChange }: { 
   )
 
   const NOTE_COLORS = [
-    { label: 'Default', color: '#1a1a1a' },
+    { label: 'Black', color: '#1a1a1a' },
     { label: 'Red', color: '#dc2626' },
     { label: 'Blue', color: '#2563eb' },
     { label: 'Green', color: '#16a34a' },
     { label: 'Orange', color: '#ea580c' },
   ]
 
+  // Apply color to the current text selection (not the whole editor)
+  const applyColor = (c: string) => {
+    editorRef.current?.focus()
+    document.execCommand('foreColor', false, c)
+    if (editorRef.current) onChange(editorRef.current.innerHTML)
+    onColorChange?.(c)
+  }
+
   return (
     <div className="space-y-2">
-      {/* Color swatches */}
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-medium text-text-muted">Text Color:</span>
-        <div className="flex gap-1">
+      {/* Editor with unified toolbar */}
+      <div className="border border-border rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary-500">
+        <div className="flex items-center gap-0.5 px-2 py-1.5 bg-gray-50 border-b border-border flex-wrap">
+          {/* Format buttons */}
+          <ToolBtn cmd="bold" icon={Bold} label="Bold (Ctrl+B)" />
+          <ToolBtn cmd="italic" icon={Italic} label="Italic (Ctrl+I)" />
+          <ToolBtn cmd="underline" icon={Underline} label="Underline (Ctrl+U)" />
+          <ToolBtn cmd="insertUnorderedList" icon={List} label="Bullet List" />
+          {/* Divider */}
+          <span className="w-px h-5 bg-gray-300 mx-1" />
+          {/* Color dots — apply to selection */}
           {NOTE_COLORS.map((item) => (
             <button
               key={item.color}
               type="button"
-              onClick={() => onColorChange?.(item.color)}
-              title={item.label}
-              className={`w-6 h-6 rounded border-2 transition-all ${
-                color === item.color ? 'border-gray-900 shadow-md' : 'border-gray-300 hover:border-gray-500'
+              onMouseDown={(e) => { e.preventDefault(); applyColor(item.color) }}
+              title={`${item.label} text`}
+              className={`w-4 h-4 rounded-full border-2 transition-all hover:scale-125 ${
+                color === item.color ? 'border-gray-700 shadow-md scale-110' : 'border-transparent hover:border-gray-400'
               }`}
               style={{ backgroundColor: item.color }}
             />
           ))}
-        </div>
-      </div>
-
-      {/* Editor */}
-      <div className="border border-border rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary-500">
-        <div className="flex items-center gap-0.5 px-2 py-1.5 bg-gray-50 border-b border-border">
-          <ToolBtn cmd="bold" icon={Bold} label="Bold (Ctrl+B)" />
-          <ToolBtn cmd="italic" icon={Italic} label="Italic (Ctrl+I)" />
-          <ToolBtn cmd="underline" icon={Underline} label="Underline (Ctrl+U)" />
-          <span className="w-px h-5 bg-gray-300 mx-1" />
-          <ToolBtn cmd="insertUnorderedList" icon={List} label="Bullet List" />
         </div>
         <div
           ref={editorRef}
@@ -125,7 +129,7 @@ function RichTextNotes({ value, onChange, color = '#1a1a1a', onColorChange }: { 
           onInput={() => { if (editorRef.current) onChange(editorRef.current.innerHTML) }}
           className="min-h-[100px] px-3 py-2 text-sm bg-white focus:outline-none"
           data-placeholder="e.g. ACH info, payment terms, special conditions..."
-          style={{ minHeight: 100, color: color }}
+          style={{ minHeight: 100 }}
         />
       </div>
     </div>
@@ -1290,6 +1294,13 @@ function Step6Preview({
 }) {
   // Lien waiver state for "Download + Lien Waiver" button
   const [linkedLienDocId, setLinkedLienDocId] = useState<number | null>(null)
+  // Company settings (for logo + signature in preview)
+  const [previewSettings, setPreviewSettings] = useState<any>(null)
+  useEffect(() => {
+    import('@/api/settings').then(({ getSettings }) => {
+      getSettings().then((res) => { if (res.data) setPreviewSettings(res.data) }).catch(() => {})
+    })
+  }, [])
 
   useEffect(() => {
     if (!project?.id || !payApp?.id) return
@@ -1306,9 +1317,13 @@ function Step6Preview({
   }, [project?.id, payApp?.id])
 
   // Compute G702 fields A-I
-  const originalContract = Number(project?.original_contract) || 0
+  // SOV total is always authoritative — use it when available, fall back to project field
+  const sovSum = computedLines.reduce((s, l) => s + (Number(l.scheduledValue) || 0), 0)
+  const originalContract = sovSum > 0 ? sovSum : (Number(project?.original_contract) || 0)
+
+  // Include all non-voided COs (active, billed, approved) — matches PDF generator behavior
   const netChangeOrders = changeOrders
-    .filter((co) => co.status === 'approved')
+    .filter((co) => co.status !== 'void' && co.status !== 'voided')
     .reduce((sum, co) => sum + Number(co.amount), 0)
   const contractSumToDate = originalContract + netChangeOrders
   const totalCompleted = totals?.totalCompleted || 0
@@ -1317,10 +1332,9 @@ function Step6Preview({
   const prevCertificates = totals?.totalPrevCertificates || 0
   const currentPaymentDue = totals?.totalCurrentDue || 0
   const balanceToFinish = contractSumToDate - totalCompleted + retainageToDate
-
-  // SOV vs Contract mismatch
-  const sovSum = computedLines.reduce((s, l) => s + (Number(l.scheduledValue) || 0), 0)
-  const hasMismatch = originalContract > 0 && sovSum > 0 && Math.abs(sovSum - originalContract) > 1
+  // Show mismatch warning only when the project's stored contract differs from SOV (informational)
+  const storedContract = Number(project?.original_contract) || 0
+  const hasMismatch = storedContract > 0 && sovSum > 0 && Math.abs(sovSum - storedContract) > 1
 
   const showRetainage = project?.include_retainage !== false
 
@@ -1334,12 +1348,12 @@ function Step6Preview({
 
   return (
     <div className="space-y-6">
-      {/* Contract mismatch warning */}
+      {/* Contract mismatch warning — SOV is authoritative, this is informational */}
       {hasMismatch && (
         <div className="p-4 rounded-lg border" style={{ background: '#FFF8E1', borderColor: '#F59E0B' }}>
-          <span className="font-semibold text-amber-800">Contract sum mismatch</span>
+          <span className="font-semibold text-amber-800">⚠ Contract amount adjusted to match SOV</span>
           <span className="text-sm text-amber-900 ml-3">
-            Contract: <strong>{formatCurrency(originalContract)}</strong> — SOV total: <strong>{formatCurrency(sovSum)}</strong>
+            Project entered: <strong>{formatCurrency(storedContract)}</strong> — Using SOV total: <strong>{formatCurrency(sovSum)}</strong>
           </span>
         </div>
       )}
@@ -1608,7 +1622,18 @@ function Step6Preview({
               information and belief the Work covered by this Application for Payment has been
               completed in accordance with the Contract Documents.
             </p>
-            <div style={{ flex: 1, minHeight: 8 }} />
+            {/* Show uploaded signature if available */}
+            {previewSettings?.signature_filename && (
+              <div style={{ margin: '4px 0', minHeight: 36, display: 'flex', alignItems: 'center' }}>
+                <img
+                  src="/api/settings/signature"
+                  alt="Signature"
+                  style={{ maxHeight: 40, maxWidth: 160, objectFit: 'contain' }}
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                />
+              </div>
+            )}
+            {!previewSettings?.signature_filename && <div style={{ flex: 1, minHeight: 8 }} />}
             <div style={{ borderBottom: '1px solid #000', marginTop: 4, marginBottom: 3 }} />
             <div style={{ fontSize: '7pt', color: '#555' }}>
               Authorized Signature &nbsp;&nbsp;&nbsp; Date: ____________

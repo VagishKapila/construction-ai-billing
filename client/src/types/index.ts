@@ -216,7 +216,7 @@ export interface ChangeOrder {
   co_number: number;
   description: string;
   amount: number;
-  status: 'draft' | 'approved' | 'rejected';
+  status: 'draft' | 'approved' | 'rejected' | 'active' | 'billed' | 'void' | 'voided' | 'pending';
   created_at: string; // ISO 8601
 }
 
