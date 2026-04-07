@@ -246,7 +246,7 @@ export async function recordManualPayment(
   payAppId: number,
   data: { amount: number; payment_method: string; check_number?: string; notes?: string },
 ): Promise<ApiResponse<any>> {
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('ci_token') || localStorage.getItem('token');
   const r = await fetch(`/api/projects/${projectId}/pay-apps/${payAppId}/record-payment`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
