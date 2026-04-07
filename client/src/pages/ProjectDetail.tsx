@@ -161,16 +161,35 @@ function PayAppRow({
 
       {/* Record Payment Form */}
       {showRecordPaymentForm && recordPaymentForm && onRecordPaymentChange && onRecordPaymentSubmit && (
-        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
+        <div
+          className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3"
+          onClick={(e) => e.stopPropagation()}
+        >
           <p className="text-sm font-medium text-blue-900">Record Payment</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-text-muted">Amount</label>
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 placeholder="0.00"
                 value={recordPaymentForm.amount}
-                onChange={(e) => onRecordPaymentChange('amount', e.target.value)}
+                onChange={(e) => {
+                  // Allow digits, commas, and one decimal point
+                  const raw = e.target.value.replace(/[^0-9.]/g, '')
+                  onRecordPaymentChange('amount', raw)
+                }}
+                onBlur={(e) => {
+                  // Format with commas on blur
+                  const num = parseFloat(e.target.value.replace(/,/g, ''))
+                  if (!isNaN(num)) {
+                    onRecordPaymentChange('amount', num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
+                  }
+                }}
+                onFocus={(e) => {
+                  // Strip commas on focus so user can edit raw number
+                  onRecordPaymentChange('amount', e.target.value.replace(/,/g, ''))
+                }}
                 className="w-full mt-1 px-3 py-2 border border-border rounded-lg text-sm"
               />
             </div>
@@ -179,12 +198,13 @@ function PayAppRow({
               <select
                 value={recordPaymentForm.method}
                 onChange={(e) => onRecordPaymentChange('method', e.target.value)}
-                className="w-full mt-1 px-3 py-2 border border-border rounded-lg text-sm"
+                className="w-full mt-1 px-3 py-2 border border-border rounded-lg text-sm bg-white"
               >
-                <option>Check</option>
-                <option>ACH</option>
-                <option>Wire</option>
-                <option>Other</option>
+                <option value="Check">Check</option>
+                <option value="ACH">ACH</option>
+                <option value="Wire">Wire Transfer</option>
+                <option value="Cash">Cash</option>
+                <option value="Other">Other</option>
               </select>
             </div>
           </div>
@@ -214,14 +234,14 @@ function PayAppRow({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => onShowRecordPaymentChange?.(false)}
+              onClick={(e) => { e.stopPropagation(); onShowRecordPaymentChange?.(false) }}
             >
               Cancel
             </Button>
             <Button
               variant="default"
               size="sm"
-              onClick={onRecordPaymentSubmit}
+              onClick={(e) => { e.stopPropagation(); onRecordPaymentSubmit() }}
               disabled={isRecordingPayment || !recordPaymentForm.amount}
             >
               {isRecordingPayment ? 'Recording...' : 'Record Payment'}
