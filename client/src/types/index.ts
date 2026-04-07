@@ -139,8 +139,12 @@ export interface PayApp {
 
   // Notes & PO
   notes?: string;
+  notes_color?: string; // HEX color for notes text
   po_number?: string;
   special_notes?: string;
+
+  // Email tracking
+  email_sent_count?: number; // Number of times sent to owner
 
   // Financial
   amount_due: number;

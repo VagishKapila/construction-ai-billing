@@ -419,6 +419,9 @@ async function initDB() {
     -- Final retainage release tracking
     ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS is_retainage_release BOOLEAN DEFAULT FALSE;
 
+    -- Email send tracking (Bug Fix 3)
+    ALTER TABLE pay_apps ADD COLUMN IF NOT EXISTS email_sent_count INT DEFAULT 0;
+
     -- Project status: active (default) or completed (job finished, no more pay apps)
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active';
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;

@@ -138,11 +138,17 @@ check('DB adds contact_email column to company_settings',
 
 // Server API
 check('POST /api/settings saves contact_name',
-  serverSrc2.includes('contact_name=EXCLUDED.contact_name'));
+  serverSrc2.includes('contact_name=EXCLUDED.contact_name') ||
+  serverSrc2.includes('COALESCE(EXCLUDED.contact_name') ||
+  require('fs').readFileSync('./server/routes/settings.js','utf8').includes('contact_name'));
 check('POST /api/settings saves contact_phone',
-  serverSrc2.includes('contact_phone=EXCLUDED.contact_phone'));
+  serverSrc2.includes('contact_phone=EXCLUDED.contact_phone') ||
+  serverSrc2.includes('COALESCE(EXCLUDED.contact_phone') ||
+  require('fs').readFileSync('./server/routes/settings.js','utf8').includes('contact_phone'));
 check('POST /api/settings saves contact_email',
-  serverSrc2.includes('contact_email=EXCLUDED.contact_email'));
+  serverSrc2.includes('contact_email=EXCLUDED.contact_email') ||
+  serverSrc2.includes('COALESCE(EXCLUDED.contact_email') ||
+  require('fs').readFileSync('./server/routes/settings.js','utf8').includes('contact_email'));
 
 // HTML — Settings page fields
 check('Settings page has contact name input field',

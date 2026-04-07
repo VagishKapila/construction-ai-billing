@@ -43,8 +43,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 
-// ── Simple rich text editor for Notes field ─────────────────────────────────
-function RichTextNotes({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+// ── Simple rich text editor for Notes field with color picker ─────────────────────────────────
+function RichTextNotes({ value, onChange, color = '#1a1a1a', onColorChange }: { value: string; onChange: (v: string) => void; color?: string; onColorChange?: (c: string) => void }) {
   const editorRef = useRef<HTMLDivElement>(null)
   const isInitialized = useRef(false)
 
@@ -81,23 +81,53 @@ function RichTextNotes({ value, onChange }: { value: string; onChange: (v: strin
     </button>
   )
 
+  const NOTE_COLORS = [
+    { label: 'Default', color: '#1a1a1a' },
+    { label: 'Red', color: '#dc2626' },
+    { label: 'Blue', color: '#2563eb' },
+    { label: 'Green', color: '#16a34a' },
+    { label: 'Orange', color: '#ea580c' },
+  ]
+
   return (
-    <div className="border border-border rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary-500">
-      <div className="flex items-center gap-0.5 px-2 py-1.5 bg-gray-50 border-b border-border">
-        <ToolBtn cmd="bold" icon={Bold} label="Bold (Ctrl+B)" />
-        <ToolBtn cmd="italic" icon={Italic} label="Italic (Ctrl+I)" />
-        <ToolBtn cmd="underline" icon={Underline} label="Underline (Ctrl+U)" />
-        <span className="w-px h-5 bg-gray-300 mx-1" />
-        <ToolBtn cmd="insertUnorderedList" icon={List} label="Bullet List" />
+    <div className="space-y-2">
+      {/* Color swatches */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-medium text-text-muted">Text Color:</span>
+        <div className="flex gap-1">
+          {NOTE_COLORS.map((item) => (
+            <button
+              key={item.color}
+              type="button"
+              onClick={() => onColorChange?.(item.color)}
+              title={item.label}
+              className={`w-6 h-6 rounded border-2 transition-all ${
+                color === item.color ? 'border-gray-900 shadow-md' : 'border-gray-300 hover:border-gray-500'
+              }`}
+              style={{ backgroundColor: item.color }}
+            />
+          ))}
+        </div>
       </div>
-      <div
-        ref={editorRef}
-        contentEditable
-        onInput={() => { if (editorRef.current) onChange(editorRef.current.innerHTML) }}
-        className="min-h-[100px] px-3 py-2 text-sm text-text-primary bg-white focus:outline-none"
-        data-placeholder="e.g. ACH info, payment terms, special conditions..."
-        style={{ minHeight: 100 }}
-      />
+
+      {/* Editor */}
+      <div className="border border-border rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary-500">
+        <div className="flex items-center gap-0.5 px-2 py-1.5 bg-gray-50 border-b border-border">
+          <ToolBtn cmd="bold" icon={Bold} label="Bold (Ctrl+B)" />
+          <ToolBtn cmd="italic" icon={Italic} label="Italic (Ctrl+I)" />
+          <ToolBtn cmd="underline" icon={Underline} label="Underline (Ctrl+U)" />
+          <span className="w-px h-5 bg-gray-300 mx-1" />
+          <ToolBtn cmd="insertUnorderedList" icon={List} label="Bullet List" />
+        </div>
+        <div
+          ref={editorRef}
+          contentEditable
+          onInput={() => { if (editorRef.current) onChange(editorRef.current.innerHTML) }}
+          className="min-h-[100px] px-3 py-2 text-sm bg-white focus:outline-none"
+          data-placeholder="e.g. ACH info, payment terms, special conditions..."
+          style={{ minHeight: 100, color: color }}
+        />
+      </div>
     </div>
   )
 }
@@ -847,11 +877,13 @@ function Step4Summary({
   totals,
   changeOrders,
   notes,
+  notesColor = '#1a1a1a',
   poNumber,
   periodLabel,
   periodStart,
   periodEnd,
   onNotesChange,
+  onNotesColorChange,
   onPoChange,
   onPeriodLabelChange,
   onPeriodStartChange,
@@ -862,11 +894,13 @@ function Step4Summary({
   totals: any
   changeOrders: ChangeOrder[]
   notes: string
+  notesColor?: string
   poNumber: string
   periodLabel: string
   periodStart: string
   periodEnd: string
   onNotesChange: (v: string) => void
+  onNotesColorChange?: (c: string) => void
   onPoChange: (v: string) => void
   onPeriodLabelChange: (v: string) => void
   onPeriodStartChange: (v: string) => void
@@ -892,10 +926,10 @@ function Step4Summary({
         </div>
       </Card>
 
-      {/* Notes with formatting toolbar */}
+      {/* Notes with formatting toolbar and color picker */}
       <Card className="p-6">
         <h3 className="text-lg font-semibold text-text-primary mb-4">Notes</h3>
-        <RichTextNotes value={notes} onChange={onNotesChange} />
+        <RichTextNotes value={notes} onChange={onNotesChange} color={notesColor} onColorChange={onNotesColorChange} />
       </Card>
 
       {/* G702 Financial Summary */}
@@ -1328,7 +1362,7 @@ function Step6Preview({
             className="gap-2 bg-green-600 hover:bg-green-700 text-white flex-1 h-12 text-base font-semibold shadow-md hover:shadow-lg transition-all"
           >
             <Mail className="w-5 h-5" />
-            {payApp?.status === 'submitted' ? 'Resend to Owner' : 'Send to Owner'}
+            {(payApp?.email_sent_count ?? 0) > 0 ? 'Resend to Owner' : 'Send to Owner'}
             <ArrowRight className="w-4 h-4 ml-auto opacity-60" />
           </Button>
 
@@ -1765,6 +1799,7 @@ export function PayAppEditor() {
 
   // Form state
   const [notes, setNotes] = useState('')
+  const [notesColor, setNotesColor] = useState('#1a1a1a')
   const [poNumber, setPoNumber] = useState('')
   const [periodLabel, setPeriodLabel] = useState('')
   const [periodStart, setPeriodStart] = useState('')
@@ -1777,6 +1812,7 @@ export function PayAppEditor() {
 
   // Wrapped setters that mark form as dirty
   const handleNotesChange = useCallback((v: string) => { setNotes(v); setFormDirty(true) }, [])
+  const handleNotesColorChange = useCallback((c: string) => { setNotesColor(c); setFormDirty(true) }, [])
   const handlePoChange = useCallback((v: string) => { setPoNumber(v); setFormDirty(true) }, [])
   const handlePeriodLabelChange = useCallback((v: string) => { setPeriodLabel(v); setFormDirty(true) }, [])
   const handlePeriodStartChange = useCallback((v: string) => { setPeriodStart(v); setFormDirty(true) }, [])
@@ -1786,6 +1822,7 @@ export function PayAppEditor() {
   useEffect(() => {
     if (payApp) {
       setNotes(payApp.special_notes || '')
+      setNotesColor(payApp.notes_color || '#1a1a1a')
       setPoNumber(payApp.po_number || '')
       setPeriodLabel(payApp.period_label || '')
       setPeriodStart(payApp.period_start ? payApp.period_start.split('T')[0] : '')
@@ -1805,6 +1842,7 @@ export function PayAppEditor() {
       await saveLines()
       await updatePayApp({
         special_notes: notes,
+        notes_color: notesColor,
         po_number: poNumber,
         period_label: periodLabel,
         period_start: periodStart || undefined,
@@ -1814,7 +1852,7 @@ export function PayAppEditor() {
     } finally {
       setIsSaving(false)
     }
-  }, [saveLines, updatePayApp, notes, poNumber, periodLabel, periodStart, periodEnd, isTrialGated])
+  }, [saveLines, updatePayApp, notes, notesColor, poNumber, periodLabel, periodStart, periodEnd, isTrialGated])
 
   // Auto-save if form is dirty, then do callback
   const autoSaveIfNeeded = useCallback(async () => {
@@ -2103,11 +2141,13 @@ export function PayAppEditor() {
             totals={totals}
             changeOrders={changeOrders}
             notes={notes}
+            notesColor={notesColor}
             poNumber={poNumber}
             periodLabel={periodLabel}
             periodStart={periodStart}
             periodEnd={periodEnd}
             onNotesChange={handleNotesChange}
+            onNotesColorChange={handleNotesColorChange}
             onPoChange={handlePoChange}
             onPeriodLabelChange={handlePeriodLabelChange}
             onPeriodStartChange={handlePeriodStartChange}

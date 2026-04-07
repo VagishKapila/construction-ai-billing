@@ -201,6 +201,10 @@ export function Settings() {
         company_name: profileForm.companyName,
         default_payment_terms: profileForm.defaultPaymentTerms,
         default_retainage: parseFloat(profileForm.defaultRetainage) || 0,
+        // Always include contact fields to prevent them being cleared
+        contact_name: settings?.contact_name || contactForm.contactName,
+        contact_phone: settings?.contact_phone || contactForm.contactPhone,
+        contact_email: settings?.contact_email || contactForm.contactEmail,
       })
       if (result) {
         showToast('success', 'Company profile updated')
@@ -226,6 +230,10 @@ export function Settings() {
         contact_name: contactForm.contactName,
         contact_phone: contactForm.contactPhone,
         contact_email: contactForm.contactEmail,
+        // Always include company profile fields to prevent them being cleared
+        company_name: settings?.company_name || profileForm.companyName,
+        default_payment_terms: settings?.default_payment_terms || profileForm.defaultPaymentTerms,
+        default_retainage: (settings?.default_retainage ?? null) ?? (parseFloat(profileForm.defaultRetainage) || 0),
       })
       if (result) {
         showToast('success', 'Contact information updated')
@@ -328,6 +336,13 @@ export function Settings() {
         reminder_due: notificationForm.emailWeeklySummary,
         reminder_7after: notificationForm.emailOverdueReminder,
         reminder_email: notificationForm.reminderEmail || undefined,
+        // Always include all other settings to prevent them being cleared
+        company_name: settings?.company_name || profileForm.companyName,
+        default_payment_terms: settings?.default_payment_terms || profileForm.defaultPaymentTerms,
+        default_retainage: (settings?.default_retainage ?? null) ?? (parseFloat(profileForm.defaultRetainage) || 0),
+        contact_name: settings?.contact_name || contactForm.contactName,
+        contact_phone: settings?.contact_phone || contactForm.contactPhone,
+        contact_email: settings?.contact_email || contactForm.contactEmail,
       } as any)
       if (result) {
         showToast('success', 'Notification preferences saved')

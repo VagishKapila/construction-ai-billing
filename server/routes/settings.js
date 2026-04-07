@@ -30,13 +30,13 @@ router.post('/api/settings', auth, async (req, res) => {
      )
      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      ON CONFLICT(user_id) DO UPDATE SET
-       company_name=EXCLUDED.company_name,
-       default_payment_terms=EXCLUDED.default_payment_terms,
-       default_retainage=EXCLUDED.default_retainage,
-       contact_name=EXCLUDED.contact_name,
-       contact_phone=EXCLUDED.contact_phone,
-       contact_email=EXCLUDED.contact_email,
-       job_number_format=EXCLUDED.job_number_format,
+       company_name=COALESCE(EXCLUDED.company_name, company_settings.company_name),
+       default_payment_terms=COALESCE(EXCLUDED.default_payment_terms, company_settings.default_payment_terms),
+       default_retainage=COALESCE(EXCLUDED.default_retainage, company_settings.default_retainage),
+       contact_name=COALESCE(EXCLUDED.contact_name, company_settings.contact_name),
+       contact_phone=COALESCE(EXCLUDED.contact_phone, company_settings.contact_phone),
+       contact_email=COALESCE(EXCLUDED.contact_email, company_settings.contact_email),
+       job_number_format=COALESCE(EXCLUDED.job_number_format, company_settings.job_number_format),
        reminder_7before=COALESCE(EXCLUDED.reminder_7before, company_settings.reminder_7before, TRUE),
        reminder_due=COALESCE(EXCLUDED.reminder_due, company_settings.reminder_due, TRUE),
        reminder_7after=COALESCE(EXCLUDED.reminder_7after, company_settings.reminder_7after, TRUE),
