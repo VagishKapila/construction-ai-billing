@@ -543,18 +543,29 @@ router.put('/api/payapps/:id/lines', auth, async (req,res) => {
 // CHANGE ORDERS
 // POST /api/payapps/:id/changeorders - Add change order
 router.post('/api/payapps/:id/changeorders', auth, async (req,res) => {
-  // Verify user owns this pay app before adding change orders
-  const own = await pool.query(
-    'SELECT pa.id FROM pay_apps pa JOIN projects p ON p.id=pa.project_id WHERE pa.id=$1 AND p.user_id=$2',
-    [req.params.id, req.user.id]
-  );
-  if (!own.rows[0]) return res.status(403).json({ error: 'Forbidden' });
-  const {co_number,description,amount,status} = req.body;
-  const r = await pool.query(
-    'INSERT INTO change_orders(pay_app_id,co_number,description,amount,status) VALUES($1,$2,$3,$4,$5) RETURNING *',
-    [req.params.id,co_number,description,amount,status||'pending']
-  );
-  res.json(r.rows[0]);
+  try {
+    // Verify user owns this pay app before adding change orders
+    const own = await pool.query(
+      'SELECT pa.id FROM pay_apps pa JOIN projects p ON p.id=pa.project_id WHERE pa.id=$1 AND p.user_id=$2',
+      [req.params.id, req.user.id]
+    );
+    if (!own.rows[0]) return res.status(403).json({ error: 'Forbidden' });
+
+    const {description,amount} = req.body;
+
+    // Auto-generate co_number: count existing COs for this pay app, use count+1
+    const coCount = await pool.query(
+      'SELECT COUNT(*) as cnt FROM change_orders WHERE pay_app_id=$1',
+      [req.params.id]
+    );
+    const coNumber = (parseInt(coCount.rows[0].cnt) || 0) + 1;
+
+    const r = await pool.query(
+      'INSERT INTO change_orders(pay_app_id,co_number,description,amount,status) VALUES($1,$2,$3,$4,$5) RETURNING *',
+      [req.params.id, coNumber, description, amount, 'active']
+    );
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // PUT /api/changeorders/:id - Update change order

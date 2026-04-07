@@ -176,6 +176,7 @@ export interface ReconciliationReport {
     total_outstanding: number;
     variance: number;
     is_fully_reconciled: boolean;
+    variance_reasons?: string[];
   };
 }
 
@@ -198,4 +199,62 @@ export async function completeProject(projectId: number): Promise<ApiResponse<Pr
  */
 export async function reopenProject(projectId: number): Promise<ApiResponse<Project>> {
   return api.post<Project>(`/api/projects/${projectId}/reopen`, {});
+}
+
+/**
+ * Create a new change order for a project
+ */
+export async function createProjectChangeOrder(
+  projectId: number,
+  data: { description: string; amount: number },
+): Promise<ApiResponse<any>> {
+  const token = localStorage.getItem('token');
+  const r = await fetch(`/api/projects/${projectId}/change-orders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(data),
+  });
+  if (!r.ok) {
+    const e = await r.json();
+    throw new Error(e.error || 'Failed');
+  }
+  return r.json();
+}
+
+/**
+ * Update a change order status
+ */
+export async function updateChangeOrderStatus(coId: number, status: string): Promise<ApiResponse<any>> {
+  const token = localStorage.getItem('token');
+  const r = await fetch(`/api/changeorders/${coId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ status }),
+  });
+  if (!r.ok) {
+    const e = await r.json();
+    throw new Error(e.error || 'Failed');
+  }
+  return r.json();
+}
+
+/**
+ * Record a manual payment against a pay app
+ */
+export async function recordManualPayment(
+  projectId: number,
+  payAppId: number,
+  data: { amount: number; payment_method: string; check_number?: string; notes?: string },
+): Promise<ApiResponse<any>> {
+  const token = localStorage.getItem('token');
+  const r = await fetch(`/api/projects/${projectId}/pay-apps/${payAppId}/record-payment`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(data),
+  });
+  if (!r.ok) {
+    const e = await r.json();
+    throw new Error(e.error || 'Failed');
+  }
+  return r.json();
 }

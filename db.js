@@ -550,6 +550,19 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_hub_uploads_status ON hub_uploads(status);
     CREATE INDEX IF NOT EXISTS idx_hub_comments_upload ON hub_comments(upload_id);
     CREATE INDEX IF NOT EXISTS idx_hub_notifications_user ON hub_notifications(user_id, read);
+
+    -- Manual payments tracking (Fix 2: recording offline/check payments)
+    CREATE TABLE IF NOT EXISTS manual_payments (
+      id SERIAL PRIMARY KEY,
+      pay_app_id INTEGER REFERENCES pay_apps(id) ON DELETE CASCADE,
+      amount NUMERIC(14,2) NOT NULL,
+      payment_method VARCHAR(50) DEFAULT 'check',
+      check_number VARCHAR(100),
+      payment_date DATE DEFAULT CURRENT_DATE,
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_manual_payments_payapp ON manual_payments(pay_app_id);
   `);
   console.log('Database ready');
 }

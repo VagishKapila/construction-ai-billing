@@ -411,6 +411,80 @@ function extractContractFields(text) {
   return fields;
 }
 
+// POST /api/projects/:id/complete — Mark project as completed (job done, blocks new pay apps)
+router.post('/api/projects/:id/complete', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      'UPDATE projects SET status=$1, completed_at=NOW() WHERE id=$2 AND user_id=$3 RETURNING *',
+      ['completed', req.params.id, req.user.id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Project not found' });
+    await logEvent(req.user.id, 'project_completed', { project_id: parseInt(req.params.id) });
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/projects/:id/reopen — Reopen a completed project (allows new pay apps again)
+router.post('/api/projects/:id/reopen', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      'UPDATE projects SET status=$1, completed_at=NULL WHERE id=$2 AND user_id=$3 RETURNING *',
+      ['active', req.params.id, req.user.id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Project not found' });
+    await logEvent(req.user.id, 'project_reopened', { project_id: parseInt(req.params.id) });
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/projects/:id/change-orders — Create change order at project level
+router.post('/api/projects/:id/change-orders', auth, async (req, res) => {
+  try {
+    const { description, amount, pay_app_id } = req.body;
+
+    // Verify user owns this project
+    const proj = await pool.query(
+      'SELECT id FROM projects WHERE id=$1 AND user_id=$2',
+      [req.params.id, req.user.id]
+    );
+    if (!proj.rows[0]) return res.status(403).json({ error: 'Forbidden' });
+
+    // If pay_app_id not provided, find the latest pay app for this project
+    let finalPayAppId = pay_app_id;
+    if (!finalPayAppId) {
+      const latestPa = await pool.query(
+        'SELECT id FROM pay_apps WHERE project_id=$1 AND deleted_at IS NULL ORDER BY app_number DESC LIMIT 1',
+        [req.params.id]
+      );
+      if (!latestPa.rows[0]) {
+        return res.status(400).json({ error: 'No pay apps found for this project. Create a pay app first.' });
+      }
+      finalPayAppId = latestPa.rows[0].id;
+    }
+
+    // Auto-generate co_number: count existing COs for this pay app, use count+1
+    const coCount = await pool.query(
+      'SELECT COUNT(*) as cnt FROM change_orders WHERE pay_app_id=$1',
+      [finalPayAppId]
+    );
+    const coNumber = (parseInt(coCount.rows[0].cnt) || 0) + 1;
+
+    // Insert CO with default status 'active'
+    const r = await pool.query(
+      'INSERT INTO change_orders(pay_app_id, co_number, description, amount, status) VALUES($1, $2, $3, $4, $5) RETURNING *',
+      [finalPayAppId, coNumber, description, amount, 'active']
+    );
+
+    // Return with app_number joined
+    const coWithAppNum = await pool.query(
+      'SELECT co.*, pa.app_number FROM change_orders co JOIN pay_apps pa ON pa.id = co.pay_app_id WHERE co.id=$1',
+      [r.rows[0].id]
+    );
+
+    res.json(coWithAppNum.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/projects/:id/reconciliation — Full billing reconciliation report
 router.get('/api/projects/:id/reconciliation', auth, async (req, res) => {
   try {
@@ -477,6 +551,32 @@ router.get('/api/projects/:id/reconciliation', auth, async (req, res) => {
     const variance = adjustedContract - totalWorkCompleted;
     const isFullyReconciled = Math.abs(variance) < 0.02; // allow penny rounding
 
+    // Calculate total_outstanding using new formula: adjustedContract - totalPaid
+    const totalOutstanding = adjustedContract - totalPaid;
+
+    // Build variance_reasons array
+    const varianceReasons = [];
+
+    // Check for active/unbilled change orders
+    const activeCOs = await pool.query(
+      `SELECT COALESCE(SUM(co.amount), 0)::numeric AS active_co_total
+       FROM change_orders co
+       JOIN pay_apps pa ON pa.id = co.pay_app_id
+       WHERE pa.project_id = $1 AND pa.deleted_at IS NULL AND co.status = 'active'`,
+      [req.params.id]
+    );
+    const activeCOTotal = parseFloat(activeCOs.rows[0]?.active_co_total || 0);
+
+    if (activeCOTotal > 0) {
+      varianceReasons.push(`Change order(s) not yet billed: $${activeCOTotal.toFixed(2)}`);
+    }
+
+    // Remaining variance after accounting for active COs
+    const remainingVariance = variance - activeCOTotal;
+    if (remainingVariance > 0.02) {
+      varianceReasons.push(`Work in progress: $${remainingVariance.toFixed(2)} remaining to bill on SOV`);
+    }
+
     res.json({
       project_name: project.name,
       project_status: project.status || 'active',
@@ -491,14 +591,120 @@ router.get('/api/projects/:id/reconciliation', auth, async (req, res) => {
         total_retainage_released: totalRetainageReleased,
         total_work_completed: totalWorkCompleted,
         total_paid: totalPaid,
-        total_outstanding: totalBilled + totalRetainageReleased - totalPaid,
+        total_outstanding: totalOutstanding,
         variance,
+        variance_reasons: varianceReasons,
         is_fully_reconciled: isFullyReconciled,
       }
     });
   } catch (err) {
     console.error('[Reconciliation]', err.message);
     res.status(500).json({ error: 'Failed to generate reconciliation report' });
+  }
+});
+
+// POST /api/projects/:projectId/pay-apps/:payAppId/record-payment — Record manual payment (check, etc.)
+router.post('/api/projects/:projectId/pay-apps/:payAppId/record-payment', auth, async (req, res) => {
+  try {
+    const { projectId, payAppId } = req.params;
+    const { amount, payment_method, check_number, payment_date, notes } = req.body;
+
+    // Verify user owns this project
+    const proj = await pool.query(
+      'SELECT id FROM projects WHERE id=$1 AND user_id=$2',
+      [projectId, req.user.id]
+    );
+    if (!proj.rows[0]) return res.status(403).json({ error: 'Forbidden' });
+
+    // Verify pay_app belongs to this project
+    const pa = await pool.query(
+      'SELECT id, amount_due FROM pay_apps WHERE id=$1 AND project_id=$2',
+      [payAppId, projectId]
+    );
+    if (!pa.rows[0]) return res.status(404).json({ error: 'Pay app not found' });
+
+    // Parse amount as float
+    const paymentAmount = parseFloat(amount);
+    if (isNaN(paymentAmount) || paymentAmount <= 0) {
+      return res.status(400).json({ error: 'Invalid payment amount' });
+    }
+
+    // Insert into manual_payments
+    const mpRes = await pool.query(
+      `INSERT INTO manual_payments(pay_app_id, amount, payment_method, check_number, payment_date, notes)
+       VALUES($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [payAppId, paymentAmount, payment_method || 'check', check_number || null, payment_date || new Date().toISOString().split('T')[0], notes || null]
+    );
+
+    // Update pay_apps: increment amount_paid, recalculate payment_status
+    const currentAmountPaid = parseFloat(pa.rows[0].amount_paid || 0);
+    const newAmountPaid = currentAmountPaid + paymentAmount;
+    const amountDue = parseFloat(pa.rows[0].amount_due || 0);
+    const newPaymentStatus = newAmountPaid >= amountDue ? 'paid' : 'partial';
+
+    const updatedPA = await pool.query(
+      `UPDATE pay_apps SET amount_paid=$1, payment_status=$2 WHERE id=$3 RETURNING *`,
+      [newAmountPaid, newPaymentStatus, payAppId]
+    );
+
+    await logEvent(req.user.id, 'manual_payment_recorded', {
+      pay_app_id: parseInt(payAppId),
+      project_id: parseInt(projectId),
+      amount: paymentAmount,
+      payment_method: payment_method || 'check'
+    });
+
+    res.json({
+      manual_payment: mpRes.rows[0],
+      updated_pay_app: updatedPA.rows[0]
+    });
+  } catch (e) {
+    console.error('[Record Payment]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/projects/:projectId/pay-apps/:payAppId/payments — Get all payments (manual + Stripe)
+router.get('/api/projects/:projectId/pay-apps/:payAppId/payments', auth, async (req, res) => {
+  try {
+    const { projectId, payAppId } = req.params;
+
+    // Verify user owns this project
+    const proj = await pool.query(
+      'SELECT id FROM projects WHERE id=$1 AND user_id=$2',
+      [projectId, req.user.id]
+    );
+    if (!proj.rows[0]) return res.status(403).json({ error: 'Forbidden' });
+
+    // Verify pay_app belongs to this project
+    const pa = await pool.query(
+      'SELECT id FROM pay_apps WHERE id=$1 AND project_id=$2',
+      [payAppId, projectId]
+    );
+    if (!pa.rows[0]) return res.status(404).json({ error: 'Pay app not found' });
+
+    // Query manual_payments
+    const manualPayments = await pool.query(
+      `SELECT id, amount, payment_method, check_number, payment_date, notes, created_at
+       FROM manual_payments WHERE pay_app_id=$1 ORDER BY payment_date DESC`,
+      [payAppId]
+    );
+
+    // Query Stripe payments
+    const stripePayments = await pool.query(
+      `SELECT id, stripe_payment_intent_id, stripe_checkout_session_id, amount,
+              payment_method, payment_status, payer_name, payer_email, paid_at, failure_reason, created_at
+       FROM payments WHERE pay_app_id=$1 ORDER BY created_at DESC`,
+      [payAppId]
+    );
+
+    res.json({
+      manual_payments: manualPayments.rows,
+      stripe_payments: stripePayments.rows
+    });
+  } catch (e) {
+    console.error('[Get Payments]', e.message);
+    res.status(500).json({ error: e.message });
   }
 });
 

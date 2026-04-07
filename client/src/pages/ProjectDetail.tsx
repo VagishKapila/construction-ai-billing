@@ -1,11 +1,11 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Upload, FileText, ChevronRight, Paperclip, CheckCircle2, AlertTriangle, ReceiptText, TableProperties, FolderOpen, Scale, X, Lock, RotateCcw, Trophy, Inbox } from 'lucide-react'
+import { Upload, FileText, ChevronRight, Paperclip, CheckCircle2, AlertTriangle, ReceiptText, TableProperties, FolderOpen, Scale, X, Lock, RotateCcw, Trophy, Inbox, Plus } from 'lucide-react'
 import type { PayApp, SOVLine } from '@/types'
 import { useProject } from '@/hooks/useProject'
 import { useTrial } from '@/hooks/useTrial'
 import { createPayApp } from '@/api/payApps'
-import { getProjectReconciliation, completeProject, reopenProject, type ReconciliationReport } from '@/api/projects'
+import { getProjectReconciliation, completeProject, reopenProject, createProjectChangeOrder, updateChangeOrderStatus, recordManualPayment, type ReconciliationReport } from '@/api/projects'
 import { QBSyncButton, QBEstimateImport } from '@/components/quickbooks'
 import { HubTab } from '@/components/hub/HubTab'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -71,9 +71,26 @@ function TabBar({
 interface PayAppRowProps {
   payApp: PayApp
   projectId: number
+  onPaymentRecorded?: () => void
+  isRecordingPayment?: boolean
+  recordPaymentForm?: { amount: string; method: string; checkNumber: string; notes: string }
+  onRecordPaymentChange?: (field: string, value: string) => void
+  onRecordPaymentSubmit?: () => void
+  showRecordPaymentForm?: boolean
+  onShowRecordPaymentChange?: (show: boolean) => void
 }
 
-function PayAppRow({ payApp, projectId }: PayAppRowProps) {
+function PayAppRow({
+  payApp,
+  projectId,
+  onPaymentRecorded: _onPaymentRecorded,
+  isRecordingPayment = false,
+  recordPaymentForm,
+  onRecordPaymentChange,
+  onRecordPaymentSubmit,
+  showRecordPaymentForm = false,
+  onShowRecordPaymentChange,
+}: PayAppRowProps) {
   const navigate = useNavigate()
   const statusVariantMap: Record<string, 'default' | 'success' | 'warning'> = {
     draft: 'warning',
@@ -123,12 +140,95 @@ function PayAppRow({ payApp, projectId }: PayAppRowProps) {
         </div>
 
         <div className="flex gap-2 flex-shrink-0">
+          {payApp.payment_status !== 'paid' && onShowRecordPaymentChange && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation()
+                onShowRecordPaymentChange(!showRecordPaymentForm)
+              }}
+            >
+              Record Payment
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); navigate(payAppUrl) }}>
             {payApp.status === 'draft' ? 'Edit' : 'View'}
             <ChevronRight className="w-4 h-4 ml-2" />
           </Button>
         </div>
       </div>
+
+      {/* Record Payment Form */}
+      {showRecordPaymentForm && recordPaymentForm && onRecordPaymentChange && onRecordPaymentSubmit && (
+        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
+          <p className="text-sm font-medium text-blue-900">Record Payment</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-text-muted">Amount</label>
+              <input
+                type="number"
+                placeholder="0.00"
+                value={recordPaymentForm.amount}
+                onChange={(e) => onRecordPaymentChange('amount', e.target.value)}
+                className="w-full mt-1 px-3 py-2 border border-border rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-text-muted">Payment Method</label>
+              <select
+                value={recordPaymentForm.method}
+                onChange={(e) => onRecordPaymentChange('method', e.target.value)}
+                className="w-full mt-1 px-3 py-2 border border-border rounded-lg text-sm"
+              >
+                <option>Check</option>
+                <option>ACH</option>
+                <option>Wire</option>
+                <option>Other</option>
+              </select>
+            </div>
+          </div>
+          {recordPaymentForm.method === 'Check' && (
+            <div>
+              <label className="text-xs font-medium text-text-muted">Check Number</label>
+              <input
+                type="text"
+                placeholder="e.g., 12345"
+                value={recordPaymentForm.checkNumber}
+                onChange={(e) => onRecordPaymentChange('checkNumber', e.target.value)}
+                className="w-full mt-1 px-3 py-2 border border-border rounded-lg text-sm"
+              />
+            </div>
+          )}
+          <div>
+            <label className="text-xs font-medium text-text-muted">Notes (optional)</label>
+            <input
+              type="text"
+              placeholder="e.g., Received 4/6/2026"
+              value={recordPaymentForm.notes}
+              onChange={(e) => onRecordPaymentChange('notes', e.target.value)}
+              className="w-full mt-1 px-3 py-2 border border-border rounded-lg text-sm"
+            />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onShowRecordPaymentChange?.(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={onRecordPaymentSubmit}
+              disabled={isRecordingPayment || !recordPaymentForm.amount}
+            >
+              {isRecordingPayment ? 'Recording...' : 'Record Payment'}
+            </Button>
+          </div>
+        </div>
+      )}
     </Card>
   )
 }
@@ -218,6 +318,12 @@ export function ProjectDetail() {
   const [isCompletingJob, setIsCompletingJob] = useState(false)
   const [isReopeningJob, setIsReopeningJob] = useState(false)
   const [qbConnected, setQbConnected] = useState(false)
+  const [showAddCO, setShowAddCO] = useState(false)
+  const [coForm, setCoForm] = useState({ description: '', amount: '' })
+  const [isSubmittingCO, setIsSubmittingCO] = useState(false)
+  const [recordPaymentOpen, setRecordPaymentOpen] = useState<number | null>(null)
+  const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'Check', checkNumber: '', notes: '' })
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false)
 
   const { project, sovLines, payApps, changeOrders, attachments, isLoading, error, refresh } =
     useProject(projectId)
@@ -279,6 +385,82 @@ export function ProjectDetail() {
 
     checkQBStatus()
   }, [])
+
+  /**
+   * Handle adding a new change order
+   */
+  const handleAddChangeOrder = async () => {
+    if (isSubmittingCO || !coForm.description.trim() || !coForm.amount.trim()) {
+      alert('Please fill in all fields')
+      return
+    }
+    setIsSubmittingCO(true)
+    try {
+      const amount = Number(coForm.amount)
+      if (isNaN(amount) || amount <= 0) {
+        alert('Please enter a valid amount')
+        return
+      }
+      await createProjectChangeOrder(projectId, {
+        description: coForm.description,
+        amount,
+      })
+      setCoForm({ description: '', amount: '' })
+      setShowAddCO(false)
+      await refresh()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to create change order'
+      alert(msg)
+    } finally {
+      setIsSubmittingCO(false)
+    }
+  }
+
+  /**
+   * Handle updating a change order status
+   */
+  const handleUpdateCOStatus = async (coId: number, newStatus: string) => {
+    try {
+      await updateChangeOrderStatus(coId, newStatus)
+      await refresh()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to update change order'
+      alert(msg)
+    }
+  }
+
+  /**
+   * Handle recording a manual payment
+   */
+  const handleRecordPayment = async (payAppId: number) => {
+    if (isSubmittingPayment || !paymentForm.amount.trim()) {
+      alert('Please enter an amount')
+      return
+    }
+    setIsSubmittingPayment(true)
+    try {
+      const amount = Number(paymentForm.amount)
+      if (isNaN(amount) || amount <= 0) {
+        alert('Please enter a valid amount')
+        return
+      }
+      await recordManualPayment(projectId, payAppId, {
+        amount,
+        payment_method: paymentForm.method,
+        check_number: paymentForm.method === 'Check' ? paymentForm.checkNumber : undefined,
+        notes: paymentForm.notes || undefined,
+      })
+      setPaymentForm({ amount: '', method: 'Check', checkNumber: '', notes: '' })
+      setRecordPaymentOpen(null)
+      await refresh()
+      setReconciliation(null) // Force reload reconciliation
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to record payment'
+      alert(msg)
+    } finally {
+      setIsSubmittingPayment(false)
+    }
+  }
 
   /**
    * Create a new pay app and navigate to it
@@ -570,6 +752,22 @@ export function ProjectDetail() {
                     key={payApp.id}
                     payApp={payApp}
                     projectId={projectId}
+                    showRecordPaymentForm={recordPaymentOpen === payApp.id}
+                    onShowRecordPaymentChange={(show) => {
+                      if (show) {
+                        setRecordPaymentOpen(payApp.id)
+                        setPaymentForm({ amount: String(payApp.amount_due || ''), method: 'Check', checkNumber: '', notes: '' })
+                      } else {
+                        setRecordPaymentOpen(null)
+                        setPaymentForm({ amount: '', method: 'Check', checkNumber: '', notes: '' })
+                      }
+                    }}
+                    recordPaymentForm={recordPaymentOpen === payApp.id ? paymentForm : undefined}
+                    onRecordPaymentChange={(field, value) => {
+                      setPaymentForm(prev => ({ ...prev, [field]: value }))
+                    }}
+                    onRecordPaymentSubmit={() => handleRecordPayment(payApp.id)}
+                    isRecordingPayment={isSubmittingPayment}
                   />
                 ))}
               </div>
@@ -591,54 +789,122 @@ export function ProjectDetail() {
         )}
 
         {activeTab === 'changeorders' && (
-          changeOrders.length === 0 ? (
-            <Card className="p-6">
-              <EmptyState
-                icon={FileText}
-                title="No change orders"
-                description="Change orders from pay applications will appear here"
-              />
-            </Card>
-          ) : (
-            <Card className="p-6">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b-2 border-border">
-                      <th className="text-left py-3 px-4 font-semibold text-text-primary">CO #</th>
-                      <th className="text-left py-3 px-4 font-semibold text-text-primary">Description</th>
-                      <th className="text-left py-3 px-4 font-semibold text-text-primary">Pay App</th>
-                      <th className="text-left py-3 px-4 font-semibold text-text-primary">Status</th>
-                      <th className="text-right py-3 px-4 font-semibold text-text-primary">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {changeOrders.map((co: any) => (
-                      <tr key={co.id} className="border-b border-border hover:bg-primary-50">
-                        <td className="py-3 px-4 text-text-secondary">{co.co_number || '—'}</td>
-                        <td className="py-3 px-4 text-text-primary font-medium">{co.description}</td>
-                        <td className="py-3 px-4 text-text-secondary">#{co.app_number}</td>
-                        <td className="py-3 px-4">
-                          <Badge variant={co.status === 'approved' ? 'success' : 'warning'}>
-                            {co.status || 'pending'}
-                          </Badge>
-                        </td>
+          <div className="space-y-4">
+            {/* Add Change Order Form */}
+            {!showAddCO ? (
+              <Button
+                variant="outline"
+                onClick={() => setShowAddCO(true)}
+                className="w-full sm:w-auto"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add Change Order
+              </Button>
+            ) : (
+              <Card className="p-4 bg-blue-50 border border-blue-200 space-y-3">
+                <p className="text-sm font-medium text-blue-900">Create New Change Order</p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-medium text-text-muted">Description</label>
+                    <input
+                      type="text"
+                      placeholder="e.g., Additional framing work"
+                      value={coForm.description}
+                      onChange={(e) => setCoForm({ ...coForm, description: e.target.value })}
+                      className="w-full mt-1 px-3 py-2 border border-border rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-text-muted">Amount</label>
+                    <input
+                      type="number"
+                      placeholder="0.00"
+                      value={coForm.amount}
+                      onChange={(e) => setCoForm({ ...coForm, amount: e.target.value })}
+                      className="w-full mt-1 px-3 py-2 border border-border rounded-lg text-sm"
+                    />
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setShowAddCO(false)
+                        setCoForm({ description: '', amount: '' })
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={handleAddChangeOrder}
+                      disabled={isSubmittingCO || !coForm.description.trim() || !coForm.amount.trim()}
+                    >
+                      {isSubmittingCO ? 'Creating...' : 'Create Change Order'}
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {/* Change Orders Table */}
+            {changeOrders.length === 0 ? (
+              <Card className="p-6">
+                <EmptyState
+                  icon={FileText}
+                  title="No change orders"
+                  description="Change orders from pay applications will appear here"
+                />
+              </Card>
+            ) : (
+              <Card className="p-6">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b-2 border-border">
+                        <th className="text-left py-3 px-4 font-semibold text-text-primary">CO #</th>
+                        <th className="text-left py-3 px-4 font-semibold text-text-primary">Description</th>
+                        <th className="text-left py-3 px-4 font-semibold text-text-primary">Pay App</th>
+                        <th className="text-left py-3 px-4 font-semibold text-text-primary">Status</th>
+                        <th className="text-right py-3 px-4 font-semibold text-text-primary">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {changeOrders.map((co: any) => (
+                        <tr key={co.id} className="border-b border-border hover:bg-primary-50">
+                          <td className="py-3 px-4 text-text-secondary">{co.co_number || '—'}</td>
+                          <td className="py-3 px-4 text-text-primary font-medium">{co.description}</td>
+                          <td className="py-3 px-4 text-text-secondary">#{co.app_number}</td>
+                          <td className="py-3 px-4">
+                            <select
+                              value={co.status || 'pending'}
+                              onChange={(e) => handleUpdateCOStatus(co.id, e.target.value)}
+                              className="px-2 py-1 border border-border rounded text-sm font-medium"
+                            >
+                              <option value="pending">Pending</option>
+                              <option value="approved">Approved</option>
+                              <option value="billed">Billed</option>
+                              <option value="void">Void</option>
+                            </select>
+                          </td>
+                          <td className="py-3 px-4 text-right text-text-primary font-mono tabular-nums">
+                            {formatCurrency(Number(co.amount) || 0)}
+                          </td>
+                        </tr>
+                      ))}
+                      <tr className="font-semibold bg-primary-50 border-t-2 border-primary-200">
+                        <td colSpan={4} className="py-3 px-4 text-text-primary">Total Change Orders</td>
                         <td className="py-3 px-4 text-right text-text-primary font-mono tabular-nums">
-                          {formatCurrency(Number(co.amount) || 0)}
+                          {formatCurrency(changeOrders.reduce((s: number, co: any) => s + (Number(co.amount) || 0), 0))}
                         </td>
                       </tr>
-                    ))}
-                    <tr className="font-semibold bg-primary-50 border-t-2 border-primary-200">
-                      <td colSpan={4} className="py-3 px-4 text-text-primary">Total Change Orders</td>
-                      <td className="py-3 px-4 text-right text-text-primary font-mono tabular-nums">
-                        {formatCurrency(changeOrders.reduce((s: number, co: any) => s + (Number(co.amount) || 0), 0))}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          )
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+          </div>
         )}
 
         {activeTab === 'hub' && (
@@ -719,6 +985,25 @@ export function ProjectDetail() {
                   </div>
                 </div>
               </Card>
+
+              {/* Why is this off? */}
+              {!reconciliation.summary.is_fully_reconciled && (
+                <Card className="p-4 border border-amber-200 bg-amber-50/50">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                    <p className="font-semibold text-amber-800 text-sm">Why is this off?</p>
+                  </div>
+                  <div className="space-y-1">
+                    {(reconciliation.summary.variance_reasons as string[] | undefined)?.length ? (
+                      (reconciliation.summary.variance_reasons as string[]).map((reason: string, i: number) => (
+                        <p key={i} className="text-sm text-amber-700">→ {reason}</p>
+                      ))
+                    ) : (
+                      <p className="text-sm text-amber-700">→ Review your change orders and SOV progress to identify unbilled items.</p>
+                    )}
+                  </div>
+                </Card>
+              )}
 
               {/* Contract Summary */}
               <Card className="p-6">
@@ -805,7 +1090,7 @@ export function ProjectDetail() {
                 </div>
                 {reconciliation.summary.total_outstanding > 0 && (
                   <p className="mt-3 text-sm text-amber-600 font-medium">
-                    Outstanding balance: {formatCurrency(reconciliation.summary.total_outstanding)}
+                    Amount Outstanding (unpaid): {formatCurrency(reconciliation.summary.total_outstanding)}
                   </p>
                 )}
               </Card>
