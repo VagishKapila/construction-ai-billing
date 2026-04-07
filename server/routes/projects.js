@@ -643,12 +643,14 @@ router.post('/api/projects/:projectId/pay-apps/:payAppId/record-payment', auth, 
     const newPaymentStatus = newAmountPaid >= amountDue ? 'paid' : 'partial';
 
     // Also update billing status to 'paid' when fully paid so the badge reflects it
+    // Use $4 boolean to avoid PostgreSQL type-inference error from reusing $2 in CASE WHEN
+    const isFullyPaid = newPaymentStatus === 'paid';
     const updatedPA = await pool.query(
       `UPDATE pay_apps
        SET amount_paid=$1, payment_status=$2,
-           status = CASE WHEN $2='paid' THEN 'paid' ELSE status END
+           status = CASE WHEN $4 THEN 'paid' ELSE status END
        WHERE id=$3 RETURNING *`,
-      [newAmountPaid, newPaymentStatus, payAppId]
+      [newAmountPaid, newPaymentStatus, payAppId, isFullyPaid]
     );
 
     await logEvent(req.user.id, 'manual_payment_recorded', {

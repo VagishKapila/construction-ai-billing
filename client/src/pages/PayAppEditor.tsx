@@ -1330,7 +1330,11 @@ function Step6Preview({
   const retainageToDate = totals?.totalRetainage || 0
   const earnedLessRetainage = totals?.totalEarned || 0
   const prevCertificates = totals?.totalPrevCertificates || 0
-  const currentPaymentDue = totals?.totalCurrentDue || 0
+  // For retainage release pay apps: all this_pct=0 so computed totalCurrentDue=$0.
+  // Use the server-stored amount_due which equals total retainage held from all prior pay apps.
+  const currentPaymentDue = (payApp?.is_retainage_release && Number(payApp?.amount_due) > 0)
+    ? Number(payApp.amount_due)
+    : (totals?.totalCurrentDue || 0)
   const balanceToFinish = contractSumToDate - totalCompleted + retainageToDate
   // Show mismatch warning only when the project's stored contract differs from SOV (informational)
   const storedContract = Number(project?.original_contract) || 0
