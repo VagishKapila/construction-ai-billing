@@ -333,7 +333,7 @@ router.get('/sync-log', auth, async (req, res) => {
       [req.user.id]
     );
 
-    res.json({ logs: result.rows });
+    res.json(result.rows);
   } catch (error) {
     console.error('[QB Sync Log]', error.message);
     res.status(500).json({ error: error.message });
@@ -365,7 +365,7 @@ router.get('/sync-log/:projectId', auth, async (req, res) => {
       [projectId]
     );
 
-    res.json({ logs: result.rows });
+    res.json(result.rows);
   } catch (error) {
     console.error('[QB Sync Log Project]', error.message);
     res.status(500).json({ error: error.message });

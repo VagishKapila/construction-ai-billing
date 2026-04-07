@@ -97,6 +97,8 @@ function PayAppRow({
     submitted: 'default',
     paid: 'success',
   }
+  // Use payment_status if fully paid, otherwise fall back to billing status
+  const displayStatus = payApp.payment_status === 'paid' ? 'paid' : payApp.status
 
   const payAppUrl = `/projects/${projectId}/pay-app/${payApp.id}`
 
@@ -114,8 +116,8 @@ function PayAppRow({
                 ? 'Final Retainage Release'
                 : `Pay Application #${payApp.app_number}`}
             </h3>
-            <Badge variant={statusVariantMap[payApp.status] || 'default'}>
-              {payApp.status.charAt(0).toUpperCase() + payApp.status.slice(1)}
+            <Badge variant={statusVariantMap[displayStatus] || 'default'}>
+              {displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1)}
             </Badge>
             {payApp.is_retainage_release && (
               <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">
@@ -136,11 +138,22 @@ function PayAppRow({
                 {formatCurrency(payApp.amount_due)}
               </p>
             </div>
+            {payApp.payment_status === 'paid' && payApp.last_payment_method && (
+              <div className="col-span-2 sm:col-span-1">
+                <p className="text-text-muted">Payment</p>
+                <p className="text-emerald-700 font-medium text-sm flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Paid via {payApp.last_payment_method}
+                  {payApp.last_check_number ? ` #${payApp.last_check_number}` : ''}
+                  {payApp.last_payment_amount ? ` · ${formatCurrency(payApp.last_payment_amount)}` : ''}
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
         <div className="flex gap-2 flex-shrink-0">
-          {payApp.payment_status !== 'paid' && onShowRecordPaymentChange && (
+          {onShowRecordPaymentChange && (
             <Button
               variant="outline"
               size="sm"
@@ -149,7 +162,7 @@ function PayAppRow({
                 onShowRecordPaymentChange(!showRecordPaymentForm)
               }}
             >
-              Record Payment
+              {payApp.payment_status === 'paid' ? 'Edit Payment' : 'Record Payment'}
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); navigate(payAppUrl) }}>

@@ -642,8 +642,12 @@ router.post('/api/projects/:projectId/pay-apps/:payAppId/record-payment', auth, 
     const amountDue = parseFloat(pa.rows[0].amount_due || 0);
     const newPaymentStatus = newAmountPaid >= amountDue ? 'paid' : 'partial';
 
+    // Also update billing status to 'paid' when fully paid so the badge reflects it
     const updatedPA = await pool.query(
-      `UPDATE pay_apps SET amount_paid=$1, payment_status=$2 WHERE id=$3 RETURNING *`,
+      `UPDATE pay_apps
+       SET amount_paid=$1, payment_status=$2,
+           status = CASE WHEN $2='paid' THEN 'paid' ELSE status END
+       WHERE id=$3 RETURNING *`,
       [newAmountPaid, newPaymentStatus, payAppId]
     );
 

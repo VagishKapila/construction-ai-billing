@@ -158,6 +158,11 @@ export interface PayApp {
   // Retainage release
   is_retainage_release?: boolean;
 
+  // Last manual payment info (for "Paid via Check #..." display)
+  last_payment_method?: string;
+  last_check_number?: string;
+  last_payment_amount?: number;
+
   // Timestamps
   submitted_at?: string; // ISO 8601
   created_at: string; // ISO 8601

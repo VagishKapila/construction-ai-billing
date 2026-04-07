@@ -35,8 +35,23 @@ function getServerHelpers() {
 
 // GET /api/projects/:id/payapps - List pay apps for a project
 router.get('/api/projects/:id/payapps', auth, async (req,res) => {
-  // Exclude soft-deleted pay apps from the normal listing
-  const r = await pool.query('SELECT * FROM pay_apps WHERE project_id=$1 AND deleted_at IS NULL ORDER BY app_number',[req.params.id]);
+  // Include last manual payment info (method, check number) for "Paid via..." display
+  const r = await pool.query(`
+    SELECT pa.*,
+      mp.payment_method AS last_payment_method,
+      mp.check_number   AS last_check_number,
+      mp.amount         AS last_payment_amount
+    FROM pay_apps pa
+    LEFT JOIN LATERAL (
+      SELECT payment_method, check_number, amount
+      FROM manual_payments
+      WHERE pay_app_id = pa.id
+      ORDER BY created_at DESC
+      LIMIT 1
+    ) mp ON true
+    WHERE pa.project_id=$1 AND pa.deleted_at IS NULL
+    ORDER BY pa.app_number
+  `, [req.params.id]);
   res.json(r.rows);
 });
 

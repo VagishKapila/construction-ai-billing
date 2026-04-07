@@ -2094,8 +2094,11 @@ app.get('/api/payapps/:id/html', async (req,res) => {
   });
   const tCO=cos.rows.reduce((s,c)=>s+parseFloat(c.amount||0),0);
   const contract=parseFloat(pa.original_contract)+tCO;
+  // For retainage release pay apps: this_pct=0 for all lines so standard math gives $0.
+  // Use the stored amount_due (= total retainage held from all prior pay apps) and clear tRet.
+  if (pa.is_retainage_release) { tRet = 0; }
   const earned=tComp-tRet;
-  const due=Math.max(0,earned-tPrevCert);
+  const due = pa.is_retainage_release ? parseFloat(pa.amount_due||0) : Math.max(0,earned-tPrevCert);
 
   const imgMimeH = buf => { if (buf[0]===0x89 && buf[1]===0x50) return 'image/png'; if (buf[0]===0xFF && buf[1]===0xD8) return 'image/jpeg'; return 'image/png'; };
   const readImgB64H = filename => { if (!filename) return null; try { const fp = path.join(__dirname, 'uploads', filename); if (!fs.existsSync(fp)) return null; const buf = fs.readFileSync(fp); return `data:${imgMimeH(buf)};base64,${buf.toString('base64')}`; } catch(e) { return null; } };
@@ -2166,8 +2169,11 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
   });
   const tCO=cos.rows.reduce((s,c)=>s+parseFloat(c.amount||0),0);
   const contract=parseFloat(pa.original_contract)+tCO;
+  // For retainage release pay apps: this_pct=0 for all lines so standard math gives $0.
+  // Use the stored amount_due (= total retainage held from all prior pay apps) and clear tRet.
+  if (pa.is_retainage_release) { tRet = 0; }
   const earned=tComp-tRet;
-  const due=Math.max(0,earned-tPrevCert);
+  const due = pa.is_retainage_release ? parseFloat(pa.amount_due||0) : Math.max(0,earned-tPrevCert);
 
   // ── Load logo and signature as base64 for embedding ──────────────────────
   // Detect image MIME from magic bytes (multer saves files without extension)
