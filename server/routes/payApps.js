@@ -692,10 +692,10 @@ router.get('/api/payapps/:id/html', async (req,res) => {
     const comp=prev+thisPer+parseFloat(r.stored_materials||0);
     tComp+=comp; tRet+=comp*retPct; tPrevCert+=prev*(1-retPct);
   });
-  const tCO=cos.rows.reduce((s,c)=>s+parseFloat(c.amount||0),0);
+  const tCO=cos.rows.filter(c=>c.status!=='void'&&c.status!=='voided').reduce((s,c)=>s+parseFloat(c.amount||0),0);
   const contract=parseFloat(pa.original_contract)+tCO;
   const earned=tComp-tRet;
-  const due=Math.max(0,earned-tPrevCert);
+  const due = pa.is_retainage_release ? parseFloat(pa.amount_due||0) : Math.max(0,earned-tPrevCert)+tCO;
 
   const imgMime = buf => { if (buf[0]===0x89 && buf[1]===0x50) return 'image/png'; if (buf[0]===0xFF && buf[1]===0xD8) return 'image/jpeg'; return 'image/png'; };
   const readImgB64 = filename => { if (!filename) return null; try { const fp = path.join(__dirname, '..', '..', 'uploads', filename); if (!fs.existsSync(fp)) return null; const buf = fs.readFileSync(fp); return `data:${imgMime(buf)};base64,${buf.toString('base64')}`; } catch(e) { return null; } };
@@ -765,10 +765,10 @@ router.get('/api/payapps/:id/pdf', async (req,res) => {
     tRet+=comp*retPct;
     tPrevCert+=prev*(1-retPct);
   });
-  const tCO=cos.rows.reduce((s,c)=>s+parseFloat(c.amount||0),0);
+  const tCO=cos.rows.filter(c=>c.status!=='void'&&c.status!=='voided').reduce((s,c)=>s+parseFloat(c.amount||0),0);
   const contract=parseFloat(pa.original_contract)+tCO;
   const earned=tComp-tRet;
-  const due=Math.max(0,earned-tPrevCert);
+  const due = pa.is_retainage_release ? parseFloat(pa.amount_due||0) : Math.max(0,earned-tPrevCert)+tCO;
 
   // ── Load logo and signature as base64 for embedding ──────────────────────
   const imgMime = buf => {
@@ -1067,10 +1067,10 @@ router.post('/api/payapps/:id/email', auth, trialGate, async (req, res) => {
       const comp=prev+thisPer+parseFloat(r.stored_materials||0);
       tComp+=comp; tRet+=comp*retPct; tPrevCert+=prev*(1-retPct);
     });
-    const tCO=cos.rows.reduce((s,c)=>s+parseFloat(c.amount||0),0);
+    const tCO=cos.rows.filter(c=>c.status!=='void'&&c.status!=='voided').reduce((s,c)=>s+parseFloat(c.amount||0),0);
     const contract=parseFloat(pa.original_contract)+tCO;
     const earned=tComp-tRet;
-    const due=Math.max(0,earned-tPrevCert);
+    const due = pa.is_retainage_release ? parseFloat(pa.amount_due||0) : Math.max(0,earned-tPrevCert)+tCO;
     const totals={tComp,tRet,tPrevCert,tCO,contract,earned,due};
 
     // Auto-generate payment link (always — pay page handles Stripe status gracefully)
