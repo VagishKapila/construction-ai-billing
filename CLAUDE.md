@@ -223,6 +223,7 @@ The app was split from one file into two. **Any server-side redirect must point 
 → Must exclude: "By Others" (Windows), Grand Total row, signature/phone rows
 
 Run `node qa_test.js` to verify after any parser changes.
+Run `npx playwright test tests/unit/` to verify G702 math formulas.
 
 ---
 
@@ -286,7 +287,18 @@ Retainage is per-line (can vary). Default from project settings.
 1. **Always discuss with Vagish before making any code change** — no surprises, no assumptions
 2. **Claude pushes to GitHub** — Claude handles all git commits and pushes. Vagish never pushes manually.
 3. **Workflow: staging first** — all work goes to `staging` branch → test → after bug fixes, push to `main`
-4. **Run `node qa_test.js` (109/109) before any push**
+4. **MANDATORY TEST SEQUENCE before any push — ALL three must pass:**
+   ```
+   node qa_test.js                              # static checks (118 tests)
+   npx playwright test tests/unit/              # G702 math unit tests (13 tests)
+   npx tsc --noEmit (in client/)                # TypeScript type check
+   npm run build (in client/)                   # Vite build
+   ```
+5. **For features touching G702 math or CO logic** — ALSO run:
+   ```
+   TEST_BASE_URL=https://construction-ai-billing-staging.up.railway.app \
+   npx playwright test tests/e2e/co-math-crosslayer.spec.ts
+   ```
 5. **Product is live with real users** — treat every change as production risk
 
 ### Branch Map
@@ -859,4 +871,45 @@ Ask the user to confirm which project before making any changes.
 3. Verify all function calls match their definitions
 4. List every file changed and what was changed
 5. Do not end the task until you have verified the code runs
+
+## 🧪 MANDATORY TEST SUITE — RUN BEFORE EVERY PUSH
+
+**ALL of these must pass. No exceptions. No skipping.**
+
+| Command | What it tests | Count |
+|---------|--------------|-------|
+| `node qa_test.js` | Static code patterns, file integrity, two-file arch | 118 |
+| `npx playwright test tests/unit/` | G702 math formulas — pure unit tests, no network | 13 |
+| `cd client && npx tsc --noEmit` | TypeScript type safety | all files |
+| `cd client && npm run build` | Vite build succeeds | all |
+
+**For any change touching G702 math, CO formulas, or pay app calculations — ALSO run:**
+```
+TEST_BASE_URL=https://construction-ai-billing-staging.up.railway.app \
+npx playwright test tests/e2e/co-math-crosslayer.spec.ts
+```
+This runs live API calls against staging that verify H is computed correctly across ALL layers
+(HTML route, PDF route, email route) and that voided COs are excluded.
+
+**If any test fails → do NOT push. Fix first, then run full suite again.**
+
+### Test file locations
+```
+tests/
+  unit/
+    g702math.test.ts          ← Pure G702 math unit tests (13 tests)
+  e2e/
+    construction-billing.spec.ts  ← Full auth/CRUD/PDF flow tests
+    co-math-crosslayer.spec.ts    ← Cross-layer H value consistency tests
+    test-sov.csv                  ← Test SOV (5 lines, $65k total)
+playwright.config.ts              ← Playwright config (staging by default)
+qa_test.js                        ← Static code scan (118 tests)
+```
+
+### When to run which tests
+- **After every change:** `node qa_test.js` + TypeScript check + Vite build
+- **After any G702/CO/math change:** + unit tests + e2e cross-layer tests
+- **Before merging to main:** Full suite, all tests green
+- **Do NOT merge if any test is red** — find the root cause first
+
 ---
