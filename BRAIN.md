@@ -1,7 +1,98 @@
 # Company Brain
-> Last synced: April 6, 2026
+> Last synced: April 8, 2026
 > Owner: Vagish Kapila
 > Tagline: AI-powered construction billing that keeps contractors cash-flow positive
+
+---
+
+## 🧠 MASTER SKILL INVENTORY — ALL INSTALLED SKILLS (April 8, 2026)
+
+Every skill below is globally installed in Cowork. They fire automatically based on triggers.
+Vagish does NOT need to name them — Claude triggers them based on context.
+Source repos: obra/superpowers (139k ⭐) + garrytan/gstack (66k ⭐) + Varshyl custom.
+
+### Build & Planning
+| Skill | Auto-triggers on |
+|-------|-----------------|
+| `brainstorming` | Any creative work, new feature, "what should I build" |
+| `writing-plans` | Before touching code on any multi-step task |
+| `plan-eng-review` | "review the architecture", "lock in the plan", before implementing |
+| `subagent-driven-development` | Multi-step implementations — spawns specialist agents |
+| `dispatching-parallel-agents` | 2+ independent tasks — runs them simultaneously |
+| `ecc-zenith` | ANY backend/API/DB work — Express, PostgreSQL, security patterns |
+| `ui-ux-pro-max` | ANY frontend/UI work — design system, palettes, components |
+| `product-management:write-spec` | Turning ideas into specs/PRDs |
+| `product-management:product-brainstorming` | Exploring product opportunities |
+| `product-management:roadmap-update` | Updating product roadmap |
+| `product-management:sprint-planning` | Sprint planning |
+| `product-management:competitive-brief` | Competitive analysis |
+| `product-management:metrics-review` | Metrics review |
+| `product-management:stakeholder-update` | Status updates |
+| `product-management:synthesize-research` | Synthesizing user research |
+
+### Testing & QA
+| Skill | Auto-triggers on |
+|-------|-----------------|
+| `e2e-qa` | "test", "QA", "what's broken", "find bugs", "run tests" — ALL 7 layers |
+| `test-driven-development` | Writing any new feature or bugfix — TDD first |
+| `verification-before-completion` | BEFORE claiming anything is done or fixed |
+| `systematic-debugging` | Any bug, error, unexpected behavior |
+
+### Shipping & Deployment
+| Skill | Auto-triggers on |
+|-------|-----------------|
+| `ship` | "ship", "deploy", "push to main", "create a PR" |
+| `land-and-deploy` | "merge", "land it", "ship to production" |
+| `review` | "code review", "review this PR", "check my diff" |
+| `finishing-a-development-branch` | Implementation complete, about to integrate |
+
+### Debugging
+| Skill | Auto-triggers on |
+|-------|-----------------|
+| `investigate` | Bugs, 500 errors, "why is this broken", "it was working yesterday" |
+| `careful` | ANY destructive command — rm -rf, DROP TABLE, force-push, reset --hard |
+
+### Memory & Brain
+| Skill | Auto-triggers on |
+|-------|-----------------|
+| `brainsync` | After any major decision, feature completion, or strategy session |
+
+### Documents
+| Skill | Auto-triggers on |
+|-------|-----------------|
+| `docx` | Any .docx / Word document work |
+| `xlsx` | Any .xlsx / spreadsheet / Excel work |
+| `pptx` | Any .pptx / presentation / deck work |
+| `pdf` | Any PDF work |
+
+### Travel / SnapClaps
+| Skill | Auto-triggers on |
+|-------|-----------------|
+| `travel-deal-finder` | "find deals", "travel deals" |
+| `travel-trending-scanner` | "what's trending", "viral travel", "hashtags" |
+| `travel-content-style` | "I like this style", "train on this" |
+| `travel-influencer-outreach` | "find influencers", "outreach", "collab" |
+| `social-media-poster` | "post this", "share this", "publish" |
+
+### Standard Build Order (every new feature or product)
+```
+brainstorming → write-spec → plan-eng-review → writing-plans
+→ ecc-zenith + ui-ux-pro-max (parallel)
+→ subagent-driven-development
+→ e2e-qa → verification-before-completion
+→ ship → land-and-deploy → brainsync
+```
+
+### New Product Setup
+```bash
+# Run QA scaffold to get 7-layer testing from day 1
+node ~/varshyl-qa-scaffold/init.js /path/to/new-product
+# Edit varshyl-qa.config.js with critical formulas
+# Set GitHub secrets: TEST_EMAIL, TEST_PASSWORD, STAGING_URL
+```
+Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
+
+---
 
 ## Company Overview
 **Name**: Varshyl Inc
