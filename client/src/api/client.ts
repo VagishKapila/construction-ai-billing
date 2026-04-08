@@ -143,9 +143,27 @@ export class ApiClient {
       // Flat response (e.g. { token, user }) — wrap in { data: ... }
       return { data: raw as unknown as T } as ApiResponse<T>;
     } catch (error) {
-      // Network error or parse error
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      throw new Error(`API request failed: ${message}`);
+      // TypeError = network-level failure (no internet, DNS, CORS, timeout)
+      if (error instanceof TypeError) {
+        if (!navigator.onLine) {
+          throw new Error('No internet connection. Please check your network and try again.');
+        }
+        // navigator.onLine can be unreliable on some mobile browsers — check message too
+        const msg = error.message.toLowerCase();
+        if (msg.includes('fetch') || msg.includes('network') || msg.includes('failed')) {
+          throw new Error('No internet connection. Please check your network and try again.');
+        }
+        throw new Error('Unable to connect to the server. Please try again.');
+      }
+
+      // Re-throw errors that were already cleanly extracted from the HTTP response
+      // (e.g. "Invalid email or password" from a 401, "Project not found" from a 404)
+      // Do NOT re-wrap them — the message is already user-friendly.
+      if (error instanceof Error) {
+        throw error;
+      }
+
+      throw new Error('An unexpected error occurred. Please try again.');
     }
   }
 
