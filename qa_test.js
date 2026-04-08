@@ -440,6 +440,52 @@ check('Password reset redirects to /app.html (not /)',
 
 // ─────────────────────────────────────────────────────────────────────────────
 console.log('\n══════════════════════════════════════════════════');
+console.log('  MODULE 7B: CHANGE ORDER MATH REGRESSION TESTS');
+console.log('  (Ensures COs always appear in H at full value)');
+console.log('══════════════════════════════════════════════════');
+
+// Verify server.js routes all include void-filtered tCO added to `due`
+const serverSrcCO = fs.readFileSync('./server.js', 'utf8');
+
+// Every tCO calc must filter out voided COs
+const tCOPatterns = [...serverSrcCO.matchAll(/const tCO=cos\.rows/g)];
+check('All server tCO calculations exist (4 routes)', tCOPatterns.length >= 4,
+  `found ${tCOPatterns.length}`);
+
+// Every tCO line must include void filter
+const tCOWithFilter = [...serverSrcCO.matchAll(/const tCO=cos\.rows\.filter\(c=>c\.status!=='void'&&c\.status!=='voided'\)/g)];
+check('All tCO calculations filter out voided COs', tCOWithFilter.length >= 4,
+  `only ${tCOWithFilter.length} of ${tCOPatterns.length} have void filter`);
+
+// Verify the due calculation adds tCO (for non-retainage-release paths)
+// Pattern: Math.max(0,earned-tPrevCert)+tCO
+const dueWithCO = [...serverSrcCO.matchAll(/Math\.max\(0,earned-tPrevCert\)\+tCO/g)];
+check('All server due calculations include +tCO', dueWithCO.length >= 4,
+  `only ${dueWithCO.length} found`);
+
+// Verify Step4Summary in client applies netCOs to H
+const editorSrc = fs.readFileSync('./client/src/pages/PayAppEditor.tsx', 'utf8');
+check('Step4Summary computes netCOs (void-filtered)',
+  editorSrc.includes("filter(co => co.status !== 'void' && co.status !== 'voided')") ||
+  editorSrc.includes("filter(co=>co.status!=='void'&&co.status!=='voided')")
+);
+check("Step4 H display adds netCOs to totalCurrentDue",
+  editorSrc.includes("(totals?.totalCurrentDue || 0) + netCOs"));
+check("Step4 I display subtracts netCOs from totalBalanceToFinish",
+  editorSrc.includes("(totals?.totalBalanceToFinish || 0) - netCOs"));
+
+// Verify Step6Preview computes currentPaymentDue with netChangeOrders
+check("Step6 currentPaymentDue adds netChangeOrders",
+  editorSrc.includes("(totals?.totalCurrentDue || 0) + netChangeOrders"));
+check("Step6 balanceToFinish subtracts netChangeOrders",
+  editorSrc.includes("retainageToDate - netChangeOrders"));
+
+// Verify Step6 logo uses token auth
+check("Step6 logo uses ?token= query param for auth",
+  editorSrc.includes("/api/settings/logo?token="));
+
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n══════════════════════════════════════════════════');
 console.log('  RESULTS');
 console.log('══════════════════════════════════════════════════');
 const total = passed + failed;

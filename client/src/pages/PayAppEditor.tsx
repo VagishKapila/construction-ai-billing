@@ -911,7 +911,12 @@ function Step4Summary({
   onPeriodEndChange: (v: string) => void
 }) {
   const originalContract = Number(project?.original_contract) || 0
+  // All COs for contract sum (B, C rows)
   const coTotal = changeOrders.reduce((s, co) => s + (Number(co.amount) || 0), 0)
+  // Non-voided COs for H (current payment due) — added at full value, no retainage
+  const netCOs = changeOrders
+    .filter(co => co.status !== 'void' && co.status !== 'voided')
+    .reduce((s, co) => s + (Number(co.amount) || 0), 0)
   const contractToDate = originalContract + coTotal
   const retainagePct = totals?.totalCompleted > 0
     ? ((totals.totalRetainage / totals.totalCompleted) * 100).toFixed(1)
@@ -987,13 +992,13 @@ function Step4Summary({
               <div className="flex justify-between items-center">
                 <span className="font-semibold text-text-primary">H. Current Payment Due</span>
                 <span className="text-2xl font-bold text-primary-600 font-mono tabular-nums">
-                  {formatCurrency(totals?.totalCurrentDue || 0)}
+                  {formatCurrency((totals?.totalCurrentDue || 0) + netCOs)}
                 </span>
               </div>
             </div>
             <div className="flex justify-between">
               <span className="text-text-secondary">I. Balance to Finish + Retainage</span>
-              <span className="font-mono tabular-nums font-medium">{formatCurrency(totals?.totalBalanceToFinish || 0)}</span>
+              <span className="font-mono tabular-nums font-medium">{formatCurrency((totals?.totalBalanceToFinish || 0) - netCOs)}</span>
             </div>
           </div>
         </Card>
@@ -1472,7 +1477,11 @@ function Step6Preview({
             }}
           >
             <img
-              src={previewSettings?.logo_filename ? "/api/settings/logo" : "/varshyl-logo.png"}
+              src={
+                previewSettings?.logo_filename
+                  ? `/api/settings/logo?token=${encodeURIComponent(localStorage.getItem('ci_token') || '')}`
+                  : "/varshyl-logo.png"
+              }
               alt="Logo"
               style={{ maxHeight: 56, maxWidth: 106, objectFit: 'contain' }}
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
