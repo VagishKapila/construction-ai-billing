@@ -486,6 +486,36 @@ check("Step6 logo uses ?token= query param for auth",
 
 // ─────────────────────────────────────────────────────────────────────────────
 console.log('\n══════════════════════════════════════════════════');
+console.log('  MODULE 7C: LIVE ROUTE FILE REGRESSION TESTS');
+console.log('  (Checks server/routes/payApps.js — the ACTUAL live file)');
+console.log('  (server.js checks above are not enough — server.js is legacy)');
+console.log('══════════════════════════════════════════════════');
+
+// The live server uses server/routes/payApps.js (not server.js).
+// All CO math formulas MUST exist in this file.
+const payAppsRouteSrc = fs.readFileSync('./server/routes/payApps.js', 'utf8');
+
+// void filter in live route file
+const liveVoidFilter = [...payAppsRouteSrc.matchAll(/const tCO=cos\.rows\.filter\(c=>c\.status!=='void'&&c\.status!=='voided'\)/g)];
+check('payApps.js: tCO void-filters COs (3 routes: HTML + PDF + email)',
+  liveVoidFilter.length >= 3,
+  `only ${liveVoidFilter.length} found — missing void filter in live route file`);
+
+// +tCO in due formula in live route file
+const liveDueWithCO = [...payAppsRouteSrc.matchAll(/Math\.max\(0,earned-tPrevCert\)\+tCO/g)];
+check('payApps.js: due formula includes +tCO (H = F - G + CO amounts)',
+  liveDueWithCO.length >= 3,
+  `only ${liveDueWithCO.length} found — +tCO missing from due formula in live route file`);
+
+// retainage-release guard in due formula — must be the full ternary in the due assignment
+// Pattern: pa.is_retainage_release ? parseFloat(pa.amount_due||0) : Math.max(0,earned-tPrevCert)+tCO
+const liveRetReleaseDue = [...payAppsRouteSrc.matchAll(/pa\.is_retainage_release \? parseFloat\(pa\.amount_due\|{2}0\) : Math\.max\(0,earned-tPrevCert\)\+tCO/g)];
+check('payApps.js: due formula has full retainage-release ternary (3 routes)',
+  liveRetReleaseDue.length >= 3,
+  `only ${liveRetReleaseDue.length} found — retainage-release ternary missing from due= in live route file`);
+
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n══════════════════════════════════════════════════');
 console.log('  RESULTS');
 console.log('══════════════════════════════════════════════════');
 const total = passed + failed;

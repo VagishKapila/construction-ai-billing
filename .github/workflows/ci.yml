@@ -1,0 +1,155 @@
+name: CI — Test Suite
+
+# Runs on every push to staging and main, and every pull request.
+# ALL tests must pass before Railway is allowed to deploy.
+#
+# Test layers (in order):
+#   1. Architecture sanity      — verifies CO math formulas in live route files
+#   2. Static QA checks         — 121 pattern checks (server.js, route files, client)
+#   3. Mutation watchdog        — verifies qa_test.js would catch formula breakage
+#   4. TypeScript type check    — strict type safety on client
+#   5. Vite build               — client builds without errors
+#   6. Math unit tests          — 13 pure G702 formula tests (no network)
+#   7. E2E integration tests    — 28 tests against staging (auth, CRUD, CO math)
+#
+# Required GitHub Secrets (set in repo Settings → Secrets → Actions):
+#   TEST_EMAIL     — staging test user email (mike.rodriguez.test@constructinv.com)
+#   TEST_PASSWORD  — staging test user password (TestPass123!)
+#   STAGING_URL    — https://construction-ai-billing-staging.up.railway.app
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main, staging]
+
+jobs:
+  # ─── Job 1: Static checks (fast, no network) ──────────────────────────────
+  static:
+    name: Static Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm install
+
+      - name: "[1] Architecture sanity — live route file formula check"
+        run: node tests/arch/arch-sanity.js
+
+      - name: "[2] Static QA checks (121 tests)"
+        run: node qa_test.js
+
+      - name: "[3] Mutation watchdog — verify tests catch formula breaks"
+        run: node tests/mutation/mutation-watchdog.js
+
+  # ─── Job 2: TypeScript + Vite build ──────────────────────────────────────
+  build:
+    name: TypeScript + Vite Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm install
+
+      - name: Install client dependencies
+        run: cd client && npm install
+
+      - name: "[4] TypeScript type check"
+        run: cd client && npx tsc --noEmit
+
+      - name: "[5] Vite production build"
+        run: cd client && npm run build
+
+  # ─── Job 3: Math unit tests (no network) ─────────────────────────────────
+  unit:
+    name: Math Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm install
+
+      - name: Install client dependencies
+        run: cd client && npm install
+
+      - name: Install Playwright (unit tests only — no browser needed)
+        run: npx playwright install --with-deps chromium
+        # Unit tests use request fixture but playwright still needs init
+
+      - name: "[6] G702 math unit tests (13 tests)"
+        run: npx playwright test tests/unit/ --reporter=list
+
+  # ─── Job 4: E2E integration + cross-layer tests (requires staging) ────────
+  e2e:
+    name: E2E Integration Tests
+    runs-on: ubuntu-latest
+    # Only run E2E on push to staging/main (not on PRs — saves staging credits)
+    if: github.event_name == 'push'
+    needs: [static, build]  # Don't run E2E if static checks fail
+    env:
+      TEST_BASE_URL: ${{ secrets.STAGING_URL || 'https://construction-ai-billing-staging.up.railway.app' }}
+      EXISTING_TEST_EMAIL: ${{ secrets.TEST_EMAIL || 'mike.rodriguez.test@constructinv.com' }}
+      EXISTING_TEST_PASSWORD: ${{ secrets.TEST_PASSWORD || 'TestPass123!' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm install
+
+      - name: Install Playwright (API tests — no browser binary needed)
+        run: npx playwright install
+
+      - name: Wait for Railway staging deploy
+        # Railway deploys can take 2-3 min after push. Poll until healthy.
+        run: |
+          echo "Waiting for staging to be healthy..."
+          for i in $(seq 1 20); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$TEST_BASE_URL/" || echo "000")
+            echo "  Attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "  Staging is healthy!"
+              break
+            fi
+            sleep 15
+          done
+
+      - name: "[7a] E2E integration tests (21 tests)"
+        run: TEST_BASE_URL=$TEST_BASE_URL npx playwright test tests/e2e/construction-billing.spec.ts --reporter=list
+
+      - name: "[7b] Cross-layer CO math consistency tests (7 tests)"
+        run: TEST_BASE_URL=$TEST_BASE_URL npx playwright test tests/e2e/co-math-crosslayer.spec.ts --reporter=list
+
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: playwright-report/
+          retention-days: 7

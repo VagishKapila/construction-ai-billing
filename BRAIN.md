@@ -209,6 +209,119 @@ Example: `plumbing-123@hub.constructinv.com`
 
 ---
 
+## QA & Testing Standards — 7-Layer Test Suite
+
+**Installed: April 7, 2026. ALWAYS run all 7 layers before any push.**
+
+When Vagish says "test", "QA", "what's broken", "run tests", "regression", "stress test", "find bugs", "check if this works", or any testing phrase — run ALL 7 layers in order. No exceptions. No skipping.
+
+### The 7 Layers
+
+| # | Layer | Command | What It Catches | Time |
+|---|-------|---------|-----------------|------|
+| 1 | Architecture Sanity | `node tests/arch/arch-sanity.js` | Fix applied to wrong file; formulas missing from live route files | ~2s |
+| 2 | Static QA | `node qa_test.js` | 121 pattern checks; CO math in BOTH server.js AND payApps.js | ~3s |
+| 3 | Mutation Watchdog | `node tests/mutation/mutation-watchdog.js` | Blind spots in qa_test.js itself (if it doesn't catch a formula break, that's a bug) | ~30s |
+| 4 | TypeScript | `cd client && npx tsc --noEmit` | Type errors that fail silently in JavaScript | ~15s |
+| 5 | Vite Build | `cd client && npm run build` | Build failures — if this fails, Railway deploys nothing | ~30s |
+| 6 | Math Unit Tests | `npx playwright test tests/unit/ --reporter=list` | 13 G702 formula correctness tests — pure math, no network | ~10s |
+| 7 | E2E + Contracts | `TEST_BASE_URL=https://construction-ai-billing-staging.up.railway.app npx playwright test tests/e2e/ --reporter=list` | API regressions, CO math cross-layer, contract shapes | ~30s |
+
+**Total: ~2 minutes. Run all 7 every time.**
+
+### Test File Locations
+
+```
+construction-ai-billing/
+├── tests/
+│   ├── arch/arch-sanity.js              ← Layer 1: reads server/app.js, verifies formulas in live routes
+│   ├── mutation/mutation-watchdog.js    ← Layer 3: breaks formulas, confirms qa_test.js catches them
+│   ├── unit/g702math.test.ts            ← Layer 6: 13 pure G702 formula tests
+│   └── e2e/
+│       ├── construction-billing.spec.ts ← Layer 7a: 21 auth/CRUD/PDF/email tests
+│       ├── co-math-crosslayer.spec.ts   ← Layer 7b: 7 cross-layer CO math tests (H=$27,500 target)
+│       ├── api-contracts.spec.ts        ← Layer 7c: 9 API shape contract tests
+│       └── test-sov.csv                 ← Test SOV (5 lines, $65k total)
+├── qa_test.js                           ← Layer 2: 121 static checks (MODULE 7C added Apr 7)
+└── .github/workflows/ci.yml            ← CI pipeline: all 7 layers on every push to staging/main
+```
+
+### Why Each Layer Exists
+
+**Layer 1 — Architecture Sanity**: Catches "fixed the wrong file." In April 2026, a CO math fix was applied to `server.js` but the live server uses `server/routes/payApps.js`. Invoices showed wrong amounts. This layer reads `server/app.js`, finds which route files are mounted, and verifies critical formulas exist in ALL of them.
+
+**Layer 2 — Static QA**: 121 pattern checks. After the wrong-file bug, MODULE 7C was added to check `server/routes/payApps.js` specifically: void filter on tCO (3×), `+tCO` in due formula (3×), retainage-release ternary (3×).
+
+**Layer 3 — Mutation Watchdog**: Breaks 4 critical formulas, runs qa_test.js, verifies the breaks ARE detected. If a mutation passes qa_test.js, that formula is a blind spot — the test suite would not catch that bug in production. First run in April 2026 caught 3/4 blind spots, prompting MODULE 7C.
+
+**Layer 6 — Math Unit Tests**: 13 pure G702 tests covering all 9 columns (A-I), CO math, voided CO exclusion, balance-to-finish, edge cases. No network. Fast.
+
+**Layer 7b — CO Cross-Layer**: Creates real project on staging, verifies H=$27,500 in server HTML/PDF/email. Proves the CO math is consistent across all 3 generation routes.
+
+**Layer 7c — API Contracts**: Records which fields must exist in API responses. Fails if a field is renamed (e.g., `amount_due` → `amountDue`) BEFORE the frontend silently breaks.
+
+### The "Fixed the Wrong File" Bug Class
+
+**Root cause discovered April 7, 2026:** The codebase has two server files:
+- `server.js` — legacy monolithic file, NOT what runs in production
+- `server/routes/payApps.js` — the ACTUAL live route file, loaded via `server/app.js`
+
+Any fix applied to `server.js` alone will NOT affect production. ALWAYS check `server/app.js` to see which files are actually mounted, and apply fixes to those files. The architecture sanity test (Layer 1) enforces this automatically.
+
+### CI Pipeline
+
+Every push to `staging` or `main` triggers `.github/workflows/ci.yml`:
+- `static` job: Layers 1 + 2 + 3 (fast, no network)
+- `build` job: Layers 4 + 5 (TypeScript + Vite)
+- `unit` job: Layer 6 (G702 math)
+- `e2e` job: Layer 7 (only on push, not PRs — polls staging until healthy)
+
+Required GitHub Secrets: `TEST_EMAIL`, `TEST_PASSWORD`, `STAGING_URL`
+
+### Staging Test Accounts
+
+| User | Email | Password |
+|------|-------|----------|
+| Mike Rodriguez | mike.rodriguez.test@constructinv.com | TestPass123! |
+| Sarah Chen | sarah.chen.test@constructinv.com | TestPass123! |
+
+Staging URL: `https://construction-ai-billing-staging.up.railway.app`
+
+### Quick Start (run all 7 layers)
+
+```bash
+cd /sessions/sharp-sleepy-carson/mnt/construction-ai-billing
+
+node tests/arch/arch-sanity.js
+node qa_test.js
+node tests/mutation/mutation-watchdog.js
+cd client && npx tsc --noEmit && cd ..
+cd client && npm run build && cd ..
+npx playwright test tests/unit/ --reporter=list
+TEST_BASE_URL=https://construction-ai-billing-staging.up.railway.app \
+  npx playwright test tests/e2e/ --reporter=list
+```
+
+### Report Format
+
+```
+QA Report — Construction AI Billing — [Date]
+=============================================
+Layer 1  Architecture Sanity:   ✅/❌  X/32
+Layer 2  Static QA:             ✅/❌  X/121
+Layer 3  Mutation Watchdog:     ✅/❌  X/4 caught
+Layer 4  TypeScript:            ✅/❌
+Layer 5  Vite Build:            ✅/❌
+Layer 6  Math Unit Tests:       ✅/❌  X/13
+Layer 7a E2E Integration:       ✅/❌  X/21
+Layer 7b CO Cross-Layer:        ✅/❌  X/7
+Layer 7c API Contracts:         ✅/❌  X/9
+-----------------------------------------
+TOTAL: 207 checks
+```
+
+---
+
 ## Notes & Ideas (parking lot)
 - Switch Stripe to live mode (needs Vagish approval)
 - Create $64/month Stripe Price on prod_UHoK09nnd940UV
@@ -224,3 +337,4 @@ Example: `plumbing-123@hub.constructinv.com`
 | Apr 6, 2026 | Initial Brain creation | Created from ConstructInvoice AI project context + Exp1_ConstructInv3 Project Hub PRD session. Captured all product state, tech stack, decisions, and strategy. |
 | Apr 6, 2026 | Infrastructure decision: email ingestion | Replaced Mailgun plan with Hostinger + Cloudflare Email Workers (free). Full migration path to Mailgun documented for when user base hits 100-200 users. |
 | Apr 6, 2026 | Project Hub Phase 1 shipped to staging | Full backend (18 endpoints, 5 DB tables) + frontend (Hub tab, DocDetail, Trades, MagicLink) pushed to staging branch. |
+| Apr 7, 2026 | 7-Layer QA test suite built + installed | Architecture sanity (32 checks), mutation watchdog (4 mutations), API contract tests (9 tests), CO cross-layer tests rewritten (7 tests). qa_test.js expanded to 121 checks (MODULE 7C). GitHub Actions CI wired. Discovered + fixed "fixed the wrong file" bug: CO math was in server.js only, not live payApps.js. All 207 checks passing. e2e-qa skill updated to trigger on all test/QA phrases. |
