@@ -851,3 +851,12 @@ The `.claude/skills/` directory contains permanently installed skills that enhan
 The user also has a **Sleep Eyes** project in a **separate Cowork tab**.
 If you see files or code unrelated to construction billing, you are in the wrong session.
 Ask the user to confirm which project before making any changes.
+
+---
+## CODE QUALITY — AFTER EVERY CODE TASK
+1. Review all modified files for syntax errors
+2. Check for undefined variables and missing imports
+3. Verify all function calls match their definitions
+4. List every file changed and what was changed
+5. Do not end the task until you have verified the code runs
+---

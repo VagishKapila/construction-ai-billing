@@ -1332,10 +1332,12 @@ function Step6Preview({
   const prevCertificates = totals?.totalPrevCertificates || 0
   // For retainage release pay apps: all this_pct=0 so computed totalCurrentDue=$0.
   // Use the server-stored amount_due which equals total retainage held from all prior pay apps.
+  // For normal pay apps: H = (earned - retainage) - prev certs + CO amounts (full value, no retainage on COs).
   const currentPaymentDue = (payApp?.is_retainage_release && Number(payApp?.amount_due) > 0)
     ? Number(payApp.amount_due)
-    : (totals?.totalCurrentDue || 0)
-  const balanceToFinish = contractSumToDate - totalCompleted + retainageToDate
+    : (totals?.totalCurrentDue || 0) + netChangeOrders
+  // Balance to finish = contract sum to date - work completed + retainage - COs already paid out via H
+  const balanceToFinish = contractSumToDate - totalCompleted + retainageToDate - netChangeOrders
   // Show mismatch warning only when the project's stored contract differs from SOV (informational)
   const storedContract = Number(project?.original_contract) || 0
   const hasMismatch = storedContract > 0 && sovSum > 0 && Math.abs(sovSum - storedContract) > 1
@@ -1470,7 +1472,7 @@ function Step6Preview({
             }}
           >
             <img
-              src="/varshyl-logo.png"
+              src={previewSettings?.logo_filename ? "/api/settings/logo" : "/varshyl-logo.png"}
               alt="Logo"
               style={{ maxHeight: 56, maxWidth: 106, objectFit: 'contain' }}
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}

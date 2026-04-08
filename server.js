@@ -2092,13 +2092,14 @@ app.get('/api/payapps/:id/html', async (req,res) => {
     const comp=prev+thisPer+parseFloat(r.stored_materials||0);
     tComp+=comp; tRet+=comp*retPct; tPrevCert+=prev*(1-retPct);
   });
-  const tCO=cos.rows.reduce((s,c)=>s+parseFloat(c.amount||0),0);
+  const tCO=cos.rows.filter(c=>c.status!=='void'&&c.status!=='voided').reduce((s,c)=>s+parseFloat(c.amount||0),0);
   const contract=parseFloat(pa.original_contract)+tCO;
   // For retainage release pay apps: this_pct=0 for all lines so standard math gives $0.
   // Use the stored amount_due (= total retainage held from all prior pay apps) and clear tRet.
   if (pa.is_retainage_release) { tRet = 0; }
   const earned=tComp-tRet;
-  const due = pa.is_retainage_release ? parseFloat(pa.amount_due||0) : Math.max(0,earned-tPrevCert);
+  // H = (earned - prev certs) + CO amounts at full value (no retainage on COs)
+  const due = pa.is_retainage_release ? parseFloat(pa.amount_due||0) : Math.max(0,earned-tPrevCert)+tCO;
 
   const imgMimeH = buf => { if (buf[0]===0x89 && buf[1]===0x50) return 'image/png'; if (buf[0]===0xFF && buf[1]===0xD8) return 'image/jpeg'; return 'image/png'; };
   const readImgB64H = filename => { if (!filename) return null; try { const fp = path.join(__dirname, 'uploads', filename); if (!fs.existsSync(fp)) return null; const buf = fs.readFileSync(fp); return `data:${imgMimeH(buf)};base64,${buf.toString('base64')}`; } catch(e) { return null; } };
@@ -2167,13 +2168,14 @@ app.get('/api/payapps/:id/pdf', async (req,res) => {
     // G = F from previous apps = prev work less retainage held on prev work
     tPrevCert+=prev*(1-retPct);
   });
-  const tCO=cos.rows.reduce((s,c)=>s+parseFloat(c.amount||0),0);
+  const tCO=cos.rows.filter(c=>c.status!=='void'&&c.status!=='voided').reduce((s,c)=>s+parseFloat(c.amount||0),0);
   const contract=parseFloat(pa.original_contract)+tCO;
   // For retainage release pay apps: this_pct=0 for all lines so standard math gives $0.
   // Use the stored amount_due (= total retainage held from all prior pay apps) and clear tRet.
   if (pa.is_retainage_release) { tRet = 0; }
   const earned=tComp-tRet;
-  const due = pa.is_retainage_release ? parseFloat(pa.amount_due||0) : Math.max(0,earned-tPrevCert);
+  // H = (earned - prev certs) + CO amounts at full value (no retainage on COs)
+  const due = pa.is_retainage_release ? parseFloat(pa.amount_due||0) : Math.max(0,earned-tPrevCert)+tCO;
 
   // ── Load logo and signature as base64 for embedding ──────────────────────
   // Detect image MIME from magic bytes (multer saves files without extension)
@@ -2445,10 +2447,11 @@ app.post('/api/payapps/:id/email', auth, async (req, res) => {
       const comp=prev+thisPer+parseFloat(r.stored_materials||0);
       tComp+=comp; tRet+=comp*retPct; tPrevCert+=prev*(1-retPct);
     });
-    const tCO=cos.rows.reduce((s,c)=>s+parseFloat(c.amount||0),0);
+    const tCO=cos.rows.filter(c=>c.status!=='void'&&c.status!=='voided').reduce((s,c)=>s+parseFloat(c.amount||0),0);
     const contract=parseFloat(pa.original_contract)+tCO;
     const earned=tComp-tRet;
-    const due=Math.max(0,earned-tPrevCert);
+    // H = (earned - prev certs) + CO amounts at full value (no retainage on COs)
+    const due=Math.max(0,earned-tPrevCert)+tCO;
     const totals={tComp,tRet,tPrevCert,tCO,contract,earned,due};
 
     // Load images (reuse same helper pattern as PDF route)
@@ -6343,10 +6346,11 @@ app.get('/api/pay/:token/pdf', async (req, res) => {
       tRet+=comp*retPct;
       tPrevCert+=prev*(1-retPct);
     });
-    const tCO=cos.rows.reduce((s,c)=>s+parseFloat(c.amount||0),0);
+    const tCO=cos.rows.filter(c=>c.status!=='void'&&c.status!=='voided').reduce((s,c)=>s+parseFloat(c.amount||0),0);
     const contract=parseFloat(pa.original_contract)+tCO;
     const earned=tComp-tRet;
-    const due=Math.max(0,earned-tPrevCert);
+    // H = (earned - prev certs) + CO amounts at full value (no retainage on COs)
+    const due=Math.max(0,earned-tPrevCert)+tCO;
     const imgMime = buf => {
       if (buf[0]===0x89 && buf[1]===0x50) return 'image/png';
       if (buf[0]===0xFF && buf[1]===0xD8) return 'image/jpeg';
