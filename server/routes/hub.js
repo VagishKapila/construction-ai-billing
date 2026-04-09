@@ -14,8 +14,11 @@ const fs = require('fs');
 
 const { pool } = require('../../db');
 const { auth } = require('../middleware/auth');
-const { upload, rejectFile } = require('../middleware/fileValidation');
+const { upload, rejectFile, MIME_ATTACH } = require('../middleware/fileValidation');
 const { logEvent } = require('../lib/logEvent');
+
+// Absolute path to uploads directory — consistent with otherInvoices.js pattern
+const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
 
 // Helper: generate secure token for magic links
 function generateToken() {
@@ -207,6 +210,9 @@ router.get('/api/projects/:id/hub/inbox', auth, async (req, res) => {
 
 // POST /api/projects/:id/hub/uploads — Upload a document
 router.post('/api/projects/:id/hub/uploads', auth, upload.single('file'), async (req, res) => {
+  // Reject disallowed file types (exe, sh, SVG-with-XSS, etc.)
+  if (rejectFile(req, res, MIME_ATTACH, 'hub document')) return;
+
   try {
     const projectId = req.params.id;
     const { trade_id, doc_type = 'other', amount, notes, uploaded_by } = req.body;
@@ -235,9 +241,9 @@ router.post('/api/projects/:id/hub/uploads', auth, upload.single('file'), async 
       }
     }
 
-    // Rename file with hub_ prefix
+    // Rename file with hub_ prefix, using absolute UPLOADS_DIR path
     const newFilename = `hub_${Date.now()}_${req.file.originalname.replace(/\s+/g, '_')}`;
-    const newPath = path.join('uploads', newFilename);
+    const newPath = path.join(UPLOADS_DIR, newFilename);
     fs.renameSync(req.file.path, newPath);
 
     const result = await pool.query(
@@ -485,7 +491,7 @@ router.get('/api/projects/:id/hub/uploads/:uploadId/download', auth, async (req,
     }
 
     const { filename, original_name } = result.rows[0];
-    const filePath = path.join('uploads', filename);
+    const filePath = path.join(UPLOADS_DIR, filename);
 
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: 'File not found on disk' });
@@ -632,6 +638,9 @@ router.get('/api/hub/magic/:token', async (req, res) => {
 
 // POST /api/hub/magic/:token/upload — Sub uploads a document via magic link
 router.post('/api/hub/magic/:token/upload', upload.single('file'), async (req, res) => {
+  // Reject disallowed file types — applied before any async work
+  if (rejectFile(req, res, MIME_ATTACH, 'hub document')) return;
+
   try {
     const { token } = req.params;
     const { doc_type = 'other', amount, notes } = req.body;
@@ -657,7 +666,7 @@ router.post('/api/hub/magic/:token/upload', upload.single('file'), async (req, r
 
     // Rename file with hub_ prefix
     const newFilename = `hub_${Date.now()}_${req.file.originalname.replace(/\s+/g, '_')}`;
-    const newPath = path.join('uploads', newFilename);
+    const newPath = path.join(UPLOADS_DIR, newFilename);
     fs.renameSync(req.file.path, newPath);
 
     const result = await pool.query(

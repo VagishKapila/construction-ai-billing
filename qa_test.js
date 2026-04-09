@@ -516,6 +516,35 @@ check('payApps.js: due formula has full retainage-release ternary (3 routes)',
 
 // ─────────────────────────────────────────────────────────────────────────────
 console.log('\n══════════════════════════════════════════════════');
+console.log('  Hub Phase 1 — Static Checks');
+console.log('══════════════════════════════════════════════════');
+// Verify Hub route file and key patterns exist
+check('Hub route file exists (server/routes/hub.js)',
+  fs.existsSync('./server/routes/hub.js'));
+
+checkContains('hub.js: magic_link_token used in trade creation',
+  './server/routes/hub.js', 'magic_link_token');
+
+checkContains('hub.js: hub_ file prefix enforced on uploaded filenames',
+  './server/routes/hub.js', 'hub_${Date.now()}');
+
+checkContains('server/app.js: Hub router mounted',
+  './server/app.js', "require('./routes/hub')");
+
+checkContains('db.js: project_trades table defined',
+  './db.js', 'CREATE TABLE IF NOT EXISTS project_trades');
+
+checkContains('db.js: hub_uploads table defined',
+  './db.js', 'CREATE TABLE IF NOT EXISTS hub_uploads');
+
+checkContains('hub.js: UPLOADS_DIR used for absolute file paths',
+  './server/routes/hub.js', 'UPLOADS_DIR');
+
+checkContains('hub.js: rejectFile MIME whitelist applied to uploads',
+  './server/routes/hub.js', 'rejectFile');
+
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n══════════════════════════════════════════════════');
 console.log('  RESULTS');
 console.log('══════════════════════════════════════════════════');
 const total = passed + failed;
