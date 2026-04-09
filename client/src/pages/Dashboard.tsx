@@ -31,6 +31,7 @@ import {
   formatCurrency,
   formatRelativeDate,
 } from '@/lib/formatters'
+import { StripeConnectBanner, StripeActiveBadge } from '@/components/payments/StripeConnectBanner'
 
 // ---------------------------------------------------------------------------
 // Animation Variants
@@ -300,6 +301,9 @@ export function Dashboard() {
         )}
       </AnimatePresence>
 
+      {/* Stripe Connect Banner — shown when GC has no connected account */}
+      <StripeConnectBanner />
+
       {/* Page Header */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
@@ -308,9 +312,12 @@ export function Dashboard() {
       >
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Welcome back. Here's your billing overview.
-          </p>
+          <div className="flex items-center gap-2 mt-1">
+            <p className="text-sm text-gray-500">
+              Welcome back. Here's your billing overview.
+            </p>
+            <StripeActiveBadge />
+          </div>
         </div>
         <Link to="/projects/new">
           <motion.div

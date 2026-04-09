@@ -92,6 +92,36 @@ router.post('/api/stripe/dashboard-link', auth, requireStripe, async (req, res) 
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Stripe Connect: Refresh onboarding link (called by Stripe when link expires) ──
+// This is a GET redirect — no auth token needed (user comes from Stripe's browser redirect)
+router.get('/api/stripe/refresh', async (req, res) => {
+  // Generate a fresh onboarding link for the account associated with the session
+  // Since we can't have a JWT here (Stripe redirect), send to settings page which
+  // will auto-trigger reconnect via the banner or settings panel
+  const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+  res.redirect(`${baseUrl}/settings?payments_setup=refresh`);
+});
+
+// ── Stripe Connect: Return URL after onboarding completion ──────────────────
+// Called by Stripe when user finishes (or exits) the onboarding flow
+router.get('/api/stripe/return', async (req, res) => {
+  const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+  res.redirect(`${baseUrl}/settings?payments_setup=complete`);
+});
+
+// ── Stripe Connect: Disconnect / remove account ──────────────────────────────
+router.delete('/api/stripe/connect', auth, requireStripe, async (req, res) => {
+  try {
+    const row = await pool.query('SELECT stripe_account_id FROM connected_accounts WHERE user_id=$1', [req.user.id]);
+    if (!row.rows[0]) return res.status(404).json({ error: 'No connected account' });
+    // Remove from DB (we do not delete the Stripe account itself — GC may reconnect)
+    await pool.query('DELETE FROM connected_accounts WHERE user_id=$1', [req.user.id]);
+    await pool.query('UPDATE users SET stripe_connect_id=NULL, payments_enabled=FALSE, stripe_onboarding_complete=FALSE WHERE id=$1', [req.user.id]);
+    await logEvent(req.user.id, 'stripe_connect_disconnected', {});
+    res.json({ message: 'Stripe account disconnected' });
+  } catch(e) { console.error('[Stripe Disconnect Error]', e.message); res.status(500).json({ error: e.message }); }
+});
+
 // ── Generate payment link for a pay app ─────────────────────────────────
 router.post('/api/pay-apps/:id/payment-link', auth, requireStripe, async (req, res) => {
   try {

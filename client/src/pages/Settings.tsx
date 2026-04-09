@@ -26,6 +26,9 @@ import {
   Bell,
   Shield,
   ExternalLink,
+  Unlink,
+  AlertTriangle,
+  ArrowRight,
 } from 'lucide-react'
 
 interface ProfileFormState {
@@ -86,6 +89,7 @@ export function Settings() {
   // Stripe state
   const [stripeAccount, setStripeAccount] = useState<any>(null)
   const [stripeLoading, setStripeLoading] = useState(false)
+  const [stripeDisconnecting, setStripeDisconnecting] = useState(false)
   const [creditCardEnabled, setCreditCardEnabled] = useState(false)
 
   // Notification form state
@@ -166,7 +170,7 @@ export function Settings() {
     }
   }, [settings?.logo_filename, settings?.signature_filename])
 
-  // Load Stripe account status
+  // Load Stripe account status; also handle return from Stripe onboarding
   useEffect(() => {
     const loadStripeStatus = async () => {
       try {
@@ -174,6 +178,25 @@ export function Settings() {
         const response = await paymentsApi.getStripeAccountStatus()
         if (response.data) {
           setStripeAccount(response.data)
+          // If just returned from Stripe onboarding, show appropriate toast
+          const params = new URLSearchParams(window.location.search)
+          const setup = params.get('payments_setup')
+          if (setup === 'complete') {
+            const data = response.data as any
+            if (data?.charges_enabled) {
+              setToast({ type: 'success', message: '🎉 Stripe connected! You can now accept invoice payments.' })
+              setTimeout(() => setToast(null), 4000)
+            } else {
+              setToast({ type: 'error', message: 'Stripe onboarding incomplete — please finish setup.' })
+              setTimeout(() => setToast(null), 4000)
+            }
+            // Clean the URL param
+            window.history.replaceState({}, '', window.location.pathname)
+          } else if (setup === 'refresh') {
+            setToast({ type: 'error', message: 'Stripe onboarding link expired. Click "Connect Stripe" to try again.' })
+            setTimeout(() => setToast(null), 4000)
+            window.history.replaceState({}, '', window.location.pathname)
+          }
         }
       } catch (err) {
         console.error('Failed to load Stripe account status:', err)
@@ -182,6 +205,7 @@ export function Settings() {
       }
     }
     loadStripeStatus()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const showToast = useCallback((type: ToastType, message: string) => {
@@ -317,6 +341,20 @@ export function Settings() {
       showToast('error', 'Failed to open Stripe dashboard')
     } finally {
       setStripeLoading(false)
+    }
+  }
+
+  const handleDisconnectStripe = async () => {
+    if (!window.confirm('Disconnect your Stripe account? You will no longer be able to accept payments until you reconnect.')) return
+    setStripeDisconnecting(true)
+    try {
+      await paymentsApi.disconnectStripe()
+      setStripeAccount(null)
+      showToast('success', 'Stripe account disconnected')
+    } catch (err) {
+      showToast('error', 'Failed to disconnect Stripe')
+    } finally {
+      setStripeDisconnecting(false)
     }
   }
 
@@ -624,59 +662,136 @@ export function Settings() {
               Accept Payments
             </CardTitle>
             <CardDescription>
-              Connect Stripe to accept ACH and credit card payments
+              Connect Stripe to accept ACH and credit card payments on your invoices
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {stripeAccount ? (
+            {stripeLoading && !stripeAccount ? (
+              <div className="flex items-center gap-3 p-4 rounded-lg bg-gray-50 border border-gray-200">
+                <div className="w-5 h-5 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+                <p className="text-sm text-text-secondary">Checking Stripe status…</p>
+              </div>
+            ) : stripeAccount?.connected ? (
               <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-200">
-                  <div>
-                    <p className="text-sm font-medium text-green-900">
-                      <Check className="w-4 h-4 inline mr-2" />
-                      Connected
-                    </p>
-                    <p className="text-xs text-green-700 mt-1">
-                      {stripeAccount.business_name || 'Stripe Account'}
-                    </p>
+                {/* Status row */}
+                {stripeAccount.charges_enabled ? (
+                  <div className="flex items-center justify-between p-4 bg-green-50 rounded-xl border border-green-200">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-green-100 flex items-center justify-center">
+                        <Check className="w-4.5 h-4.5 text-green-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-green-900">
+                          Payments active
+                        </p>
+                        <p className="text-xs text-green-700 mt-0.5">
+                          {stripeAccount.business_name
+                            ? `${stripeAccount.business_name} · `
+                            : ''}
+                          ACH + credit card enabled
+                        </p>
+                      </div>
+                    </div>
+                    <Badge className="bg-green-100 text-green-800 border border-green-200">Active</Badge>
                   </div>
-                  <Badge className="bg-green-100 text-green-800">Active</Badge>
-                </div>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
+                ) : (
+                  <div className="flex items-center justify-between p-4 bg-amber-50 rounded-xl border border-amber-200">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center">
+                        <AlertTriangle className="w-4.5 h-4.5 text-amber-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-amber-900">
+                          Onboarding incomplete
+                        </p>
+                        <p className="text-xs text-amber-700 mt-0.5">
+                          Finish your Stripe setup to start accepting payments
+                        </p>
+                      </div>
+                    </div>
+                    <Badge className="bg-amber-100 text-amber-800 border border-amber-200">Pending</Badge>
+                  </div>
+                )}
+
+                {/* Payment method toggle */}
+                <div className="p-4 rounded-xl bg-gray-50 border border-gray-100 space-y-2">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Payment methods</p>
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-text-primary">ACH bank transfer</span>
+                      <Badge className="text-xs bg-blue-50 text-blue-700 border border-blue-100">$25 flat fee</Badge>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked
+                      readOnly
+                      className="w-4 h-4 rounded accent-primary-600"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-text-primary">Credit card</span>
+                      <Badge className="text-xs bg-gray-50 text-gray-600 border border-gray-200">3.3% + $0.40</Badge>
+                    </div>
                     <input
                       type="checkbox"
                       checked={creditCardEnabled}
                       onChange={(e) => setCreditCardEnabled(e.target.checked)}
-                      className="w-4 h-4 rounded"
+                      className="w-4 h-4 rounded accent-primary-600"
                     />
-                    <span className="text-sm text-text-primary">
-                      Accept credit card payments
-                    </span>
                   </label>
                 </div>
-                <Button
-                  onClick={handleOpenStripeDashboard}
-                  disabled={stripeLoading}
-                  variant="outline"
-                  className="gap-2"
-                >
-                  Open Stripe Dashboard
-                  <ExternalLink className="w-4 h-4" />
-                </Button>
+
+                {/* Actions */}
+                <div className="flex flex-col sm:flex-row gap-2">
+                  {!stripeAccount.charges_enabled ? (
+                    <Button
+                      onClick={handleConnectStripe}
+                      disabled={stripeLoading}
+                      className="flex-1 bg-primary-600 hover:bg-primary-700 text-white gap-2"
+                    >
+                      Finish Setup
+                      <ArrowRight className="w-4 h-4" />
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={handleOpenStripeDashboard}
+                      disabled={stripeLoading}
+                      variant="outline"
+                      className="flex-1 gap-2"
+                    >
+                      Manage in Stripe
+                      <ExternalLink className="w-4 h-4" />
+                    </Button>
+                  )}
+                  <Button
+                    onClick={handleDisconnectStripe}
+                    disabled={stripeDisconnecting}
+                    variant="outline"
+                    className="gap-2 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                  >
+                    <Unlink className="w-4 h-4" />
+                    {stripeDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="space-y-4">
-                <p className="text-sm text-text-secondary">
-                  Connect your Stripe account to accept payments. You'll need to complete
-                  Stripe's onboarding process to verify your business.
-                </p>
+                <div className="p-4 rounded-xl bg-orange-50 border border-orange-100">
+                  <p className="text-sm text-orange-800 font-medium mb-1">
+                    Not connected
+                  </p>
+                  <p className="text-xs text-orange-700 leading-relaxed">
+                    Connect your bank account to receive invoice payments via ACH transfer ($25 flat) or credit card (3.3% + $0.40). Takes about 2 minutes.
+                  </p>
+                </div>
                 <Button
                   onClick={handleConnectStripe}
                   disabled={stripeLoading}
-                  className="bg-primary-600 hover:bg-primary-700 text-white gap-2"
+                  className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white gap-2 rounded-xl"
                 >
-                  {stripeLoading ? 'Connecting...' : 'Connect Stripe'}
+                  <CreditCard className="w-4 h-4" />
+                  {stripeLoading ? 'Connecting…' : 'Connect Stripe'}
                 </Button>
               </div>
             )}

@@ -87,6 +87,13 @@ export async function getStripeDashboardLink(): Promise<ApiResponse<StripeConnec
   return api.post<StripeConnectResponse>('/api/stripe/dashboard-link', {});
 }
 
+/**
+ * Disconnect the current user's Stripe Connect account
+ */
+export async function disconnectStripe(): Promise<ApiResponse<{ message: string }>> {
+  return api.del<{ message: string }>('/api/stripe/connect');
+}
+
 // ============================================================================
 // PAYMENT LINKS & CHECKOUT
 // ============================================================================

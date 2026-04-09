@@ -32,9 +32,11 @@ import {
 } from 'lucide-react'
 import type { PayAppLineComputed, ChangeOrder, LienDocument, Attachment } from '@/types'
 import { usePayApp } from '@/hooks/usePayApp'
+import { useStripeAccount } from '@/hooks/useStripeAccount'
 import { getLienDocs, createLienDoc, downloadLienDocPDF } from '@/api/lienWaivers'
 import { uploadAttachment, deleteAttachment as deleteAttachmentApi } from '@/api/attachments'
 import { useTrial } from '@/hooks/useTrial'
+import { StripeGateModal } from '@/components/payments/StripeGateModal'
 import { formatCurrency, formatPercent, formatDate } from '@/lib/formatters'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
@@ -1824,6 +1826,7 @@ export function PayAppEditor() {
   } = usePayApp(payAppId)
 
   const { isTrialGated } = useTrial()
+  const { isActive: stripeActive } = useStripeAccount()
 
   // Step state — submitted/paid apps open at Preview (Step 6), drafts at Step 1
   const [currentStep, setCurrentStep] = useState<Step>(1)
@@ -1849,6 +1852,7 @@ export function PayAppEditor() {
   const [isDownloading, setIsDownloading] = useState(false)
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false)
   const [isEmailLoading, setIsEmailLoading] = useState(false)
+  const [isStripeGateOpen, setIsStripeGateOpen] = useState(false)
 
   // Wrapped setters that mark form as dirty
   const handleNotesChange = useCallback((v: string) => { setNotes(v); setFormDirty(true) }, [])
@@ -2044,11 +2048,24 @@ export function PayAppEditor() {
     }
   }, [handleSave, updatePayApp, payApp, payAppId, project, navigate, projectId])
 
+  // Guard: open email modal only if Stripe is connected, otherwise show gate
+  const handleOpenEmailGated = useCallback(() => {
+    if (!stripeActive) {
+      setIsStripeGateOpen(true)
+    } else {
+      setIsEmailModalOpen(true)
+    }
+  }, [stripeActive])
+
   // Send to Owner from completion modal — open email modal, close completion
   const handleCompletionSend = useCallback(() => {
     setIsCompletionOpen(false)
-    setIsEmailModalOpen(true)
-  }, [])
+    if (!stripeActive) {
+      setIsStripeGateOpen(true)
+    } else {
+      setIsEmailModalOpen(true)
+    }
+  }, [stripeActive])
 
   // Loading
   if (isLoading) {
@@ -2211,7 +2228,7 @@ export function PayAppEditor() {
             computedLines={computedLines}
             changeOrders={changeOrders}
             onDownloadPDF={handleDownloadPDF}
-            onOpenEmail={() => setIsEmailModalOpen(true)}
+            onOpenEmail={handleOpenEmailGated}
             isTrialGated={isTrialGated}
             isDownloading={isDownloading}
           />
@@ -2227,6 +2244,13 @@ export function PayAppEditor() {
         onFinish={currentStep === 6 ? handleFinish : undefined}
         nextLabel={currentStep === 1 ? 'Save & Next: Change Orders' : undefined}
         isSaving={isSaving}
+      />
+
+      {/* Stripe Gate Modal — shown when GC tries to send without Stripe connected */}
+      <StripeGateModal
+        isOpen={isStripeGateOpen}
+        onClose={() => setIsStripeGateOpen(false)}
+        onSaveAsDraft={() => setIsStripeGateOpen(false)}
       />
 
       {/* Email Modal */}

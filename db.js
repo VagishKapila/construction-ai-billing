@@ -332,6 +332,7 @@ async function initDB() {
     -- User Stripe Connect columns
     ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_connect_id VARCHAR(200);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS payments_enabled BOOLEAN DEFAULT FALSE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_onboarding_complete BOOLEAN DEFAULT FALSE;
 
     -- Optional G702/G703 sections per project (Mar 30 2026)
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS include_architect BOOLEAN DEFAULT TRUE;
