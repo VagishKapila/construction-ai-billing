@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ConstructInvoice AI — Dashboard Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Inter', system-ui, sans-serif; background: #0c0f1a; color: #e2e8f0; min-height: 100vh; display: flex; }
+
+/* ===== SIDEBAR ===== */
+.sidebar {
+  width: 260px;
+  min-height: 100vh;
+  background: rgba(12,15,30,0.98);
+  border-right: 1px solid rgba(99,102,241,0.08);
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 50;
+}
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 12px;
+  margin-bottom: 32px;
+}
+.logo-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 14px;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(99,102,241,0.3);
+}
+.logo-text { font-size: 15px; font-weight: 700; color: #e2e8f0; letter-spacing: -0.3px; }
+.logo-sub { font-size: 10px; color: rgba(255,255,255,0.3); font-weight: 500; margin-top: 1px; }
+
+.nav-section { margin-bottom: 8px; }
+.nav-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(255,255,255,0.2); padding: 8px 12px; }
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.45);
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: 2px;
+  text-decoration: none;
+}
+.nav-item:hover { background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.7); }
+.nav-item.active {
+  background: rgba(99,102,241,0.1);
+  color: #818cf8;
+  border-left: 3px solid #6366f1;
+  margin-left: -3px;
+}
+.nav-icon { font-size: 16px; width: 20px; text-align: center; }
+.nav-badge {
+  margin-left: auto;
+  background: rgba(99,102,241,0.15);
+  color: #818cf8;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 100px;
+}
+.sidebar-bottom { margin-top: auto; }
+.user-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.user-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+.user-name { font-size: 13px; font-weight: 600; color: #e2e8f0; }
+.user-email { font-size: 11px; color: rgba(255,255,255,0.3); }
+
+/* ===== MAIN CONTENT ===== */
+.main {
+  margin-left: 260px;
+  flex: 1;
+  padding: 32px;
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse 800px 600px at 30% 10%, rgba(99,102,241,0.06) 0%, transparent 70%),
+    radial-gradient(ellipse 600px 400px at 80% 80%, rgba(139,92,246,0.04) 0%, transparent 70%),
+    #0c0f1a;
+}
+
+/* Page header */
+.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; }
+.page-title { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
+.page-desc { font-size: 14px; color: rgba(255,255,255,0.4); margin-top: 4px; }
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: none;
+  text-decoration: none;
+}
+.btn-primary {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(99,102,241,0.35), inset 0 1px 0 rgba(255,255,255,0.1);
+}
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(99,102,241,0.45); }
+
+/* ===== KPI CARDS ===== */
+.kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.kpi-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 16px;
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s;
+}
+.kpi-card:hover {
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(99,102,241,0.12);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.2);
+}
+.kpi-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+}
+.kpi-card:nth-child(1)::after { background: linear-gradient(90deg, #6366f1, transparent); }
+.kpi-card:nth-child(2)::after { background: linear-gradient(90deg, #10b981, transparent); }
+.kpi-card:nth-child(3)::after { background: linear-gradient(90deg, #f59e0b, transparent); }
+.kpi-card:nth-child(4)::after { background: linear-gradient(90deg, #0ea5e9, transparent); }
+
+.kpi-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+.kpi-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+.kpi-icon.indigo { background: rgba(99,102,241,0.12); }
+.kpi-icon.green { background: rgba(16,185,129,0.12); }
+.kpi-icon.amber { background: rgba(245,158,11,0.12); }
+.kpi-icon.sky { background: rgba(14,165,233,0.12); }
+.kpi-change {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 100px;
+}
+.kpi-change.up { background: rgba(16,185,129,0.12); color: #34d399; }
+.kpi-change.down { background: rgba(239,68,68,0.12); color: #f87171; }
+.kpi-label { font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.35); text-transform: uppercase; letter-spacing: 0.06em; }
+.kpi-value {
+  font-size: 28px;
+  font-weight: 800;
+  margin-top: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: -0.02em;
+}
+.kpi-value.indigo { color: #818cf8; }
+.kpi-value.green { color: #34d399; }
+.kpi-value.amber { color: #fbbf24; }
+.kpi-value.sky { color: #38bdf8; }
+
+/* ===== CONTENT GRID ===== */
+.content-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 24px; }
+
+/* Chart card */
+.chart-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 16px;
+  padding: 24px;
+}
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+.card-title { font-size: 15px; font-weight: 700; }
+.card-subtitle { font-size: 12px; color: rgba(255,255,255,0.35); margin-top: 2px; }
+.tab-group { display: flex; gap: 2px; background: rgba(255,255,255,0.04); border-radius: 8px; padding: 2px; }
+.tab-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.4);
+  cursor: pointer;
+  border: none;
+  background: none;
+  transition: all 0.15s;
+}
+.tab-btn.active { background: rgba(99,102,241,0.15); color: #818cf8; }
+.tab-btn:hover:not(.active) { color: rgba(255,255,255,0.6); }
+
+/* SVG chart area */
+.chart-area { height: 220px; position: relative; }
+.chart-area svg { width: 100%; height: 100%; }
+.chart-grid-line { stroke: rgba(255,255,255,0.04); stroke-width: 1; }
+.chart-line { fill: none; stroke: #6366f1; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.chart-area-fill { fill: url(#areaGrad); }
+.chart-dot { fill: #6366f1; stroke: #0c0f1a; stroke-width: 3; }
+.chart-label { fill: rgba(255,255,255,0.25); font-size: 10px; font-family: 'JetBrains Mono', monospace; }
+
+/* Activity feed */
+.activity-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 16px;
+  padding: 24px;
+}
+.activity-list { display: flex; flex-direction: column; gap: 0; }
+.activity-item {
+  display: flex;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.activity-item:last-child { border-bottom: none; }
+.activity-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+.activity-dot.blue { background: #6366f1; box-shadow: 0 0 8px rgba(99,102,241,0.4); }
+.activity-dot.green { background: #10b981; box-shadow: 0 0 8px rgba(16,185,129,0.4); }
+.activity-dot.amber { background: #f59e0b; box-shadow: 0 0 8px rgba(245,158,11,0.4); }
+.activity-dot.sky { background: #0ea5e9; box-shadow: 0 0 8px rgba(14,165,233,0.4); }
+.activity-text { font-size: 13px; color: rgba(255,255,255,0.55); line-height: 1.5; }
+.activity-text strong { color: #e2e8f0; font-weight: 600; }
+.activity-time { font-size: 11px; color: rgba(255,255,255,0.2); margin-top: 3px; font-family: 'JetBrains Mono', monospace; }
+
+/* ===== PROJECT CARDS ===== */
+.projects-section { margin-top: 4px; }
+.section-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+.section-sub { font-size: 13px; color: rgba(255,255,255,0.35); margin-bottom: 16px; }
+.project-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.project-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 16px;
+  padding: 24px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+.project-card:hover {
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(99,102,241,0.15);
+  transform: translateY(-2px);
+  box-shadow: 0 16px 48px rgba(0,0,0,0.25);
+}
+.project-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+.project-name { font-size: 16px; font-weight: 700; color: #e2e8f0; }
+.project-owner { font-size: 12px; color: rgba(255,255,255,0.35); margin-top: 3px; }
+.badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 100px;
+  letter-spacing: 0.02em;
+}
+.badge-active { background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.2); }
+.badge-draft { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.4); border: 1px solid rgba(255,255,255,0.08); }
+.badge-submitted { background: rgba(99,102,241,0.12); color: #818cf8; border: 1px solid rgba(99,102,241,0.2); }
+.badge-paid { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.25); }
+
+.project-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.project-stat-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255,255,255,0.25); }
+.project-stat-value { font-size: 15px; font-weight: 700; margin-top: 3px; font-family: 'JetBrains Mono', monospace; color: #e2e8f0; }
+
+/* Progress bar */
+.progress-wrap { margin-top: 16px; }
+.progress-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
+.progress-label { font-size: 10px; color: rgba(255,255,255,0.3); font-weight: 500; }
+.progress-pct { font-size: 11px; color: #818cf8; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.progress-bar { height: 5px; background: rgba(255,255,255,0.06); border-radius: 100px; overflow: hidden; }
+.progress-fill {
+  height: 100%;
+  border-radius: 100px;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+  box-shadow: 0 0 12px rgba(99,102,241,0.3);
+  transition: width 1s ease;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 1024px) {
+  .sidebar { display: none; }
+  .main { margin-left: 0; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .content-grid { grid-template-columns: 1fr; }
+  .project-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">CI</div>
+    <div>
+      <div class="logo-text">ConstructInvoice</div>
+      <div class="logo-sub">AI Billing Platform</div>
+    </div>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">Main</div>
+    <a class="nav-item active"><span class="nav-icon">&#x1F4CA;</span> Dashboard</a>
+    <a class="nav-item"><span class="nav-icon">&#x1F4C1;</span> Projects <span class="nav-badge">12</span></a>
+    <a class="nav-item"><span class="nav-icon">&#x1F4C4;</span> Pay Apps</a>
+    <a class="nav-item"><span class="nav-icon">&#x1F4B3;</span> Payments</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">Tools</div>
+    <a class="nav-item"><span class="nav-icon">&#x1F4C8;</span> Reports</a>
+    <a class="nav-item"><span class="nav-icon">&#x1F916;</span> AI Assistant</a>
+    <a class="nav-item"><span class="nav-icon">&#x2699;&#xFE0F;</span> Settings</a>
+  </div>
+
+  <div class="sidebar-bottom">
+    <div class="user-card">
+      <div class="user-avatar">VK</div>
+      <div>
+        <div class="user-name">Vagish Kapila</div>
+        <div class="user-email">vaakapila@gmail.com</div>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- Main Content -->
+<main class="main">
+  <!-- Page Header -->
+  <div class="page-header">
+    <div>
+      <div class="page-title">Dashboard</div>
+      <div class="page-desc">Welcome back, Vagish. Here's your billing overview.</div>
+    </div>
+    <button class="btn btn-primary">+ New Project</button>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-top">
+        <div class="kpi-icon indigo">&#x1F4C1;</div>
+        <span class="kpi-change up">+2 this mo</span>
+      </div>
+      <div class="kpi-label">Active Projects</div>
+      <div class="kpi-value indigo">12</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top">
+        <div class="kpi-icon green">&#x1F4B0;</div>
+        <span class="kpi-change up">+18%</span>
+      </div>
+      <div class="kpi-label">Total Billed</div>
+      <div class="kpi-value green">$2.4M</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top">
+        <div class="kpi-icon amber">&#x23F3;</div>
+        <span class="kpi-change down">3 overdue</span>
+      </div>
+      <div class="kpi-label">Outstanding</div>
+      <div class="kpi-value amber">$342K</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top">
+        <div class="kpi-icon sky">&#x1F4C8;</div>
+        <span class="kpi-change up">+$45K</span>
+      </div>
+      <div class="kpi-label">This Month</div>
+      <div class="kpi-value sky">$185K</div>
+    </div>
+  </div>
+
+  <!-- Chart + Activity -->
+  <div class="content-grid">
+    <div class="chart-card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Billing Overview</div>
+          <div class="card-subtitle">Monthly revenue trend</div>
+        </div>
+        <div class="tab-group">
+          <button class="tab-btn active">6M</button>
+          <button class="tab-btn">1Y</button>
+          <button class="tab-btn">All</button>
+        </div>
+      </div>
+      <div class="chart-area">
+        <svg viewBox="0 0 600 200" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#6366f1" stop-opacity="0.2"/>
+              <stop offset="100%" stop-color="#6366f1" stop-opacity="0.01"/>
+            </linearGradient>
+          </defs>
+          <!-- Grid lines -->
+          <line x1="0" y1="50" x2="600" y2="50" class="chart-grid-line"/>
+          <line x1="0" y1="100" x2="600" y2="100" class="chart-grid-line"/>
+          <line x1="0" y1="150" x2="600" y2="150" class="chart-grid-line"/>
+          <!-- Y labels -->
+          <text x="2" y="48" class="chart-label">$300K</text>
+          <text x="2" y="98" class="chart-label">$200K</text>
+          <text x="2" y="148" class="chart-label">$100K</text>
+          <!-- Area fill -->
+          <path d="M0 160 L100 130 L200 110 L300 80 L400 55 L500 35 L600 20 L600 200 L0 200Z" class="chart-area-fill"/>
+          <!-- Line -->
+          <path d="M0 160 L100 130 L200 110 L300 80 L400 55 L500 35 L600 20" class="chart-line"/>
+          <!-- Dots -->
+          <circle cx="0" cy="160" r="5" class="chart-dot"/>
+          <circle cx="100" cy="130" r="5" class="chart-dot"/>
+          <circle cx="200" cy="110" r="5" class="chart-dot"/>
+          <circle cx="300" cy="80" r="5" class="chart-dot"/>
+          <circle cx="400" cy="55" r="5" class="chart-dot"/>
+          <circle cx="500" cy="35" r="5" class="chart-dot"/>
+          <circle cx="600" cy="20" r="6" class="chart-dot" style="fill:#8b5cf6;stroke-width:3"/>
+          <!-- X labels -->
+          <text x="0" y="195" class="chart-label">Oct</text>
+          <text x="100" y="195" class="chart-label">Nov</text>
+          <text x="200" y="195" class="chart-label">Dec</text>
+          <text x="300" y="195" class="chart-label">Jan</text>
+          <text x="400" y="195" class="chart-label">Feb</text>
+          <text x="500" y="195" class="chart-label">Mar</text>
+        </svg>
+      </div>
+    </div>
+
+    <div class="activity-card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Recent Activity</div>
+          <div class="card-subtitle">Last 24 hours</div>
+        </div>
+      </div>
+      <div class="activity-list">
+        <div class="activity-item">
+          <div class="activity-dot green"></div>
+          <div>
+            <div class="activity-text"><strong>Payment received</strong> — $13,500 ACH from Elm St project</div>
+            <div class="activity-time">2 hours ago</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="activity-dot blue"></div>
+          <div>
+            <div class="activity-text"><strong>Pay App #3 submitted</strong> for Downtown Remodel</div>
+            <div class="activity-time">5 hours ago</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="activity-dot amber"></div>
+          <div>
+            <div class="activity-text"><strong>Lien waiver auto-generated</strong> for Oak St Kitchen</div>
+            <div class="activity-time">6 hours ago</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="activity-dot sky"></div>
+          <div>
+            <div class="activity-text"><strong>SOV uploaded</strong> — 23 line items parsed from PDF</div>
+            <div class="activity-time">Yesterday</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Projects List -->
+  <div class="projects-section">
+    <div class="section-title">Your Projects</div>
+    <div class="section-sub">12 projects total &bull; 3 with outstanding payments</div>
+
+    <div class="project-grid">
+      <div class="project-card">
+        <div class="project-top">
+          <div>
+            <div class="project-name">Elm Street Addition</div>
+            <div class="project-owner">Owner: Smith & Associates</div>
+          </div>
+          <span class="badge badge-paid">Paid</span>
+        </div>
+        <div class="project-stats">
+          <div>
+            <div class="project-stat-label">Contract</div>
+            <div class="project-stat-value">$50,000</div>
+          </div>
+          <div>
+            <div class="project-stat-label">Billed</div>
+            <div class="project-stat-value">$13,500</div>
+          </div>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-header">
+            <span class="progress-label">Completion</span>
+            <span class="progress-pct">27%</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:27%"></div></div>
+        </div>
+      </div>
+
+      <div class="project-card">
+        <div class="project-top">
+          <div>
+            <div class="project-name">Downtown Bathroom Remodel</div>
+            <div class="project-owner">Owner: Metro Properties LLC</div>
+          </div>
+          <span class="badge badge-submitted">Submitted</span>
+        </div>
+        <div class="project-stats">
+          <div>
+            <div class="project-stat-label">Contract</div>
+            <div class="project-stat-value">$42,000</div>
+          </div>
+          <div>
+            <div class="project-stat-label">Billed</div>
+            <div class="project-stat-value">$11,340</div>
+          </div>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-header">
+            <span class="progress-label">Completion</span>
+            <span class="progress-pct">30%</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:30%"></div></div>
+        </div>
+      </div>
+
+      <div class="project-card">
+        <div class="project-top">
+          <div>
+            <div class="project-name">Oak Street Kitchen Renovation</div>
+            <div class="project-owner">Owner: Pacific Coast Builders</div>
+          </div>
+          <span class="badge badge-active">Active</span>
+        </div>
+        <div class="project-stats">
+          <div>
+            <div class="project-stat-label">Contract</div>
+            <div class="project-stat-value">$85,000</div>
+          </div>
+          <div>
+            <div class="project-stat-label">Billed</div>
+            <div class="project-stat-value">$22,950</div>
+          </div>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-header">
+            <span class="progress-label">Completion</span>
+            <span class="progress-pct">30%</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:30%"></div></div>
+        </div>
+      </div>
+
+      <div class="project-card">
+        <div class="project-top">
+          <div>
+            <div class="project-name">Westside Office Buildout</div>
+            <div class="project-owner">Owner: Apex Development Group</div>
+          </div>
+          <span class="badge badge-draft">Draft</span>
+        </div>
+        <div class="project-stats">
+          <div>
+            <div class="project-stat-label">Contract</div>
+            <div class="project-stat-value">$268,233</div>
+          </div>
+          <div>
+            <div class="project-stat-label">Billed</div>
+            <div class="project-stat-value">$0</div>
+          </div>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-header">
+            <span class="progress-label">Completion</span>
+            <span class="progress-pct">0%</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+</body>
+</html>

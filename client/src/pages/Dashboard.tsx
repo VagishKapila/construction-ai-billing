@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -34,6 +34,7 @@ import {
 } from '@/lib/formatters'
 import { StripeConnectBanner, StripeActiveBadge } from '@/components/payments/StripeConnectBanner'
 import { CashFlowForecast } from '@/features/aria/CashFlowForecast'
+import { LienAlert } from '@/features/aria/LienAlert'
 
 // ---------------------------------------------------------------------------
 // Animation Variants
@@ -263,6 +264,7 @@ export function Dashboard() {
   const [ariaCTADismissed, setAriaCTADismissed] = useState(() => {
     try { return localStorage.getItem('aria_cta_dismissed') === '1' } catch { return false }
   })
+  const [lienAlerts, setLienAlerts] = useState<any[]>([])
 
   const isLoading = projectsLoading || statsLoading
   const error = projectsError || statsError
@@ -272,6 +274,30 @@ export function Dashboard() {
     setAriaCTADismissed(true)
     try { localStorage.setItem('aria_cta_dismissed', '1') } catch { /* noop */ }
   }
+
+  // Fetch lien alerts and filter for deadline <= 10 days
+  useEffect(() => {
+    const fetchLienAlerts = async () => {
+      try {
+        const response = await fetch('/api/aria/lien-alerts')
+        if (!response.ok) return
+        const data = await response.json()
+        const alerts = Array.isArray(data?.data) ? data.data : data?.alerts || []
+        // Filter for alerts with deadline <= 10 days
+        const filtered = alerts.filter((a: any) => {
+          if (!a.preliminary_notice_due) return false
+          const deadline = new Date(a.preliminary_notice_due)
+          const today = new Date()
+          const daysRemaining = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+          return daysRemaining <= 10
+        })
+        setLienAlerts(filtered)
+      } catch (err) {
+        // Silent fail
+      }
+    }
+    fetchLienAlerts()
+  }, [])
 
   // Show floating ARIA CTA when: onboarding complete + no projects + not dismissed
   const showAriaCTA =
@@ -322,6 +348,17 @@ export function Dashboard() {
 
       {/* Stripe Connect Banner — shown when GC has no connected account */}
       <StripeConnectBanner />
+
+      {/* Lien Alerts — shown when upcoming deadlines within 10 days */}
+      <AnimatePresence>
+        {lienAlerts.length > 0 && (
+          <div className="space-y-3">
+            {lienAlerts.map((alert: any) => (
+              <LienAlert key={alert.id} projectId={alert.project_id} />
+            ))}
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Page Header */}
       <motion.div

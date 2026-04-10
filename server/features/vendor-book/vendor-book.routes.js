@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const { auth } = require('../../middleware/auth');
 const { pool: db } = require("../../../db");
+const vendorBookService = require('./vendor-book.service');
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
 
@@ -121,7 +122,15 @@ Return: { "mapping": { "Header Name": "field_name_or_null" }, "uncertain": ["Hea
 // POST /api/vendor-book/import — bulk import vendors
 router.post('/api/vendor-book/import', auth, async (req, res) => {
   try {
-    const { vendors } = req.body;
+    const { vendors, fileBuffer, mimeType } = req.body;
+
+    // If file-based import, use service
+    if (fileBuffer) {
+      const result = await vendorBookService.importVendors(req.user.id, Buffer.from(fileBuffer, 'base64'), mimeType);
+      return res.status(201).json({ data: result, error: null });
+    }
+
+    // Otherwise, handle direct vendor array
     if (!Array.isArray(vendors) || vendors.length === 0) {
       return res.status(400).json({ data: null, error: 'vendors array required' });
     }
@@ -147,23 +156,10 @@ router.post('/api/vendor-book/import', auth, async (req, res) => {
 router.get('/api/vendor-book/sov-suggestions/:projectId', auth, async (req, res) => {
   try {
     const projectId = parseInt(req.params.projectId);
-    const sovLines = await db.query(
-      'SELECT id, description FROM sov_lines WHERE project_id = $1 ORDER BY id LIMIT 20',
-      [projectId]
-    );
-    const vendors = await db.query(
-      'SELECT * FROM vendor_address_book WHERE owner_id = $1 ORDER BY company_name',
-      [req.user.id]
-    );
-    const suggestions = sovLines.rows.map(line => {
-      const matches = vendors.rows.filter(v => {
-        if (!v.trade_type) return false;
-        return line.description.toLowerCase().includes(v.trade_type.toLowerCase().substring(0, 5));
-      });
-      return { sov_line_id: line.id, description: line.description, suggested_vendors: matches.slice(0, 3) };
-    }).filter(s => s.suggested_vendors.length > 0);
-    res.json({ data: suggestions, error: null });
+    const result = await vendorBookService.suggestVendors(projectId, req.user.id);
+    res.json({ data: result.suggestions, error: null });
   } catch (err) {
+    console.error('[VendorBook] suggestions error:', err);
     res.status(500).json({ data: null, error: 'Failed to generate suggestions' });
   }
 });

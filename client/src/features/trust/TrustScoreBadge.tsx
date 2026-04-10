@@ -4,9 +4,9 @@ const MAX_SCORE = 763;
 
 const TIER_STYLES: Record<string, { bg: string; color: string; label: string }> = {
   platinum: { bg: '#f5f3ff', color: '#7c3aed', label: 'Platinum' },
-  gold:     { bg: '#fef9c3', color: '#d97706', label: 'Gold' },
+  gold:     { bg: '#fef3c7', color: '#d97706', label: 'Gold' },
   silver:   { bg: '#f1f5f9', color: '#64748b', label: 'Silver' },
-  bronze:   { bg: '#fef3c7', color: '#ea580c', label: 'Bronze' },
+  bronze:   { bg: '#fef9c3', color: '#ea580c', label: 'Bronze' },
   review:   { bg: '#fef2f2', color: '#dc2626', label: 'Under Review' },
 };
 

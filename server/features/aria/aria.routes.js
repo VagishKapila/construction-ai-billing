@@ -396,6 +396,61 @@ router.get('/api/aria/co-leakage/:projectId', auth, async (req, res) => {
 });
 
 /**
+ * GET /api/aria/lien-alerts/:projectId/pdf
+ * Generates and downloads California Preliminary Notice PDF for a project
+ */
+router.get('/api/aria/lien-alerts/:projectId/pdf', auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const projectId = parseInt(req.params.projectId);
+
+    // Verify project ownership
+    const projectResult = await pool.query(
+      'SELECT id, name, address, owner, owner_email, owner_phone, created_at FROM projects WHERE id = $1 AND user_id = $2',
+      [projectId, userId]
+    );
+    if (projectResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const project = projectResult.rows[0];
+    const gcUser = {
+      name: req.user.company_name || req.user.name,
+      address: project.address || '',
+      email: req.user.email || '',
+    };
+
+    // Generate PDF using california module
+    const pdfBuffer = await california.generatePreliminaryNoticePDF(
+      {
+        name: project.name,
+        address: project.address,
+        owner_name: project.owner,
+        owner_email: project.owner_email,
+        owner_phone: project.owner_phone,
+      },
+      {
+        name: gcUser.name,
+        address: gcUser.address,
+        email: gcUser.email,
+        phone: req.user.phone || '',
+        description: 'Labor, materials, and services for construction work',
+      },
+      gcUser
+    );
+
+    // Return PDF with proper headers
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="preliminary-notice-${projectId}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.send(pdfBuffer);
+  } catch (e) {
+    console.error('[ARIA Lien PDF]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
  * GET /api/aria/lien-alerts
  * Returns all lien deadline alerts for user's projects
  */

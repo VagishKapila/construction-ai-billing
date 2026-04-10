@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Project Hub UI Flow — ConstructInvoice AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.21.4/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #f4f5f8; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #d0d3db; border-radius: 99px; }
+  textarea, input, select, button { font-family: inherit; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState } = React;
+
+const C = {
+  orange:"#E8622A",navy:"#1A2230",navyLight:"#243044",
+  bg:"#f4f5f8",card:"#ffffff",border:"#e2e5ec",borderLight:"#eef0f5",
+  text:"#1A2230",textSub:"#5a6370",textMuted:"#9aa1ad",
+  success:"#059669",successBg:"#ecfdf5",warning:"#d97706",warningBg:"#fffbeb",
+  danger:"#dc2626",dangerBg:"#fef2f2",info:"#0891b2",infoBg:"#f0f9ff",
+  purple:"#7c3aed",purpleBg:"#f5f3ff",
+};
+
+const PROJECTS = [
+  { id:1,name:"123 Elm Street Addition",client:"ABC Properties",contract:284000,billed:176080,status:"active",phase:"Framing / MEP Rough-In",trades:5,pendingDocs:3,overdueDocs:1,payApp:"#4 submitted Apr 1",lastActivity:"2h ago" },
+  { id:2,name:"Downtown Office Remodel",client:"Pinnacle Commercial LLC",contract:580000,billed:312400,status:"active",phase:"Drywall / Finish",trades:7,pendingDocs:1,overdueDocs:0,payApp:"#6 paid Mar 28",lastActivity:"1d ago" },
+  { id:3,name:"Oak St Kitchen Renovation",client:"Elm Street LLC",contract:85000,billed:85000,status:"completed",phase:"Job Complete",trades:4,pendingDocs:0,overdueDocs:0,payApp:"Final paid",lastActivity:"2w ago" },
+];
+
+const TRADES = [
+  { id:1,projId:1,name:"Plumbing",sub:"Pacific Coast Plumbing",email:"mike@pacificplumbing.com",alias:"plumbing-123elm@hub.constructinv.com",status:"active",docs:8,pending:2,overdue:1 },
+  { id:2,projId:1,name:"Electrical",sub:"Bright Spark Electric",email:"office@brightspark.com",alias:"electrical-123elm@hub.constructinv.com",status:"active",docs:5,pending:1,overdue:0 },
+  { id:3,projId:1,name:"HVAC",sub:"AirPro Systems",email:"admin@airpro.com",alias:"hvac-123elm@hub.constructinv.com",status:"active",docs:3,pending:0,overdue:0 },
+  { id:4,projId:1,name:"Framing",sub:"SoCal Framing LLC",email:"jobs@socalframing.com",alias:"framing-123elm@hub.constructinv.com",status:"active",docs:12,pending:0,overdue:0 },
+  { id:5,projId:1,name:"Drywall",sub:"(Invite pending)",email:null,alias:"drywall-123elm@hub.constructinv.com",status:"invited",docs:0,pending:0,overdue:0 },
+];
+
+const DOCS_INIT = [
+  { id:1,tradeId:1,tradeName:"Plumbing",type:"invoice",filename:"Invoice_#2340_Rough-In.pdf",amount:"$18,400",status:"pending",stale:true,staleDays:3,uploadedBy:"Pacific Coast Plumbing",uploadedAt:"Apr 3, 2026",source:"email",sovLine:"Plumbing",sovBudget:42000,sovUsed:31200,notes:"Rough-in complete. Final invoice after trim-out.",versions:[{v:1,file:"Invoice_#2340_Rough-In.pdf",date:"Apr 3, 2026",status:"pending"}] },
+  { id:2,tradeId:1,tradeName:"Plumbing",type:"lien_waiver",filename:"ConditionalWaiver_PA1.pdf",amount:"$12,800",status:"approved",stale:false,staleDays:0,uploadedBy:"Pacific Coast Plumbing",uploadedAt:"Mar 28, 2026",source:"magic_link",sovLine:"Plumbing",sovBudget:42000,sovUsed:31200,notes:"",versions:[{v:1,file:"ConditionalWaiver_PA1_v1.pdf",date:"Mar 25, 2026",status:"rejected"},{v:2,file:"ConditionalWaiver_PA1.pdf",date:"Mar 28, 2026",status:"approved"}] },
+  { id:3,tradeId:1,tradeName:"Plumbing",type:"rfi",filename:"RFI-007_WaterHeater_Location.pdf",amount:null,status:"pending",stale:false,staleDays:1,uploadedBy:"Pacific Coast Plumbing",uploadedAt:"Apr 4, 2026",source:"magic_link",sovLine:null,sovBudget:null,sovUsed:null,notes:"Need clarification on water heater placement per updated drawing A-103.",versions:[{v:1,file:"RFI-007_WaterHeater_Location.pdf",date:"Apr 4, 2026",status:"pending"}] },
+  { id:4,tradeId:2,tradeName:"Electrical",type:"invoice",filename:"Invoice_Electrical_Rough.pdf",amount:"$22,150",status:"pending",stale:false,staleDays:1,uploadedBy:"Bright Spark Electric",uploadedAt:"Apr 4, 2026",source:"web_app",sovLine:"Electrical",sovBudget:55000,sovUsed:22150,notes:"",versions:[{v:1,file:"Invoice_Electrical_Rough.pdf",date:"Apr 4, 2026",status:"pending"}] },
+  { id:5,tradeId:2,tradeName:"Electrical",type:"photo",filename:"Panel_Inspection_Photos.zip",amount:null,status:"approved",stale:false,staleDays:0,uploadedBy:"Bright Spark Electric",uploadedAt:"Apr 2, 2026",source:"web_app",sovLine:null,sovBudget:null,sovUsed:null,notes:"",versions:[{v:1,file:"Panel_Inspection_Photos.zip",date:"Apr 2, 2026",status:"approved"}] },
+  { id:6,tradeId:3,tradeName:"HVAC",type:"submittal",filename:"AirHandler_Submittal_Trane.pdf",amount:null,status:"approved",stale:false,staleDays:0,uploadedBy:"AirPro Systems",uploadedAt:"Mar 25, 2026",source:"email",sovLine:null,sovBudget:null,sovUsed:null,notes:"",versions:[{v:1,file:"AirHandler_Submittal_Trane.pdf",date:"Mar 25, 2026",status:"approved"}] },
+  { id:7,tradeId:4,tradeName:"Framing",type:"daily_report",filename:"DailyReport_Apr4.pdf",amount:null,status:"approved",stale:false,staleDays:0,uploadedBy:"SoCal Framing LLC",uploadedAt:"Apr 4, 2026",source:"magic_link",sovLine:null,sovBudget:null,sovUsed:null,notes:"",versions:[{v:1,file:"DailyReport_Apr4.pdf",date:"Apr 4, 2026",status:"approved"}] },
+  { id:8,tradeId:1,tradeName:"Plumbing",type:"change_order",filename:"CO-003_AddSump_Pump.pdf",amount:"$2,800",status:"pending",stale:true,staleDays:5,uploadedBy:"Pacific Coast Plumbing",uploadedAt:"Mar 30, 2026",source:"email",sovLine:null,sovBudget:null,sovUsed:null,notes:"Owner requested sump pump addition per site conditions.",versions:[{v:1,file:"CO-003_AddSump_Pump.pdf",date:"Mar 30, 2026",status:"pending"}] },
+];
+
+const DOC_META = {
+  invoice:      {label:"Invoice",       color:C.purple,  bg:C.purpleBg,  icon:"💰"},
+  lien_waiver:  {label:"Lien Waiver",   color:C.success, bg:C.successBg, icon:"📋"},
+  rfi:          {label:"RFI",           color:C.warning, bg:C.warningBg, icon:"❓"},
+  photo:        {label:"Photo/Video",   color:C.info,    bg:C.infoBg,    icon:"📷"},
+  submittal:    {label:"Submittal",     color:"#7c3aed", bg:"#f5f3ff",   icon:"📁"},
+  daily_report: {label:"Daily Report",  color:"#0891b2", bg:"#f0f9ff",   icon:"📅"},
+  change_order: {label:"Change Order",  color:C.orange,  bg:"#fff7f5",   icon:"🔄"},
+  compliance:   {label:"Compliance",    color:C.success, bg:C.successBg, icon:"✅"},
+  drawing:      {label:"Drawing",       color:C.navy,    bg:"#f0f2f8",   icon:"📐"},
+  other:        {label:"Other",         color:C.textSub, bg:"#f5f5f5",   icon:"📎"},
+};
+
+const Badge = ({type,size="sm"}) => {
+  const m=DOC_META[type]||DOC_META.other;
+  return <span style={{background:m.bg,color:m.color,border:`1px solid ${m.color}30`,borderRadius:99,padding:size==="sm"?"3px 9px":"5px 12px",fontSize:size==="sm"?11:12,fontWeight:600,whiteSpace:"nowrap"}}>{m.icon} {m.label}</span>;
+};
+
+const StatusBadge = ({status}) => {
+  const cfg={pending:{bg:C.warningBg,color:C.warning,label:"Pending Review"},approved:{bg:C.successBg,color:C.success,label:"✓ Approved"},rejected:{bg:C.dangerBg,color:C.danger,label:"✗ Rejected"},active:{bg:C.successBg,color:C.success,label:"Active"},invited:{bg:C.infoBg,color:C.info,label:"Invited"},completed:{bg:"#f0f2f8",color:C.navy,label:"Completed"}}[status]||{bg:"#f5f5f5",color:C.textMuted,label:status};
+  return <span style={{background:cfg.bg,color:cfg.color,border:`1px solid ${cfg.color}30`,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>{cfg.label}</span>;
+};
+
+const SourceBadge = ({source}) => {
+  const cfg={web_app:{label:"Web Upload",icon:"🌐"},magic_link:{label:"Magic Link",icon:"🔗"},email_ingest:{label:"Email",icon:"📧"}}[source]||{label:source,icon:"📎"};
+  return <span style={{fontSize:11,color:C.textMuted,background:"#f5f6f8",borderRadius:6,padding:"2px 7px"}}>{cfg.icon} {cfg.label}</span>;
+};
+
+const Card = ({children,style={},onClick}) => (
+  <div onClick={onClick} style={{background:C.card,border:`1.5px solid ${C.border}`,borderRadius:14,padding:"20px 24px",boxShadow:"0 2px 12px rgba(26,34,48,0.05)",transition:"all 0.15s",cursor:onClick?"pointer":"default",...style}}
+    onMouseEnter={onClick?e=>{e.currentTarget.style.boxShadow="0 6px 24px rgba(26,34,48,0.12)";e.currentTarget.style.transform="translateY(-1px)";}:undefined}
+    onMouseLeave={onClick?e=>{e.currentTarget.style.boxShadow="0 2px 12px rgba(26,34,48,0.05)";e.currentTarget.style.transform="translateY(0)";}:undefined}>
+    {children}
+  </div>
+);
+
+const Btn = ({children,variant="primary",onClick,size="md",disabled=false,style={}}) => {
+  const s={primary:{bg:C.orange,color:"#fff",border:"none"},secondary:{bg:"transparent",color:C.navy,border:`1.5px solid ${C.border}`},ghost:{bg:"transparent",color:C.textSub,border:"none"},danger:{bg:C.dangerBg,color:C.danger,border:`1px solid ${C.danger}30`},success:{bg:C.successBg,color:C.success,border:`1px solid ${C.success}30`}}[variant];
+  const pad={sm:"5px 12px",md:"8px 18px",lg:"11px 24px"}[size];
+  return <button onClick={onClick} disabled={disabled} style={{background:s.bg,color:s.color,border:s.border,borderRadius:8,padding:pad,fontSize:size==="lg"?14:size==="sm"?12:13,fontWeight:600,cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.5:1,transition:"all 0.15s",display:"inline-flex",alignItems:"center",gap:6,...style}}>{children}</button>;
+};
+
+const Divider = () => <div style={{height:1,background:C.borderLight,margin:"14px 0"}} />;
+const BackLink = ({label,onClick}) => <div onClick={onClick} style={{display:"flex",alignItems:"center",gap:6,marginBottom:18,cursor:"pointer",color:C.textSub,fontSize:13,width:"fit-content"}}>← {label}</div>;
+
+// SIDEBAR
+const Sidebar = ({screen,setScreen,notifCount,currentProject}) => {
+  const nav=[
+    {id:"projects_list",icon:"🏗️",label:"All Projects"},
+    {id:"hub_inbox",icon:"📥",label:"Project Hub",badge:notifCount,sub:currentProject?.name},
+    {id:"hub_trades",icon:"🔧",label:"Trades",indent:true},
+    {id:"hub_team",icon:"👥",label:"Team Roles",indent:true},
+    {id:"ai_cashflow",icon:"🧠",label:"AI Cash Flow"},
+    {id:"billing_integration",icon:"📄",label:"Billing (G702/G703)"},
+    {id:"settings",icon:"⚙️",label:"Settings"},
+  ];
+  return (
+    <div style={{width:220,minHeight:"100vh",background:C.navy,display:"flex",flexDirection:"column",flexShrink:0}}>
+      <div style={{padding:"18px 20px 14px",borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
+        <div style={{fontSize:12,fontWeight:700,color:C.orange,letterSpacing:0.5}}>CONSTRUCTINVOICE AI</div>
+        {currentProject
+          ? <div style={{fontSize:11,color:"rgba(255,255,255,0.45)",marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>📌 {currentProject.name}</div>
+          : <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:2}}>Select a project</div>
+        }
+      </div>
+      <nav style={{flex:1,padding:"10px 10px"}}>
+        {nav.map(item=>{
+          if(item.indent&&!currentProject) return null;
+          const active=screen===item.id;
+          return (
+            <div key={item.id} onClick={()=>setScreen(item.id)} style={{display:"flex",alignItems:"center",gap:10,padding:item.indent?"7px 10px 7px 28px":"9px 12px",borderRadius:8,cursor:"pointer",marginBottom:2,background:active?"rgba(232,98,42,0.15)":"transparent",borderLeft:active?`3px solid ${C.orange}`:"3px solid transparent",transition:"all 0.15s"}}>
+              <span style={{fontSize:item.indent?13:15}}>{item.icon}</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:item.indent?12:13,fontWeight:active?600:400,color:active?"#fff":"rgba(255,255,255,0.6)"}}>{item.label}</div>
+                {item.sub&&!item.indent&&<div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.sub}</div>}
+              </div>
+              {item.badge>0&&<span style={{background:C.orange,color:"#fff",borderRadius:99,fontSize:10,fontWeight:700,padding:"1px 6px"}}>{item.badge}</span>}
+            </div>
+          );
+        })}
+      </nav>
+      <div style={{padding:"10px 10px",borderTop:"1px solid rgba(255,255,255,0.08)"}}>
+        <div onClick={()=>setScreen("sub_magic_link")} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:8,cursor:"pointer",background:"rgba(255,255,255,0.05)"}}>
+          <span style={{fontSize:13}}>🔗</span>
+          <span style={{fontSize:11,color:"rgba(255,255,255,0.45)"}}>Preview: Sub Portal</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// PROJECTS LIST
+const ProjectsList = ({setScreen,setCurrentProject}) => {
+  const handleSelect = proj => { setCurrentProject(proj); setScreen("hub_inbox"); };
+  return (
+    <div style={{padding:"28px 32px",flex:1,overflowY:"auto"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
+        <div>
+          <div style={{fontSize:22,fontWeight:700,color:C.text}}>All Projects</div>
+          <div style={{fontSize:13,color:C.textSub,marginTop:4}}>ABC General Contractors · 3 projects</div>
+        </div>
+        <Btn>+ New Project</Btn>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,marginBottom:28}}>
+        {[{label:"Active Projects",value:"3",icon:"🏗️",color:C.navy},{label:"Pending Docs",value:"4",icon:"📥",color:C.warning},{label:"Overdue Docs",value:"1",icon:"🚨",color:C.danger},{label:"Total Outstanding",value:"$32,150",icon:"💰",color:C.orange}].map(k=>(
+          <Card key={k.label} style={{padding:"18px 20px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div>
+                <div style={{fontSize:11,color:C.textMuted,textTransform:"uppercase",letterSpacing:0.8,marginBottom:6}}>{k.label}</div>
+                <div style={{fontSize:26,fontWeight:800,color:k.color}}>{k.value}</div>
+              </div>
+              <span style={{fontSize:22}}>{k.icon}</span>
+            </div>
+          </Card>
+        ))}
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        {PROJECTS.map(p=>{
+          const pct=Math.round((p.billed/p.contract)*100);
+          return (
+            <Card key={p.id} onClick={()=>handleSelect(p)} style={{padding:"0",overflow:"hidden"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:0}}>
+                <div style={{padding:"20px 24px"}}>
+                  <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:10,flexWrap:"wrap"}}>
+                    <div style={{fontSize:16,fontWeight:700,color:C.text}}>{p.name}</div>
+                    <StatusBadge status={p.status} />
+                    {p.pendingDocs>0&&<span style={{background:C.warningBg,color:C.warning,borderRadius:99,fontSize:11,fontWeight:700,padding:"2px 8px"}}>⚠️ {p.pendingDocs} docs need review</span>}
+                    {p.overdueDocs>0&&<span style={{background:C.dangerBg,color:C.danger,borderRadius:99,fontSize:11,fontWeight:700,padding:"2px 8px"}}>🚨 {p.overdueDocs} overdue</span>}
+                  </div>
+                  <div style={{fontSize:12,color:C.textSub,marginBottom:12}}>{p.client} · {p.trades} trades · Phase: {p.phase} · Last activity: {p.lastActivity}</div>
+                  <div>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:5}}>
+                      <span style={{color:C.textSub}}>Billed ${p.billed.toLocaleString()} of ${p.contract.toLocaleString()}</span>
+                      <span style={{fontWeight:700,color:C.orange}}>{pct}%</span>
+                    </div>
+                    <div style={{height:7,background:"#eef0f5",borderRadius:99,overflow:"hidden"}}>
+                      <div style={{height:"100%",background:`linear-gradient(90deg, ${C.orange}, #f5945c)`,width:`${pct}%`,borderRadius:99}} />
+                    </div>
+                  </div>
+                </div>
+                <div style={{background:"#f8f9fb",borderLeft:`1.5px solid ${C.border}`,padding:"20px 24px",display:"flex",flexDirection:"column",justifyContent:"center",gap:12,minWidth:190}}>
+                  <div>
+                    <div style={{fontSize:11,color:C.textMuted,textTransform:"uppercase",letterSpacing:0.7,marginBottom:4}}>Latest Pay App</div>
+                    <div style={{fontSize:13,fontWeight:700,color:C.text}}>{p.payApp}</div>
+                  </div>
+                  <div style={{height:1,background:C.border}} />
+                  <Btn size="sm">Open Hub →</Btn>
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// HUB INBOX
+const HubInbox = ({docs,setDocs,setScreen,setSelectedDoc,currentProject}) => {
+  const [filter,setFilter]=useState("all");
+  const [tradeFilter,setTradeFilter]=useState("all");
+  const filtered=docs.filter(d=>(filter==="all"||d.status===filter)&&(tradeFilter==="all"||d.tradeId===parseInt(tradeFilter)));
+  const staleDocs=docs.filter(d=>d.stale);
+  return (
+    <div style={{padding:"28px 32px",flex:1,overflowY:"auto"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
+        <div>
+          <div style={{fontSize:22,fontWeight:700,color:C.text}}>📥 Project Hub</div>
+          <div style={{fontSize:13,color:C.textSub,marginTop:3}}>{currentProject?.name} · All incoming documents from trades</div>
+        </div>
+        <div style={{display:"flex",gap:10}}>
+          <Btn variant="secondary" onClick={()=>setScreen("hub_trades")}>Manage Trades</Btn>
+          <Btn onClick={()=>setScreen("hub_add_trade")}>+ Add Trade</Btn>
+        </div>
+      </div>
+      <div style={{background:"linear-gradient(135deg,#f0f2f8,#e8eaf2)",border:`1.5px solid ${C.navy}15`,borderRadius:12,padding:"12px 18px",marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{display:"flex",gap:10,alignItems:"center"}}>
+          <span style={{fontSize:18}}>📄</span>
+          <div style={{fontSize:13,color:C.text}}><strong>Pay App #4 submitted Apr 1</strong> — $32,150 outstanding · <span style={{color:C.success}}>ABC Properties avg: 12 days</span></div>
+        </div>
+        <Btn size="sm" variant="secondary" onClick={()=>setScreen("billing_integration")}>View Billing →</Btn>
+      </div>
+      {staleDocs.map(d=>(
+        <div key={d.id} style={{background:d.staleDays>=5?C.dangerBg:C.warningBg,border:`1.5px solid ${d.staleDays>=5?C.danger:C.warning}40`,borderRadius:12,padding:"11px 16px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{display:"flex",gap:10,alignItems:"center"}}>
+            <span style={{fontSize:18}}>{d.staleDays>=5?"🚨":"⚠️"}</span>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:d.staleDays>=5?C.danger:C.warning}}>{d.staleDays>=5?"URGENT":"Needs Review"} — {d.tradeName}: {d.filename}</div>
+              <div style={{fontSize:12,color:C.textSub}}>Uploaded {d.uploadedAt} · Waiting {d.staleDays} day{d.staleDays!==1?"s":""}</div>
+            </div>
+          </div>
+          <Btn size="sm" onClick={()=>{setSelectedDoc(d);setScreen("hub_doc_detail");}}>Review Now →</Btn>
+        </div>
+      ))}
+      <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+        <div style={{display:"flex",gap:3,background:"#f0f2f8",borderRadius:8,padding:3}}>
+          {["all","pending","approved","rejected"].map(f=>(
+            <div key={f} onClick={()=>setFilter(f)} style={{padding:"5px 14px",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",background:filter===f?C.navy:"transparent",color:filter===f?"#fff":C.textSub,textTransform:"capitalize",transition:"all 0.15s"}}>
+              {f} ({f==="all"?docs.length:docs.filter(d=>d.status===f).length})
+            </div>
+          ))}
+        </div>
+        <select value={tradeFilter} onChange={e=>setTradeFilter(e.target.value)} style={{border:`1.5px solid ${C.border}`,borderRadius:8,padding:"6px 12px",fontSize:12,color:C.text,background:C.card,outline:"none"}}>
+          <option value="all">All Trades</option>
+          {TRADES.filter(t=>t.status==="active").map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+      </div>
+      <Card style={{padding:0,overflow:"hidden"}}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead>
+            <tr style={{background:"#f8f9fb"}}>
+              {["Trade","Document","Type","Amt","Ver.","Source","Status","Uploaded",""].map(h=>(
+                <th key={h} style={{padding:"11px 14px",fontSize:11,fontWeight:700,color:C.textMuted,textTransform:"uppercase",letterSpacing:0.8,textAlign:"left",borderBottom:`1.5px solid ${C.border}`,whiteSpace:"nowrap"}}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((doc)=>(
+              <tr key={doc.id} onClick={()=>{setSelectedDoc(doc);setScreen("hub_doc_detail");}} style={{borderBottom:`1px solid ${C.borderLight}`,cursor:"pointer",background:"#fff"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#f0f2ff"}
+                onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                <td style={{padding:"12px 14px",fontSize:13,fontWeight:600,color:C.text}}>{doc.tradeName}</td>
+                <td style={{padding:"12px 14px",fontSize:12,color:C.text,maxWidth:180}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    {doc.stale&&<span>{doc.staleDays>=5?"🚨":"⏰"}</span>}
+                    <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{doc.filename}</span>
+                  </div>
+                </td>
+                <td style={{padding:"12px 14px"}}><Badge type={doc.type} /></td>
+                <td style={{padding:"12px 14px",fontSize:13,fontWeight:600,color:C.text}}>{doc.amount||"—"}</td>
+                <td style={{padding:"12px 14px",textAlign:"center"}}>
+                  <span style={{fontSize:11,background:doc.versions.length>1?"#fff7f5":"#f5f6f9",color:doc.versions.length>1?C.orange:C.textMuted,borderRadius:99,padding:"2px 7px",fontWeight:600}}>v{doc.versions.length}</span>
+                </td>
+                <td style={{padding:"12px 14px"}}><SourceBadge source={doc.source} /></td>
+                <td style={{padding:"12px 14px"}}><StatusBadge status={doc.status} /></td>
+                <td style={{padding:"12px 14px",fontSize:12,color:C.textSub,whiteSpace:"nowrap"}}>{doc.uploadedAt}</td>
+                <td style={{padding:"12px 14px"}}><Btn size="sm" variant="ghost">{doc.status==="pending"?"Review →":"View →"}</Btn></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+};
+
+// DOC DETAIL — with reject flow + version history
+const DocDetail = ({doc,docs,setDocs,setScreen}) => {
+  const [status,setStatus]=useState(doc?.status||"pending");
+  const [rejectStep,setRejectStep]=useState(0);
+  const [rejectReason,setRejectReason]=useState("");
+  const [comment,setComment]=useState("");
+  const [rfiReply,setRfiReply]=useState("");
+  const [comments,setComments]=useState([{author:"You",time:"2d ago",text:"Please confirm scope matches SOV line 4.",type:"comment"}]);
+  if(!doc) return null;
+
+  const approve=()=>{
+    setStatus("approved");
+    setComments(c=>[...c,{author:"You",time:"Just now",text:"✅ Document approved.",type:"approval"}]);
+    setDocs(prev=>prev.map(d=>d.id===doc.id?{...d,status:"approved"}:d));
+  };
+  const submitReject=()=>{
+    if(!rejectReason.trim()) return;
+    setStatus("rejected"); setRejectStep(2);
+    setComments(c=>[...c,{author:"You",time:"Just now",text:`❌ Rejected — ${rejectReason}\n\nSub notified. They can re-upload a revised version to this thread.`,type:"rejection"}]);
+    setDocs(prev=>prev.map(d=>d.id===doc.id?{...d,status:"rejected"}:d));
+  };
+  const sendComment=()=>{if(!comment.trim())return;setComments(c=>[...c,{author:"You",time:"Just now",text:comment,type:"comment"}]);setComment("");};
+  const sendRfi=()=>{if(!rfiReply.trim())return;setComments(c=>[...c,{author:"You",time:"Just now",text:`↩ RFI Reply: ${rfiReply}`,type:"rfi_reply"}]);setRfiReply("");};
+
+  return (
+    <div style={{padding:"28px 32px",flex:1,overflowY:"auto"}}>
+      <BackLink label="Back to Inbox" onClick={()=>setScreen("hub_inbox")} />
+      <div style={{display:"grid",gridTemplateColumns:"1fr 310px",gap:18}}>
+        <div>
+          <Card style={{marginBottom:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
+              <div>
+                <div style={{display:"flex",gap:7,marginBottom:8,flexWrap:"wrap"}}>
+                  <Badge type={doc.type} size="md" /><StatusBadge status={status} /><SourceBadge source={doc.source} />
+                  {doc.stale&&<span style={{background:doc.staleDays>=5?C.dangerBg:C.warningBg,color:doc.staleDays>=5?C.danger:C.warning,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:700}}>⚠️ Stale {doc.staleDays}d</span>}
+                </div>
+                <div style={{fontSize:18,fontWeight:700,color:C.text,marginBottom:3}}>{doc.filename}</div>
+                <div style={{fontSize:13,color:C.textSub}}>From {doc.uploadedBy} · {doc.tradeName} · {doc.uploadedAt}</div>
+              </div>
+              {doc.amount&&<div style={{fontSize:24,fontWeight:800,color:C.orange}}>{doc.amount}</div>}
+            </div>
+            {doc.notes&&<div style={{background:"#f8f9fb",borderRadius:9,padding:"11px 14px",fontSize:13,color:C.text,borderLeft:`3px solid ${C.orange}`}}>{doc.notes}</div>}
+            {doc.sovLine&&<>
+              <Divider />
+              <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:10}}>🧠 AI SOV Budget Check — {doc.sovLine}</div>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <div style={{flex:1}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
+                    <span style={{color:C.textSub}}>Cumulative invoices</span>
+                    <span style={{fontWeight:700}}>${doc.sovUsed.toLocaleString()} / ${doc.sovBudget.toLocaleString()}</span>
+                  </div>
+                  <div style={{height:8,background:"#e8eaf0",borderRadius:99,overflow:"hidden"}}>
+                    <div style={{height:"100%",background:(doc.sovUsed/doc.sovBudget)>0.85?C.danger:C.orange,width:`${Math.min(100,(doc.sovUsed/doc.sovBudget)*100)}%`,borderRadius:99}} />
+                  </div>
+                  <div style={{fontSize:11,color:C.textSub,marginTop:4}}>{Math.round((doc.sovUsed/doc.sovBudget)*100)}% of budget used</div>
+                </div>
+                {(doc.sovUsed/doc.sovBudget)>0.75&&<span style={{background:C.warningBg,color:C.warning,borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>⚠️ Near Budget</span>}
+              </div>
+            </>}
+            <Divider />
+            <div style={{background:"#f8f9fb",border:`1.5px dashed ${C.border}`,borderRadius:10,height:160,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
+              <span style={{fontSize:32}}>📄</span>
+              <div style={{fontSize:13,fontWeight:600,color:C.textSub}}>{doc.filename}</div>
+              <Btn size="sm" variant="secondary">⬇ Download</Btn>
+            </div>
+          </Card>
+
+          {doc.type==="rfi"&&(
+            <Card style={{marginBottom:14}}>
+              <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:10}}>💬 Reply to RFI</div>
+              <div style={{fontSize:13,color:C.textSub,background:"#f8f9fb",borderRadius:8,padding:"10px 12px",marginBottom:12,borderLeft:`3px solid ${C.warning}`}}>{doc.notes}</div>
+              <textarea value={rfiReply} onChange={e=>setRfiReply(e.target.value)} placeholder="Type your reply... (sub will be notified)" style={{width:"100%",minHeight:70,border:`1.5px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:13,resize:"vertical",outline:"none",boxSizing:"border-box"}} />
+              <div style={{display:"flex",gap:8,marginTop:10}}>
+                <Btn onClick={sendRfi}>📤 Send Reply to Sub</Btn>
+                <Btn variant="secondary">📎 Attach File</Btn>
+              </div>
+            </Card>
+          )}
+
+          {rejectStep===1&&(
+            <div style={{background:C.dangerBg,border:`1.5px solid ${C.danger}40`,borderRadius:12,padding:"18px 20px",marginBottom:14}}>
+              <div style={{fontSize:14,fontWeight:700,color:C.danger,marginBottom:8}}>❌ Reject Document — Required: Add a Reason</div>
+              <div style={{fontSize:13,color:C.textSub,marginBottom:12}}>The sub will receive an email with your reason and a direct link to re-upload a revised version to this same document thread.</div>
+              <textarea value={rejectReason} onChange={e=>setRejectReason(e.target.value)} placeholder="e.g. Amount doesn't match approved change order. Please revise and resubmit." style={{width:"100%",minHeight:80,border:`1.5px solid ${C.danger}60`,borderRadius:8,padding:"10px 12px",fontSize:13,resize:"vertical",outline:"none",boxSizing:"border-box",background:"#fff"}} autoFocus />
+              <div style={{display:"flex",gap:8,marginTop:12}}>
+                <button onClick={submitReject} disabled={!rejectReason.trim()} style={{padding:"9px 18px",background:rejectReason.trim()?C.danger:"#e0e0e0",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:rejectReason.trim()?"pointer":"not-allowed"}}>
+                  Send Rejection + Notify Sub
+                </button>
+                <Btn variant="ghost" onClick={()=>setRejectStep(0)}>Cancel</Btn>
+              </div>
+            </div>
+          )}
+
+          {rejectStep===2&&(
+            <Card style={{background:C.dangerBg,border:`1.5px solid ${C.danger}30`,marginBottom:14}}>
+              <div style={{fontSize:13,fontWeight:700,color:C.danger,marginBottom:6}}>❌ Rejected — Sub Notified</div>
+              <div style={{fontSize:13,color:C.textSub}}>{doc.uploadedBy} received your reason and a re-upload link. When they re-upload, this doc returns to Pending as v{doc.versions.length+1}. The version counter stays accurate.</div>
+            </Card>
+          )}
+
+          <Card style={{marginBottom:14}}>
+            <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:12}}>📋 Version History ({doc.versions.length} version{doc.versions.length>1?"s":""})</div>
+            {doc.versions.map(v=>(
+              <div key={v.v} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 0",borderBottom:`1px solid ${C.borderLight}`}}>
+                <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                  <span style={{background:v.status==="approved"?C.successBg:v.status==="rejected"?C.dangerBg:C.warningBg,color:v.status==="approved"?C.success:v.status==="rejected"?C.danger:C.warning,borderRadius:99,fontSize:11,fontWeight:700,padding:"2px 8px"}}>v{v.v}</span>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:600,color:C.text}}>{v.file}</div>
+                    <div style={{fontSize:11,color:C.textMuted}}>{v.date}</div>
+                  </div>
+                </div>
+                <StatusBadge status={v.status} />
+              </div>
+            ))}
+            {status==="rejected"&&<div style={{marginTop:10,fontSize:12,color:C.info,background:C.infoBg,borderRadius:7,padding:"8px 12px"}}>🔗 Sub was sent a re-upload link. Next upload = v{doc.versions.length+1}</div>}
+          </Card>
+
+          <Card>
+            <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:12}}>Activity & Comments</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
+              {comments.map((c,i)=>(
+                <div key={i} style={{background:c.type==="approval"?C.successBg:c.type==="rejection"?C.dangerBg:c.type==="rfi_reply"?C.warningBg:"#f8f9fb",borderRadius:8,padding:"10px 13px"}}>
+                  <div style={{fontSize:12,fontWeight:700,color:C.text,marginBottom:3}}>{c.author} <span style={{fontWeight:400,color:C.textMuted}}>· {c.time}</span></div>
+                  <div style={{fontSize:13,color:C.text,whiteSpace:"pre-wrap"}}>{c.text}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <input value={comment} onChange={e=>setComment(e.target.value)} placeholder="Add a comment..." onKeyDown={e=>e.key==="Enter"&&sendComment()} style={{flex:1,border:`1.5px solid ${C.border}`,borderRadius:8,padding:"8px 12px",fontSize:13,outline:"none"}} />
+              <Btn onClick={sendComment}>Send</Btn>
+            </div>
+          </Card>
+        </div>
+
+        <div>
+          <Card style={{marginBottom:14}}>
+            <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:14}}>Review Actions</div>
+            {status==="pending"&&rejectStep===0?(
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                <button onClick={approve} style={{width:"100%",padding:"13px",background:C.success,color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer"}}>✅ Approve</button>
+                <button onClick={()=>setRejectStep(1)} style={{width:"100%",padding:"13px",background:C.dangerBg,color:C.danger,border:`1.5px solid ${C.danger}30`,borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer"}}>❌ Reject & Request Revision</button>
+                <div style={{fontSize:11,color:C.textMuted,textAlign:"center",lineHeight:1.5}}>Rejection requires a reason.<br/>Sub gets a re-upload link automatically.</div>
+              </div>
+            ):status!=="pending"?(
+              <div style={{textAlign:"center",padding:"12px 0"}}>
+                <StatusBadge status={status} />
+                <div style={{fontSize:12,color:C.textSub,marginTop:8}}>Reviewed just now</div>
+              </div>
+            ):null}
+          </Card>
+          <Card style={{marginBottom:14}}>
+            <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:12}}>Document Details</div>
+            {[{label:"Trade",value:doc.tradeName},{label:"Sub",value:doc.uploadedBy},{label:"Via",value:doc.source==="magic_link"?"Magic Link":doc.source==="email"?"Email Ingest":"Web Upload"},{label:"Uploaded",value:doc.uploadedAt},{label:"Versions",value:`v${doc.versions.length}`},...(doc.amount?[{label:"Amount",value:doc.amount}]:[])].map(r=>(
+              <div key={r.label} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${C.borderLight}`,fontSize:12}}>
+                <span style={{color:C.textSub}}>{r.label}</span>
+                <span style={{fontWeight:600,color:C.text}}>{r.value}</span>
+              </div>
+            ))}
+          </Card>
+          <Card style={{background:"#f8f9fb"}}>
+            <div style={{fontSize:12,fontWeight:700,color:C.text,marginBottom:10}}>🤖 AI Auto-Routing</div>
+            {[{role:"Office / Accountant",routed:["invoice","lien_waiver","compliance"].includes(doc.type),icon:"🧾"},{role:"PM / PMCM",routed:["rfi","submittal","change_order","drawing"].includes(doc.type),icon:"📋"},{role:"Superintendent",routed:["daily_report","photo","other"].includes(doc.type),icon:"🦺"}].map(r=>(
+              <div key={r.role} style={{display:"flex",gap:8,padding:"6px 0",borderBottom:`1px solid ${C.borderLight}`,fontSize:12}}>
+                <span>{r.icon}</span>
+                <span style={{flex:1,color:r.routed?C.text:C.textMuted}}>{r.role}</span>
+                {r.routed&&<span style={{color:C.success,fontWeight:700}}>✓ Notified</span>}
+              </div>
+            ))}
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// TRADES VIEW
+const TradesView = ({setScreen}) => (
+  <div style={{padding:"28px 32px",flex:1,overflowY:"auto"}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:22}}>
+      <div>
+        <div style={{fontSize:22,fontWeight:700,color:C.text}}>🔧 Trades</div>
+        <div style={{fontSize:13,color:C.textSub,marginTop:4}}>123 Elm Street Addition · 5 trades</div>
+      </div>
+      <Btn onClick={()=>setScreen("hub_add_trade")}>+ Add Trade</Btn>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(290px,1fr))",gap:16}}>
+      {TRADES.map(t=>(
+        <Card key={t.id} style={{borderLeft:t.status==="invited"?`3px solid ${C.info}`:`3px solid ${C.orange}`}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+            <div>
+              <div style={{fontSize:15,fontWeight:700,color:C.text}}>{t.name}</div>
+              <div style={{fontSize:12,color:C.textSub,marginTop:2}}>{t.sub}</div>
+            </div>
+            <StatusBadge status={t.status} />
+          </div>
+          <div style={{display:"flex",gap:20,marginBottom:12}}>
+            {[{n:t.docs,label:"Docs"},{n:t.pending,label:"Pending",warn:t.pending>0},{n:t.overdue,label:"Overdue",danger:t.overdue>0}].map(s=>(
+              <div key={s.label} style={{textAlign:"center"}}>
+                <div style={{fontSize:18,fontWeight:700,color:s.danger?C.danger:s.warn?C.warning:C.text}}>{s.n}</div>
+                <div style={{fontSize:10,color:C.textMuted,textTransform:"uppercase"}}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+          <Divider />
+          <div style={{marginBottom:10}}>
+            <div style={{fontSize:11,color:C.textMuted,textTransform:"uppercase",letterSpacing:0.6,marginBottom:4}}>Email Alias</div>
+            <div style={{background:"#f5f6f9",borderRadius:7,padding:"7px 10px",fontSize:11,fontFamily:"monospace",color:C.navy,wordBreak:"break-all"}}>{t.alias}</div>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            {t.status==="invited"?<Btn size="sm" variant="secondary">Resend Invite</Btn>:<><Btn size="sm" variant="secondary">📋 Copy Link</Btn><Btn size="sm" variant="secondary">View Docs</Btn></>}
+          </div>
+        </Card>
+      ))}
+    </div>
+  </div>
+);
+
+// ADD TRADE
+const AddTrade = ({setScreen}) => {
+  const [tradeName,setTradeName]=useState("");
+  const [subName,setSubName]=useState("");
+  const [email,setEmail]=useState("");
+  const [sent,setSent]=useState(false);
+  const alias=tradeName?`${tradeName.toLowerCase().replace(/\s+/g,"-")}-123elm@hub.constructinv.com`:"";
+  if(sent) return (
+    <div style={{padding:"28px 32px",flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{textAlign:"center",maxWidth:400}}>
+        <div style={{fontSize:52,marginBottom:14}}>🎉</div>
+        <div style={{fontSize:20,fontWeight:700,color:C.text,marginBottom:8}}>Magic Link Sent!</div>
+        <div style={{fontSize:13,color:C.textSub,marginBottom:8,lineHeight:1.7}}><strong>{subName}</strong> received a magic link to upload documents.</div>
+        <div style={{fontFamily:"monospace",background:"#f0f2f8",borderRadius:8,padding:"10px 14px",fontSize:12,color:C.navy,marginBottom:20}}>{alias}</div>
+        <Btn size="lg" onClick={()=>setScreen("hub_trades")}>View All Trades →</Btn>
+      </div>
+    </div>
+  );
+  return (
+    <div style={{padding:"28px 32px",flex:1,overflowY:"auto"}}>
+      <BackLink label="Back to Trades" onClick={()=>setScreen("hub_trades")} />
+      <div style={{maxWidth:520}}>
+        <div style={{fontSize:20,fontWeight:700,color:C.text,marginBottom:6}}>Add a Trade</div>
+        <div style={{fontSize:13,color:C.textSub,marginBottom:22}}>Sub gets a magic link — no account needed.</div>
+        <Card>
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            {[{label:"Trade / Scope Name",value:tradeName,set:setTradeName,ph:"e.g. Plumbing, Electrical, HVAC..."},{label:"Subcontractor Company",value:subName,set:setSubName,ph:"e.g. Pacific Coast Plumbing LLC"},{label:"Sub Contact Email",value:email,set:setEmail,ph:"office@sub.com"}].map(f=>(
+              <div key={f.label}>
+                <label style={{fontSize:12,fontWeight:700,color:C.text,textTransform:"uppercase",letterSpacing:0.6,display:"block",marginBottom:5}}>{f.label}</label>
+                <input value={f.value} onChange={e=>f.set(e.target.value)} placeholder={f.ph} style={{width:"100%",border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 13px",fontSize:13,outline:"none",boxSizing:"border-box"}} />
+              </div>
+            ))}
+            <div>
+              <label style={{fontSize:12,fontWeight:700,color:C.text,textTransform:"uppercase",letterSpacing:0.6,display:"block",marginBottom:5}}>Auto-Generated Email Alias</label>
+              <div style={{border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 13px",fontSize:12,fontFamily:"monospace",color:alias?C.navy:C.textMuted,background:"#f8f9fb"}}>{alias||"Type trade name to generate alias..."}</div>
+              <div style={{fontSize:11,color:C.textSub,marginTop:4}}>📬 Sub can email docs here. Auto-routes to Hub.</div>
+            </div>
+            <Divider />
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setSent(true)} disabled={!tradeName||!email} style={{flex:1,padding:"12px",background:tradeName&&email?C.orange:"#e0e0e0",color:tradeName&&email?"#fff":"#aaa",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:tradeName&&email?"pointer":"not-allowed"}}>📤 Send Magic Link Invite</button>
+              <Btn variant="secondary" onClick={()=>setScreen("hub_trades")}>Cancel</Btn>
+            </div>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+// TEAM ROLES
+const TeamRoles = () => {
+  const roles=[
+    {id:"office",icon:"🧾",title:"Office / Accountant",desc:"Invoices, lien waivers, compliance docs",docTypes:["invoice","lien_waiver","compliance"],members:[{name:"Sarah Johnson",email:"sarah@abcgc.com",you:true}]},
+    {id:"pm",icon:"📋",title:"PM / PMCM",desc:"RFIs, submittals, change orders, drawings",docTypes:["rfi","submittal","change_order","drawing"],members:[{name:"Marcus Torres",email:"marcus@abcgc.com",you:false}]},
+    {id:"super",icon:"🦺",title:"Superintendent",desc:"Daily reports, photos, safety, punch lists",docTypes:["daily_report","photo","other"],members:[]},
+  ];
+  return (
+    <div style={{padding:"28px 32px",flex:1,overflowY:"auto"}}>
+      <div style={{marginBottom:20}}>
+        <div style={{fontSize:22,fontWeight:700,color:C.text}}>👥 Team Roles</div>
+        <div style={{fontSize:13,color:C.textSub,marginTop:4}}>3 fixed roles — doc type determines who gets notified.</div>
+      </div>
+      <div style={{background:C.infoBg,border:`1px solid ${C.info}30`,borderRadius:12,padding:"12px 16px",marginBottom:20,fontSize:13,color:C.info}}>
+        💡 Sub uploads an invoice → Office gets notified. Sub uploads a photo → Superintendent gets notified. Zero manual sorting.
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:16}}>
+        {roles.map(role=>(
+          <Card key={role.id}>
+            <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
+              <div style={{fontSize:28}}>{role.icon}</div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:2}}>{role.title}</div>
+                <div style={{fontSize:13,color:C.textSub,marginBottom:10}}>{role.desc}</div>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>{role.docTypes.map(dt=><Badge key={dt} type={dt} size="sm" />)}</div>
+                <Divider />
+                <div style={{fontSize:12,fontWeight:700,color:C.textMuted,textTransform:"uppercase",letterSpacing:0.6,marginBottom:8}}>Assigned Members</div>
+                {role.members.length===0
+                  ?<div style={{color:C.textMuted,fontSize:13,fontStyle:"italic"}}>No one assigned — goes to account owner.</div>
+                  :role.members.map(m=>(
+                    <div key={m.email} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${C.borderLight}`}}>
+                      <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                        <div style={{width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg,${C.orange},${C.navy})`,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12,fontWeight:700}}>{m.name[0]}</div>
+                        <div>
+                          <div style={{fontSize:13,fontWeight:600,color:C.text}}>{m.name} {m.you&&<span style={{fontSize:10,background:C.orange,color:"#fff",borderRadius:4,padding:"1px 5px"}}>You</span>}</div>
+                          <div style={{fontSize:11,color:C.textMuted}}>{m.email}</div>
+                        </div>
+                      </div>
+                      <Btn size="sm" variant="ghost">Remove</Btn>
+                    </div>
+                  ))
+                }
+                <div style={{marginTop:10}}><Btn size="sm" variant="secondary">+ Add Member</Btn></div>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// AI CASH FLOW
+const AICashFlow = () => {
+  const [tab,setTab]=useState("overview");
+  return (
+    <div style={{padding:"28px 32px",flex:1,overflowY:"auto"}}>
+      <div style={{marginBottom:18}}>
+        <div style={{fontSize:22,fontWeight:700,color:C.text}}>🧠 AI Cash Flow Intelligence</div>
+        <div style={{fontSize:13,color:C.textSub,marginTop:4}}>Tracks every dollar, learns payment patterns, keeps you cash-flow positive</div>
+      </div>
+      <Card style={{background:"linear-gradient(135deg,#f0f2f8,#e8eaf5)",border:`1.5px solid ${C.navy}15`,marginBottom:20}}>
+        <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:12}}>⚡ How the AI Works</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14}}>
+          {[{n:"1",icon:"📤",title:"Collection Tracking",desc:"Submit a pay app → AI starts a clock. Tracks due date, monitors payment, sends follow-ups if late."},
+            {n:"2",icon:"🎯",title:"Pattern Learning",desc:"Learns each client's payment habits. Warns when a slow payer is overdue. Gets smarter over time."},
+            {n:"3",icon:"📈",title:"30-Day Forecast",desc:"Projects cash in/out from active pay apps + terms. Warns about gaps before they happen."}].map(s=>(
+            <div key={s.n} style={{background:"#fff",borderRadius:10,padding:"14px"}}>
+              <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+                <div style={{width:22,height:22,borderRadius:"50%",background:C.orange,color:"#fff",fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{s.n}</div>
+                <span style={{fontSize:15}}>{s.icon}</span>
+                <div style={{fontSize:12,fontWeight:700,color:C.text}}>{s.title}</div>
+              </div>
+              <div style={{fontSize:12,color:C.textSub,lineHeight:1.6}}>{s.desc}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+      <div style={{display:"flex",gap:3,background:"#f0f2f8",borderRadius:10,padding:3,marginBottom:20,width:"fit-content"}}>
+        {["overview","collections","forecast"].map(t=>(
+          <div key={t} onClick={()=>setTab(t)} style={{padding:"7px 20px",borderRadius:7,fontSize:13,fontWeight:600,cursor:"pointer",background:tab===t?C.navy:"transparent",color:tab===t?"#fff":C.textSub,textTransform:"capitalize",transition:"all 0.15s"}}>{t}</div>
+        ))}
+      </div>
+      {tab==="overview"&&<>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16,marginBottom:18}}>
+          {[{label:"Outstanding (Owed to You)",value:"$32,150",sub:"Pay App #4 · 5 days old",color:C.orange,icon:"📤"},{label:"Overdue (30+ Days)",value:"$0",sub:"All on track ✓",color:C.success,icon:"✅"},{label:"Incoming (Next 30 Days)",value:"$28,900",sub:"Projected from active pay apps",color:C.info,icon:"📅"}].map(k=>(
+            <Card key={k.label} style={{borderTop:`3px solid ${k.color}`}}>
+              <div style={{fontSize:20,marginBottom:8}}>{k.icon}</div>
+              <div style={{fontSize:11,color:C.textMuted,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}>{k.label}</div>
+              <div style={{fontSize:26,fontWeight:800,color:k.color}}>{k.value}</div>
+              <div style={{fontSize:11,color:C.textSub,marginTop:4}}>{k.sub}</div>
+            </Card>
+          ))}
+        </div>
+        <Card style={{marginBottom:16}}>
+          <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:12}}>Payer Patterns (AI Learned)</div>
+          {[{name:"ABC Properties",days:12,pattern:"Fast — usually pays before due date",health:"excellent"},{name:"City of LA (Public)",days:32,pattern:"Slow — requires lien waiver before releasing payment",health:"ok"},{name:"Elm Street LLC",days:8,pattern:"Pays early, very reliable",health:"excellent"}].map(p=>(
+            <div key={p.name} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${C.borderLight}`}}>
+              <div>
+                <div style={{fontSize:13,fontWeight:600,color:C.text}}>{p.name}</div>
+                <div style={{fontSize:11,color:C.textSub}}>{p.pattern}</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:16,fontWeight:700,color:p.days>25?C.warning:C.success}}>{p.days} days avg</div>
+                <span style={{fontSize:11,background:p.health==="excellent"?C.successBg:C.warningBg,color:p.health==="excellent"?C.success:C.warning,borderRadius:4,padding:"2px 6px"}}>{p.health}</span>
+              </div>
+            </div>
+          ))}
+        </Card>
+        <Card style={{background:"linear-gradient(135deg,#1A2230,#243044)",border:"none"}}>
+          <div style={{display:"flex",gap:14}}>
+            <span style={{fontSize:26}}>🤖</span>
+            <div>
+              <div style={{fontSize:14,fontWeight:700,color:"#fff",marginBottom:6}}>AI Insight</div>
+              <div style={{fontSize:13,color:"rgba(255,255,255,0.75)",lineHeight:1.65}}>Pay App #4 ($32,150) submitted 5 days ago to ABC Properties. Based on their 12-day avg, expect payment by <strong style={{color:"#fff"}}>April 13</strong>. If unpaid by April 10, I'll auto-send a follow-up email.</div>
+              <div style={{marginTop:12,display:"flex",gap:8}}><Btn size="sm">Send Reminder Now</Btn></div>
+            </div>
+          </div>
+        </Card>
+      </>}
+      {tab==="collections"&&<Card>
+        <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:14}}>Collection Tracking</div>
+        {[{pa:"Pay App #4 — Apr 2026",proj:"123 Elm St",client:"ABC Properties",amt:"$32,150",due:"Apr 30",status:"pending"},{pa:"Pay App #3 — Mar 2026",proj:"123 Elm St",client:"ABC Properties",amt:"$28,400",due:"Paid Mar 15",status:"approved"},{pa:"Pay App #6 — Mar 2026",proj:"Downtown Office",client:"Pinnacle Commercial",amt:"$48,000",due:"Paid Mar 28",status:"approved"}].map((p,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0",borderBottom:`1px solid ${C.borderLight}`}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:C.text}}>{p.pa}</div>
+              <div style={{fontSize:12,color:C.textSub}}>{p.proj} · {p.client} · {p.due}</div>
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:15,fontWeight:700,color:C.text}}>{p.amt}</div>
+              <StatusBadge status={p.status} />
+            </div>
+          </div>
+        ))}
+      </Card>}
+      {tab==="forecast"&&<>
+        <Card style={{marginBottom:16}}>
+          <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:14}}>30-Day Cash Flow Forecast</div>
+          <div style={{display:"flex",gap:8,alignItems:"flex-end",height:120,marginBottom:8}}>
+            {[{week:"Wk 1",in:0,out:12000},{week:"Wk 2",in:32150,out:8000},{week:"Wk 3",in:0,out:15000},{week:"Wk 4",in:28900,out:6000}].map((w,i)=>(
+              <div key={i} style={{flex:1,display:"flex",gap:3,alignItems:"flex-end",justifyContent:"center"}}>
+                <div style={{flex:1,background:C.success,borderRadius:"4px 4px 0 0",height:`${(w.in/35000)*115}px`,minHeight:w.in?4:0,opacity:0.85}} />
+                <div style={{flex:1,background:C.danger,borderRadius:"4px 4px 0 0",height:`${(w.out/35000)*115}px`,opacity:0.7}} />
+              </div>
+            ))}
+          </div>
+          <div style={{display:"flex"}}>{["Wk 1","Wk 2","Wk 3","Wk 4"].map(w=><div key={w} style={{flex:1,textAlign:"center",fontSize:11,color:C.textSub}}>{w}</div>)}</div>
+          <div style={{display:"flex",gap:16,marginTop:8,fontSize:11}}><span style={{color:C.success}}>■ Cash In</span><span style={{color:C.danger}}>■ Cash Out</span></div>
+        </Card>
+        <Card>
+          <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:10}}>AI Summary</div>
+          <div style={{fontSize:13,color:C.textSub,lineHeight:1.75}}>📈 <strong style={{color:C.text}}>30-day net: +$27,650</strong><br/>Pay App #4 expected Apr 10 (+$32,150) offset by ~$21K vendor costs.<br/><br/>⚠️ <strong style={{color:C.warning}}>Gap: Weeks 1 &amp; 3</strong> — negative daily flow. If ABC Properties pays late, ~$9K shortfall by April 15. Recommend reminder on April 9.</div>
+        </Card>
+      </>}
+    </div>
+  );
+};
+
+// BILLING INTEGRATION SCREEN
+const BillingIntegration = ({setScreen}) => (
+  <div style={{padding:"28px 32px",flex:1,overflowY:"auto"}}>
+    <div style={{marginBottom:22}}>
+      <div style={{fontSize:22,fontWeight:700,color:C.text}}>📄 G702/G703 Billing</div>
+      <div style={{fontSize:13,color:C.textSub,marginTop:4}}>123 Elm Street Addition · Connected to Project Hub + AI Cash Flow</div>
+    </div>
+    <Card style={{background:"linear-gradient(135deg,#fff7f5,#fff3f0)",border:`1.5px solid ${C.orange}30`,marginBottom:20}}>
+      <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:14}}>🔗 The Complete Flow: Hub → Billing → Payment → QuickBooks</div>
+      <div style={{display:"flex",flexDirection:"column",gap:0}}>
+        {[
+          {s:"1",icon:"📤",title:"Sub uploads invoice to Hub",desc:"Via magic link, email alias, or web upload",done:true},
+          {s:"2",icon:"✅",title:"You review & approve in Hub",desc:"Approved invoice links to SOV trade line automatically",done:true},
+          {s:"3",icon:"📄",title:"Create G702/G703 Pay App",desc:"Approved trade invoices pre-populate pay app work-completed",done:true},
+          {s:"4",icon:"📧",title:"Send Pay App to Owner",desc:"Owner receives PDF + Pay Now link via email",done:true},
+          {s:"5",icon:"💳",title:"Owner pays via Stripe or check",desc:"ACH ($25 flat) or card (3.3%+$0.40) — or mark paid manually",done:false},
+          {s:"6",icon:"📊",title:"Syncs to QuickBooks",desc:"Payment confirmed → auto-records in QBO",done:false},
+        ].map((item,i)=>(
+          <div key={item.s} style={{display:"flex",gap:14,position:"relative"}}>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",width:32,flexShrink:0}}>
+              <div style={{width:32,height:32,borderRadius:"50%",background:item.done?C.orange:"#e8eaf0",color:item.done?"#fff":C.textMuted,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,zIndex:1}}>{item.s}</div>
+              {i<5&&<div style={{width:2,flex:1,background:item.done?"#f5c0a8":"#e8eaf0",minHeight:20}} />}
+            </div>
+            <div style={{flex:1,paddingBottom:16,paddingTop:5}}>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <span style={{fontSize:16}}>{item.icon}</span>
+                <div style={{fontSize:13,fontWeight:700,color:item.done?C.text:C.textMuted}}>{item.title}</div>
+                {!item.done&&<span style={{fontSize:11,background:"#f5f6f9",color:C.textMuted,borderRadius:4,padding:"2px 6px"}}>Coming soon</span>}
+              </div>
+              <div style={{fontSize:12,color:C.textSub,marginTop:3,marginLeft:24}}>{item.desc}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+    <Card>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <div style={{fontSize:14,fontWeight:700,color:C.text}}>Pay Applications</div>
+        <Btn size="sm">+ New Pay App</Btn>
+      </div>
+      {[{num:"#4",period:"Apr 2026",amount:"$32,150",status:"pending",note:"Submitted Apr 1 · Awaiting payment"},{num:"#3",period:"Mar 2026",amount:"$28,400",status:"approved",note:"Paid Mar 15 · ACH confirmed"},{num:"#2",period:"Feb 2026",amount:"$24,600",status:"approved",note:"Paid Feb 12"}].map(p=>(
+        <div key={p.num} style={{display:"flex",alignItems:"center",gap:14,padding:"11px 0",borderBottom:`1px solid ${C.borderLight}`}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:13,fontWeight:700,color:C.text}}>Pay App {p.num} — {p.period}</div>
+            <div style={{fontSize:11,color:C.textSub,marginTop:2}}>{p.note}</div>
+          </div>
+          <div style={{fontSize:15,fontWeight:800,color:C.text}}>{p.amount}</div>
+          <StatusBadge status={p.status} />
+        </div>
+      ))}
+    </Card>
+  </div>
+);
+
+// SUB MAGIC LINK
+const SubMagicLink = ({setScreen}) => {
+  const [docType,setDocType]=useState("invoice");
+  const [note,setNote]=useState("");
+  const [done,setDone]=useState(false);
+  return (
+    <div style={{minHeight:"100vh",background:"#f0f4f8",display:"flex",flexDirection:"column",alignItems:"center",padding:"40px 16px"}}>
+      <div style={{width:"100%",maxWidth:520}}>
+        <div style={{background:C.navy,borderRadius:"14px 14px 0 0",padding:"18px 24px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:C.orange}}>CONSTRUCTINVOICE AI</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginTop:1}}>Secure Document Upload · No account needed</div>
+          </div>
+          <span style={{fontSize:11,background:"rgba(255,255,255,0.08)",color:"rgba(255,255,255,0.5)",borderRadius:6,padding:"4px 10px"}}>🔗 Magic Link</span>
+        </div>
+        <div style={{background:"#fff",borderRadius:"0 0 14px 14px",padding:"24px",boxShadow:"0 8px 40px rgba(0,0,0,0.1)"}}>
+          {!done?<>
+            <div style={{marginBottom:20}}>
+              <div style={{fontSize:19,fontWeight:700,color:C.text,marginBottom:4}}>Hello, Pacific Coast Plumbing 👋</div>
+              <div style={{fontSize:13,color:C.textSub,lineHeight:1.65}}>Uploading for <strong>123 Elm Street Addition</strong><br/>Client: <strong>ABC General Contractors</strong> · Trade: <strong>Plumbing</strong></div>
+            </div>
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:12,fontWeight:700,color:C.text,textTransform:"uppercase",letterSpacing:0.6,marginBottom:8}}>What are you uploading?</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+                {["invoice","lien_waiver","rfi","photo","change_order","other"].map(dt=>{
+                  const m=DOC_META[dt];
+                  return <div key={dt} onClick={()=>setDocType(dt)} style={{border:`2px solid ${docType===dt?C.orange:C.border}`,borderRadius:9,padding:"10px 6px",textAlign:"center",cursor:"pointer",background:docType===dt?"#fff7f5":"#fff",transition:"all 0.15s"}}>
+                    <div style={{fontSize:20,marginBottom:3}}>{m.icon}</div>
+                    <div style={{fontSize:11,fontWeight:600,color:docType===dt?C.orange:C.textSub}}>{m.label}</div>
+                  </div>;
+                })}
+              </div>
+            </div>
+            <div style={{border:`2px dashed ${C.orange}60`,borderRadius:12,padding:"26px 16px",textAlign:"center",background:"#fff7f5",marginBottom:12,cursor:"pointer"}}>
+              <div style={{fontSize:32,marginBottom:6}}>📁</div>
+              <div style={{fontSize:14,fontWeight:600,color:C.text,marginBottom:3}}>Drop file or tap to browse</div>
+              <div style={{fontSize:12,color:C.textSub}}>PDF, Word, Excel, Photos, Videos · 50MB max</div>
+            </div>
+            <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Optional note for the GC..." style={{width:"100%",minHeight:54,border:`1.5px solid ${C.border}`,borderRadius:8,padding:"9px 12px",fontSize:13,resize:"vertical",outline:"none",boxSizing:"border-box",marginBottom:12}} />
+            <button onClick={()=>setDone(true)} style={{width:"100%",padding:"13px",background:C.orange,color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer"}}>📤 Upload Document</button>
+            <div style={{background:"#f5f6f9",borderRadius:9,padding:"10px 12px",marginTop:12,fontSize:12,color:C.textSub,lineHeight:1.6}}>
+              💡 <strong>Prefer email?</strong> Send to:<br/><span style={{fontFamily:"monospace",color:C.navy,fontSize:11}}>plumbing-123elm@hub.constructinv.com</span>
+            </div>
+          </>:(
+            <div style={{textAlign:"center",padding:"20px 0"}}>
+              <div style={{fontSize:52,marginBottom:14}}>✅</div>
+              <div style={{fontSize:20,fontWeight:700,color:C.text,marginBottom:8}}>Uploaded!</div>
+              <div style={{fontSize:13,color:C.textSub,lineHeight:1.65,marginBottom:18}}>ABC General Contractors will review it. You'll receive an email if approved or if a revision is needed.</div>
+              <Btn variant="secondary" onClick={()=>setDone(false)}>Upload Another</Btn>
+            </div>
+          )}
+        </div>
+        <div style={{textAlign:"center",marginTop:12,fontSize:11,color:C.textMuted}}>Powered by ConstructInvoice AI · Secure · No account required</div>
+        <div style={{textAlign:"center",marginTop:8}}><span onClick={()=>setScreen("hub_inbox")} style={{fontSize:12,color:C.textMuted,cursor:"pointer"}}>← Back to GC View</span></div>
+      </div>
+    </div>
+  );
+};
+
+// SETTINGS
+const Settings = () => (
+  <div style={{padding:"28px 32px",flex:1,overflowY:"auto"}}>
+    <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:20}}>⚙️ Hub Settings</div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+      <Card>
+        <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:12}}>Email Ingestion (Mailgun)</div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><div style={{width:8,height:8,background:C.success,borderRadius:"50%"}}/><span style={{fontSize:13,color:C.success}}>Active — receiving emails</span></div>
+        <div style={{fontFamily:"monospace",fontSize:12,color:C.navy,background:"#f5f6f9",padding:"7px 10px",borderRadius:7}}>hub.constructinv.com</div>
+        <div style={{fontSize:11,color:C.textSub,marginTop:6}}>Emails to any alias auto-route to correct project hub.</div>
+      </Card>
+      <Card>
+        <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:12}}>Stale Alert Schedule</div>
+        {[{days:2,label:"Warning",icon:"⚠️",color:C.warning},{days:5,label:"Escalation",icon:"🔴",color:C.danger},{days:7,label:"Urgent",icon:"🚨",color:C.danger}].map(a=>(
+          <div key={a.days} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:`1px solid ${C.borderLight}`,fontSize:12}}>
+            <span>{a.icon}</span>
+            <div style={{flex:1,color:C.text}}>{a.label} — Day {a.days}</div>
+            <span style={{fontSize:11,color:a.color,fontWeight:600}}>In-app + Email</span>
+          </div>
+        ))}
+      </Card>
+      <Card>
+        <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:12}}>Magic Link Settings</div>
+        <div style={{fontSize:13,color:C.textSub,lineHeight:1.7}}>Links expire after <strong>60 days</strong>.<br/>Subs can forward links — intentional.<br/>Regenerate from Trades tab anytime.</div>
+      </Card>
+      <Card>
+        <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:10}}>QuickBooks Sync</div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><div style={{width:8,height:8,background:C.warning,borderRadius:"50%"}}/><span style={{fontSize:13,color:C.warning}}>Not connected (env vars pending)</span></div>
+        <div style={{fontSize:12,color:C.textSub,marginBottom:10}}>Connect QB to auto-sync invoices, pay apps, and payments.</div>
+        <Btn variant="secondary" size="sm">Connect QuickBooks</Btn>
+      </Card>
+    </div>
+  </div>
+);
+
+// ROOT APP
+function App() {
+  const [screen,setScreen]=useState("projects_list");
+  const [currentProject,setCurrentProject]=useState(null);
+  const [selectedDoc,setSelectedDoc]=useState(null);
+  const [docs,setDocs]=useState(DOCS_INIT);
+  const notifCount=docs.filter(d=>d.stale).length;
+
+  const renderScreen=()=>{
+    switch(screen){
+      case "projects_list":      return <ProjectsList setScreen={setScreen} setCurrentProject={setCurrentProject} />;
+      case "hub_inbox":          return <HubInbox docs={docs} setDocs={setDocs} setScreen={setScreen} setSelectedDoc={setSelectedDoc} currentProject={currentProject} />;
+      case "hub_doc_detail":     return <DocDetail doc={selectedDoc} docs={docs} setDocs={setDocs} setScreen={setScreen} />;
+      case "hub_trades":         return <TradesView setScreen={setScreen} />;
+      case "hub_add_trade":      return <AddTrade setScreen={setScreen} />;
+      case "hub_team":           return <TeamRoles />;
+      case "ai_cashflow":        return <AICashFlow />;
+      case "billing_integration":return <BillingIntegration setScreen={setScreen} />;
+      case "settings":           return <Settings />;
+      default:                   return <ProjectsList setScreen={setScreen} setCurrentProject={setCurrentProject} />;
+    }
+  };
+
+  if(screen==="sub_magic_link") return <div style={{fontFamily:"'Inter',system-ui"}}><SubMagicLink setScreen={setScreen} /></div>;
+
+  return (
+    <div style={{fontFamily:"'Inter',system-ui",display:"flex",height:"100vh",overflow:"hidden",background:C.bg}}>
+      <Sidebar screen={screen} setScreen={setScreen} notifCount={notifCount} currentProject={currentProject} setCurrentProject={setCurrentProject} />
+      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+        <div style={{height:50,background:C.card,borderBottom:`1.5px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 24px",flexShrink:0}}>
+          <div style={{fontSize:12,color:C.textSub}}>
+            <span style={{fontWeight:700,color:C.text}}>ConstructInvoice AI</span>
+            {currentProject&&<> · <span style={{color:C.orange}}>{currentProject.name}</span></>}
+          </div>
+          <div style={{display:"flex",gap:12,alignItems:"center"}}>
+            <div style={{position:"relative",cursor:"pointer"}}>
+              <span style={{fontSize:18}}>🔔</span>
+              {notifCount>0&&<span style={{position:"absolute",top:-4,right:-4,background:C.danger,color:"#fff",borderRadius:"50%",fontSize:9,fontWeight:700,width:15,height:15,display:"flex",alignItems:"center",justifyContent:"center"}}>{notifCount}</span>}
+            </div>
+            <div style={{width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg,${C.orange},${C.navy})`,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12,fontWeight:700}}>V</div>
+          </div>
+        </div>
+        <div style={{flex:1,overflowY:"auto"}}>{renderScreen()}</div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+</script>
+</body>
+</html>
