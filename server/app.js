@@ -167,6 +167,10 @@ app.use(require('./features/vendor-book'));
 const { router: trustRouter } = require('./features/trust');
 app.use(trustRouter);
 
+// Early Payment routes — sub early access, Stripe fee, GC approval
+const { router: earlyPayRouter } = require('./features/early-pay');
+app.use(earlyPayRouter);
+
 // ── Emergency admin reset (standalone) ────────────────────────────────────
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');

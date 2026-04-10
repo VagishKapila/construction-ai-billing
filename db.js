@@ -615,6 +615,33 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_vendor_book_owner ON vendor_address_book(owner_id);
     CREATE INDEX IF NOT EXISTS idx_vendor_book_trade ON vendor_address_book(trade_type);
     CREATE INDEX IF NOT EXISTS idx_vendor_book_email ON vendor_address_book(email);
+
+    -- Early Payment System (Apr 2026) — sub early access to payment, Stripe fee, GC approval gate
+    ALTER TABLE project_trades ADD COLUMN IF NOT EXISTS early_pay_eligible BOOLEAN DEFAULT true;
+    ALTER TABLE project_trades ADD COLUMN IF NOT EXISTS gc_early_pay_override BOOLEAN DEFAULT false;
+
+    ALTER TABLE hub_uploads ADD COLUMN IF NOT EXISTS early_pay_requested BOOLEAN DEFAULT false;
+    ALTER TABLE hub_uploads ADD COLUMN IF NOT EXISTS early_pay_request_id INTEGER;
+
+    CREATE TABLE IF NOT EXISTS early_payment_requests (
+      id SERIAL PRIMARY KEY,
+      hub_upload_id INTEGER REFERENCES hub_uploads(id) ON DELETE CASCADE,
+      project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+      trade_id INTEGER REFERENCES project_trades(id),
+      requested_by VARCHAR(200),
+      amount NUMERIC(14,2) NOT NULL,
+      fee_pct NUMERIC(5,4) DEFAULT 0.025,
+      fee_amount NUMERIC(14,2),
+      net_amount NUMERIC(14,2),
+      status VARCHAR(50) DEFAULT 'pending',
+      stripe_payment_intent_id VARCHAR(200),
+      stripe_transfer_id VARCHAR(200),
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_early_payment_hub_upload ON early_payment_requests(hub_upload_id);
+    CREATE INDEX IF NOT EXISTS idx_early_payment_project ON early_payment_requests(project_id);
+    CREATE INDEX IF NOT EXISTS idx_early_payment_status ON early_payment_requests(status);
   `);
   console.log('Database ready');
 }
