@@ -38,7 +38,7 @@ router.get('/api/aria/follow-up-queue', auth, async (req, res) => {
     const result = await pool.query(
       `SELECT
         pa.id,
-        pa.pay_app_number,
+        pa.app_number,
         pa.submitted_at,
         pa.payment_due_date,
         pa.total_work_completed,
