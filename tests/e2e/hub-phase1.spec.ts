@@ -186,11 +186,12 @@ test.describe('Hub: Upload → Approve Flow (critical path)', () => {
     const uploadId = uploadBody.data.id;
 
     // Step 3: Approve upload as GC (authenticated)
+    // NOTE: approve endpoint expects { action: 'approve' }, not { status: 'approved' }
     const approveResp = await request.put(
       `${BASE}/api/projects/${projectId}/hub/uploads/${uploadId}`,
       {
         headers: h(token),
-        data: { status: 'approved' },
+        data: { action: 'approve' },
       }
     );
     expect(approveResp.status(), 'Approve upload should be 200').toBe(200);
