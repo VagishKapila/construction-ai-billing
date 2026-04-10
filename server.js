@@ -769,9 +769,19 @@ app.post('/api/projects/:id/payapps', auth, async (req,res) => {
   }
   const {period_label,period_start,period_end,app_number} = req.body;
   const invoiceToken = require('crypto').randomBytes(24).toString('hex');
+  // Carry over po_number and special_notes from the previous pay app (if any)
+  const prevPayApp = app_number > 1
+    ? (await pool.query(
+        'SELECT po_number, special_notes, notes_color FROM pay_apps WHERE project_id=$1 AND app_number=$2 AND deleted_at IS NULL',
+        [req.params.id, app_number - 1]
+      )).rows[0]
+    : null;
+  const inheritedPoNumber = prevPayApp?.po_number || null;
+  const inheritedNotes = prevPayApp?.special_notes || null;
+  const inheritedNotesColor = prevPayApp?.notes_color || null;
   const pa = await pool.query(
-    'INSERT INTO pay_apps(project_id,app_number,period_label,period_start,period_end,invoice_token) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',
-    [req.params.id,app_number,period_label,period_start,period_end,invoiceToken]
+    'INSERT INTO pay_apps(project_id,app_number,period_label,period_start,period_end,invoice_token,po_number,special_notes,notes_color) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
+    [req.params.id,app_number,period_label,period_start,period_end,invoiceToken,inheritedPoNumber,inheritedNotes,inheritedNotesColor]
   );
   const paId = pa.rows[0].id;
   const sovLines = await pool.query('SELECT * FROM sov_lines WHERE project_id=$1 ORDER BY sort_order',[req.params.id]);
@@ -6268,8 +6278,11 @@ app.get('/api/pay/:token', async (req, res) => {
       [req.params.token]
     )).rows[0];
     if (!pa) return res.status(404).json({ error: 'Payment link not found or expired' });
-    // Get connected account for this GC (optional — if not set up, just omit stripe_account_id)
-    const acct = (await pool.query('SELECT stripe_account_id FROM connected_accounts WHERE user_id=$1 AND charges_enabled=TRUE', [pa.user_id])).rows[0];
+    // Get connected account for this GC — two-query approach for precise status
+    const acctAny = (await pool.query('SELECT stripe_account_id, charges_enabled FROM connected_accounts WHERE user_id=$1 ORDER BY id DESC LIMIT 1', [pa.user_id])).rows[0];
+    const acct = acctAny?.charges_enabled ? acctAny : null;
+    // stripe_status: 'none' = no account, 'pending' = account exists but charges not enabled, 'ready' = fully active
+    const stripeStatus = !acctAny ? 'none' : (!acctAny.charges_enabled ? 'pending' : 'ready');
     // Calculate amounts from pay app lines
     const lines = (await pool.query(
       `SELECT pal.*, sl.item_id, sl.description, sl.scheduled_value
@@ -6338,6 +6351,7 @@ app.get('/api/pay/:token', async (req, res) => {
       ach_fee: achFee,
       stripe_account_id: acct?.stripe_account_id || null,
       payment_available: !!acct?.stripe_account_id,
+      stripe_status: stripeStatus, // 'none' | 'pending' | 'ready'
       po_number: pa.po_number,
       lines: lineItems,
       pay_app_id: pa.id,

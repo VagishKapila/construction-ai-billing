@@ -67,9 +67,19 @@ router.post('/api/projects/:id/payapps', auth, trialGate, async (req,res) => {
     app_number = (parseInt(maxRes.rows[0].max_num) || 0) + 1;
   }
   const invoiceToken = require('crypto').randomBytes(24).toString('hex');
+  // Carry over po_number and special_notes from the previous pay app (if any)
+  const prevPayApp = app_number > 1
+    ? (await pool.query(
+        'SELECT po_number, special_notes, notes_color FROM pay_apps WHERE project_id=$1 AND app_number=$2 AND deleted_at IS NULL',
+        [req.params.id, app_number - 1]
+      )).rows[0]
+    : null;
+  const inheritedPoNumber = prevPayApp?.po_number || null;
+  const inheritedNotes = prevPayApp?.special_notes || null;
+  const inheritedNotesColor = prevPayApp?.notes_color || null;
   const pa = await pool.query(
-    'INSERT INTO pay_apps(project_id,app_number,period_label,period_start,period_end,invoice_token) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',
-    [req.params.id,app_number,period_label,period_start,period_end,invoiceToken]
+    'INSERT INTO pay_apps(project_id,app_number,period_label,period_start,period_end,invoice_token,po_number,special_notes,notes_color) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
+    [req.params.id,app_number,period_label,period_start,period_end,invoiceToken,inheritedPoNumber,inheritedNotes,inheritedNotesColor]
   );
   const paId = pa.rows[0].id;
   const sovLines = await pool.query('SELECT * FROM sov_lines WHERE project_id=$1 ORDER BY sort_order',[req.params.id]);

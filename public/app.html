@@ -2126,7 +2126,11 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               <div class="field"><label>Period label</label><input type="text" id="pa-period-label" placeholder="e.g. January 2022" onchange="savePAMeta()"/></div>
               <div class="field"><label>Period start</label><input type="date" id="pa-period-start" onchange="savePAMeta()"/></div>
               <div class="field"><label>Period end</label><input type="date" id="pa-period-end" onchange="savePAMeta()"/></div>
-              <div class="field"><label>PO / Reference #</label><input type="text" id="pa-po-number" placeholder="e.g. PO-2026-0042" onchange="savePAMeta()"/></div>
+              <div class="field">
+                <label>PO / Reference #</label>
+                <input type="text" id="pa-po-number" placeholder="e.g. PO-2026-0042" onchange="savePAMeta()"/>
+                <div id="po-number-hint" style="display:none;font-size:11px;color:#9ca3af;margin-top:3px"></div>
+              </div>
               <div class="field arch-field"><label>Amount certified ($)</label><input type="text" id="arch-cert-amt" placeholder="Enter certified amount" onchange="saveArchCert()"/></div>
               <div class="field arch-field"><label>Certificate date</label><input type="date" id="arch-cert-date" onchange="saveArchCert()"/></div>
               <div class="field arch-field"><label>Architect name</label><input type="text" id="arch-cert-name" placeholder="Architect of record" onchange="saveArchCert()"/></div>
@@ -2151,6 +2155,7 @@ input:checked + .toggle-slider:before{transform:translateX(18px)}
               </select>
             </div>
             <div id="pa-special-notes" contenteditable="true" style="width:100%;min-height:80px;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;resize:vertical;overflow:auto;outline:none;background:#fff" data-placeholder="e.g. ACH info, payment terms, special conditions..." oninput="onNotesInput()" onblur="savePAMeta()"></div>
+            <div id="notes-hint" style="display:none;font-size:11px;color:#9ca3af;margin-top:4px"></div>
           </div>
           <div id="g702-contract-warn"></div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
@@ -3609,6 +3614,12 @@ async function loadPayApp(id,tab=0){
     if(pa.period_end) document.getElementById('pa-period-end').value=(pa.period_end||'').split('T')[0];
     document.getElementById('pa-po-number').value=pa.po_number||'';
     document.getElementById('pa-special-notes').innerHTML=pa.special_notes||'';
+    // Show "carried from Pay App #N" hint text for Pay App #2+ with inherited values
+    const prevAppNum = (pa.app_number||1) - 1;
+    const poHint = document.getElementById('po-number-hint');
+    const notesHint = document.getElementById('notes-hint');
+    if(poHint){ if(pa.po_number&&pa.app_number>1){poHint.textContent='↑ Carried from Pay App #'+prevAppNum+' — edit freely';poHint.style.display='';}else{poHint.style.display='none';} }
+    if(notesHint){ if(pa.special_notes&&pa.app_number>1){notesHint.textContent='↑ Carried from Pay App #'+prevAppNum+' — edit freely';notesHint.style.display='';}else{notesHint.style.display='none';} }
     // Distribution checkboxes (null = use DB default: owner+arch true, contractor false)
     document.getElementById('dist-owner').checked    = pa.dist_owner    !== false;
     document.getElementById('dist-architect').checked = pa.dist_architect === true;

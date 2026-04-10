@@ -189,6 +189,35 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     </div>
   </div>
 
+  <!-- Stripe Not Ready State (no account or pending verification) -->
+  <div id="nostripe-state" style="display:none">
+    <div class="pay-card">
+      <div class="pay-card-header">
+        <div class="invoice-title" id="nostripe-title">Invoice</div>
+        <div class="invoice-meta" id="nostripe-meta"></div>
+      </div>
+      <div class="pay-card-body" style="text-align:center;padding:32px 24px">
+        <div style="width:56px;height:56px;border-radius:50%;background:#fef3c7;display:inline-flex;align-items:center;justify-content:center;margin-bottom:16px">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <h2 id="nostripe-heading" style="font-size:18px;font-weight:700;color:#1f2937;margin-bottom:8px">Online Payments Not Available</h2>
+        <p id="nostripe-msg" style="font-size:14px;color:#6b7280;line-height:1.6;max-width:320px;margin:0 auto 20px"></p>
+        <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:16px;text-align:left;font-size:13px;color:#374151">
+          <p style="font-weight:600;margin-bottom:8px">💳 How to pay:</p>
+          <p id="nostripe-company" style="margin-bottom:4px"></p>
+          <p id="nostripe-contact" style="color:#6b7280"></p>
+        </div>
+      </div>
+      <!-- Download PDF still available -->
+      <div class="invoice-actions" id="nostripe-actions">
+        <a class="invoice-action-btn" id="nostripe-pdf" href="#" target="_blank">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download Invoice PDF
+        </a>
+      </div>
+    </div>
+  </div>
+
   <!-- Main Payment State -->
   <div id="pay-state" style="display:none">
     <div class="pay-header">
@@ -404,7 +433,7 @@ const token = pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2]
 })();
 
 function showState(state) {
-  ['loading-state','error-state','success-state','pay-state','paid-state','baddebt-state'].forEach(id => {
+  ['loading-state','error-state','success-state','pay-state','paid-state','baddebt-state','nostripe-state'].forEach(id => {
     document.getElementById(id).style.display = 'none';
   });
   document.getElementById(state + '-state').style.display = '';
@@ -431,6 +460,28 @@ function renderInvoice() {
       document.getElementById('paid-detail').textContent = 'A payment for this invoice is being processed. Bank transfers (ACH) typically take 1-2 business days to clear. You will receive a confirmation once complete.';
     }
     showState('paid');
+    return;
+  }
+
+  // Check Stripe availability before showing payment form
+  if (!d.payment_available || d.stripe_status !== 'ready') {
+    // Show friendly "no online payments" state with invoice info still visible
+    const isPending = d.stripe_status === 'pending';
+    document.getElementById('nostripe-title').textContent = 'Pay App #' + d.app_number;
+    document.getElementById('nostripe-meta').textContent = d.project_name || '';
+    document.getElementById('nostripe-heading').textContent = isPending
+      ? 'Payment Setup In Progress'
+      : 'Online Payments Not Available';
+    document.getElementById('nostripe-msg').textContent = isPending
+      ? 'The contractor is finishing their payment account verification with Stripe. This usually takes 1–2 business days. Please check back shortly or contact them directly to arrange payment.'
+      : 'This contractor hasn\'t set up online payments yet. Please contact them directly to arrange payment by check or bank transfer.';
+    const contactLines = [];
+    if (d.company_name) contactLines.push(d.company_name);
+    if (d.contact_name) contactLines.push(d.contact_name);
+    document.getElementById('nostripe-company').textContent = contactLines.join(' — ') || 'Contact the contractor directly.';
+    document.getElementById('nostripe-contact').textContent = d.contact_email ? 'Email: ' + d.contact_email : '';
+    document.getElementById('nostripe-pdf').href = '/api/pay/' + token + '/pdf';
+    showState('nostripe');
     return;
   }
 

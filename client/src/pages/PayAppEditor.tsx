@@ -931,7 +931,14 @@ function Step4Summary({
         <h3 className="text-lg font-semibold text-text-primary mb-4">Billing Period & Details</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input label="Period Label" value={periodLabel} onChange={(e) => onPeriodLabelChange(e.target.value)} placeholder="e.g. January 2026" />
-          <Input label="PO / Reference #" value={poNumber} onChange={(e) => onPoChange(e.target.value)} placeholder="e.g. PO-2026-0042" />
+          <div>
+            <Input label="PO / Reference #" value={poNumber} onChange={(e) => onPoChange(e.target.value)} placeholder="e.g. PO-2026-0042" />
+            {payApp?.app_number > 1 && poNumber && (
+              <p className="text-xs text-gray-400 mt-1">
+                ↑ Carried from Pay App #{payApp.app_number - 1} — edit freely
+              </p>
+            )}
+          </div>
           <Input label="Period Start" type="date" value={periodStart} onChange={(e) => onPeriodStartChange(e.target.value)} />
           <Input label="Period End" type="date" value={periodEnd} onChange={(e) => onPeriodEndChange(e.target.value)} />
         </div>
@@ -941,6 +948,11 @@ function Step4Summary({
       <Card className="p-6">
         <h3 className="text-lg font-semibold text-text-primary mb-4">Notes</h3>
         <RichTextNotes value={notes} onChange={onNotesChange} color={notesColor} onColorChange={onNotesColorChange} />
+        {payApp?.app_number > 1 && notes && (
+          <p className="text-xs text-gray-400 mt-2">
+            ↑ Carried from Pay App #{payApp.app_number - 1} — edit freely
+          </p>
+        )}
       </Card>
 
       {/* G702 Financial Summary */}

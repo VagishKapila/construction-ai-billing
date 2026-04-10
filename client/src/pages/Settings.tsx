@@ -101,6 +101,7 @@ export function Settings() {
   const [stripeLoading, setStripeLoading] = useState(false)
   const [stripeDisconnecting, setStripeDisconnecting] = useState(false)
   const [creditCardEnabled, setCreditCardEnabled] = useState(false)
+  const [creditCardSaving, setCreditCardSaving] = useState(false)
 
   // Notification form state
   const [notificationForm, setNotificationForm] = useState<NotificationFormState>({
@@ -288,6 +289,25 @@ export function Settings() {
       showToast('error', 'Failed to save contact information')
     } finally {
       setContactSaving(false)
+    }
+  }
+
+  // Credit card toggle save handler
+  const handleCreditCardSave = async () => {
+    setCreditCardSaving(true)
+    try {
+      const result = await saveSettings({
+        credit_card_enabled: creditCardEnabled,
+      } as any)
+      if (result) {
+        showToast('success', creditCardEnabled ? 'Credit card payments enabled' : 'Credit card payments disabled')
+      } else {
+        showToast('error', 'Failed to save payment method preference')
+      }
+    } catch (err) {
+      showToast('error', 'Failed to save payment method preference')
+    } finally {
+      setCreditCardSaving(false)
     }
   }
 
@@ -828,6 +848,17 @@ export function Settings() {
                     />
                   </label>
                 </div>
+
+                {/* Credit card preference save */}
+                <Button
+                  size="sm"
+                  onClick={handleCreditCardSave}
+                  disabled={creditCardSaving}
+                  variant="outline"
+                  className="w-full sm:w-auto text-xs"
+                >
+                  {creditCardSaving ? 'Saving…' : 'Save Payment Methods'}
+                </Button>
 
                 {/* Actions */}
                 <div className="flex flex-col sm:flex-row gap-2">
