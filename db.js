@@ -654,6 +654,105 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_early_payment_hub_upload ON early_payment_requests(hub_upload_id);
     CREATE INDEX IF NOT EXISTS idx_early_payment_project ON early_payment_requests(project_id);
     CREATE INDEX IF NOT EXISTS idx_early_payment_status ON early_payment_requests(status);
+
+    -- Project join codes (Agent 3 — sub registration via codes)
+    CREATE TABLE IF NOT EXISTS project_join_codes (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      code VARCHAR(20) UNIQUE NOT NULL,
+      trade_type VARCHAR(100),
+      created_by INTEGER REFERENCES users(id),
+      expires_at TIMESTAMPTZ,
+      used_at TIMESTAMPTZ,
+      used_by INTEGER REFERENCES users(id),
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_join_codes_project ON project_join_codes(project_id);
+    CREATE INDEX IF NOT EXISTS idx_join_codes_code ON project_join_codes(code);
+
+    -- Payer trust scores (per payer email + project)
+    CREATE TABLE IF NOT EXISTS payer_trust_scores (
+      id SERIAL PRIMARY KEY,
+      payer_email VARCHAR(255) NOT NULL,
+      project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+      avg_days_to_pay NUMERIC(6,2),
+      payment_count INTEGER DEFAULT 0,
+      last_payment_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(payer_email, project_id)
+    );
+
+    -- ARIA follow-up log (tracks sent follow-up emails)
+    CREATE TABLE IF NOT EXISTS aria_follow_up_log (
+      id SERIAL PRIMARY KEY,
+      pay_app_id INTEGER REFERENCES pay_apps(id) ON DELETE CASCADE,
+      follow_up_day INTEGER,
+      tone VARCHAR(20),
+      days_overdue INTEGER,
+      resend_message_id VARCHAR(200),
+      email_sent_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_aria_follow_up_pay_app ON aria_follow_up_log(pay_app_id);
+
+    -- ARIA lien alerts (CA preliminary notice deadlines)
+    CREATE TABLE IF NOT EXISTS aria_lien_alerts (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      state VARCHAR(10) DEFAULT 'CA',
+      work_start_date DATE,
+      preliminary_notice_due DATE,
+      mechanics_lien_deadline DATE,
+      alert_day_15_sent BOOLEAN DEFAULT false,
+      alert_day_19_sent BOOLEAN DEFAULT false,
+      alert_day_20_sent BOOLEAN DEFAULT false,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_aria_lien_project ON aria_lien_alerts(project_id);
+
+    -- Cash flow forecasts (30-day projections, upserted daily)
+    CREATE TABLE IF NOT EXISTS cash_flow_forecasts (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      forecast_date DATE NOT NULL,
+      projected_inflow NUMERIC(14,2) DEFAULT 0,
+      projected_outflow NUMERIC(14,2) DEFAULT 0,
+      projected_net_flow NUMERIC(14,2) DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(user_id, forecast_date)
+    );
+    CREATE INDEX IF NOT EXISTS idx_cash_forecast_user ON cash_flow_forecasts(user_id);
+    CREATE INDEX IF NOT EXISTS idx_cash_forecast_date ON cash_flow_forecasts(forecast_date);
+
+    -- Hub close-out events (ZIP export records)
+    ALTER TABLE hub_close_out_events ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+
+    -- ARIA knowledge events (for admin insights)
+    CREATE TABLE IF NOT EXISTS aria_knowledge_events (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+      question TEXT,
+      category VARCHAR(100),
+      answer_given TEXT,
+      was_helpful BOOLEAN,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_aria_knowledge_user ON aria_knowledge_events(user_id);
+
+    -- User role fields for sub/gc distinction
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS joined_via_code VARCHAR(20);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS user_role VARCHAR(20) DEFAULT 'gc';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS company_trade VARCHAR(100);
+
+    -- Trade fields for early pay
+    ALTER TABLE project_trades ADD COLUMN IF NOT EXISTS trust_score_id INTEGER;
+    ALTER TABLE project_trades ADD COLUMN IF NOT EXISTS early_pay_eligible BOOLEAN DEFAULT true;
+    ALTER TABLE project_trades ADD COLUMN IF NOT EXISTS gc_early_pay_override BOOLEAN DEFAULT false;
   `);
   console.log('Database ready');
 }

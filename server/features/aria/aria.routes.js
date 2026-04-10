@@ -270,8 +270,8 @@ router.get('/api/aria/cash-forecast', auth, async (req, res) => {
     // Fetch all submitted pay apps with payment_due_date in next 30 days
     const payAppsResult = await pool.query(
       `SELECT
-        payment_due_date,
-        COALESCE(amount_due, 0) as amount_due
+        pa.payment_due_date,
+        COALESCE(pa.amount_due, 0) as amount_due
        FROM pay_apps pa
        JOIN projects p ON pa.project_id = p.id
        WHERE p.user_id = $1
