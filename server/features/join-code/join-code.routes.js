@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const { auth } = require('../../middleware/auth');
-const db = require('../../../db');
+const { pool: db } = require('../../../db');
 const crypto = require('crypto');
 
 // POST /api/projects/:id/join-code — GC generates join code for a project

@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const { auth } = require('../../middleware/auth');
-const db = require('../../../db');
+const { pool: db } = require('../../../db');
 const hubService = require('./hub.service');
 const path = require('path');
 const fs = require('fs');

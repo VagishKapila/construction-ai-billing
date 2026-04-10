@@ -1,5 +1,5 @@
 'use strict';
-const db = require('../../../db');
+const { pool: db } = require('../../../db');
 
 const MAX_SCORE = 763; // NEVER CHANGE
 
