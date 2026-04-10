@@ -41,11 +41,10 @@ router.get('/api/aria/follow-up-queue', auth, async (req, res) => {
         pa.app_number,
         pa.submitted_at,
         pa.payment_due_date,
-        pa.total_work_completed,
         pa.amount_due,
-        p.project_name,
+        p.name AS project_name,
         p.owner_email,
-        p.owner_name,
+        p.owner AS owner_name,
         COALESCE(EXTRACT(DAY FROM CURRENT_TIMESTAMP - pa.payment_due_date)::INT, 0) as days_overdue
       FROM pay_apps pa
       JOIN projects p ON pa.project_id = p.id
@@ -100,7 +99,7 @@ router.post('/api/aria/trigger-follow-up/:payAppId', auth, async (req, res) => {
 
     // Fetch pay app and validate ownership
     const paResult = await pool.query(
-      `SELECT pa.*, p.project_name, p.owner_email, p.owner_name, p.user_id
+      `SELECT pa.*, p.name AS project_name, p.owner_email, p.owner AS owner_name, p.user_id
        FROM pay_apps pa
        JOIN projects p ON pa.project_id = p.id
        WHERE pa.id = $1 AND p.user_id = $2`,
@@ -123,12 +122,12 @@ router.post('/api/aria/trigger-follow-up/:payAppId', auth, async (req, res) => {
 
     if (daysOverdue >= 15) {
       tone = 'final';
-      subject = `URGENT: Payment Required - Invoice ${pa.pay_app_number} (${daysOverdue} days overdue)`;
+      subject = `URGENT: Payment Required - Invoice #${pa.app_number} (${daysOverdue} days overdue)`;
       message = `Dear ${pa.owner_name},
 
 This is a final notice regarding payment for ${pa.project_name}.
 
-Invoice #${pa.pay_app_number} is now ${daysOverdue} days overdue with an outstanding balance of $${parseFloat(pa.amount_due).toLocaleString('en-US', { minimumFractionDigits: 2 })}.
+Invoice #${pa.app_number} is now ${daysOverdue} days overdue with an outstanding balance of $${parseFloat(pa.amount_due).toLocaleString('en-US', { minimumFractionDigits: 2 })}.
 
 Immediate payment is required to avoid further action.
 
@@ -138,12 +137,12 @@ Best regards,
 ${gcName}`;
     } else if (daysOverdue >= 8) {
       tone = 'firm';
-      subject = `Payment Reminder - Invoice ${pa.pay_app_number} (${daysOverdue} days overdue)`;
+      subject = `Payment Reminder - Invoice #${pa.app_number} (${daysOverdue} days overdue)`;
       message = `Dear ${pa.owner_name},
 
 We are writing to remind you that payment for ${pa.project_name} is now ${daysOverdue} days overdue.
 
-Invoice #${pa.pay_app_number} - Amount Due: $${parseFloat(pa.amount_due).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+Invoice #${pa.app_number} - Amount Due: $${parseFloat(pa.amount_due).toLocaleString('en-US', { minimumFractionDigits: 2 })}
 
 Please arrange payment at your earliest convenience. If payment has already been sent, please disregard this notice.
 
@@ -151,12 +150,12 @@ Thank you,
 ${gcName}`;
     } else {
       tone = 'gentle';
-      subject = `Follow-Up: Invoice ${pa.pay_app_number} for ${pa.project_name}`;
+      subject = `Follow-Up: Invoice #${pa.app_number} for ${pa.project_name}`;
       message = `Dear ${pa.owner_name},
 
 We hope all is well with the project. We're reaching out to follow up on payment for:
 
-Invoice #${pa.pay_app_number} - Amount Due: $${parseFloat(pa.amount_due).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+Invoice #${pa.app_number} - Amount Due: $${parseFloat(pa.amount_due).toLocaleString('en-US', { minimumFractionDigits: 2 })}
 
 If you have any questions about this invoice, please don't hesitate to reach out.
 
@@ -411,7 +410,7 @@ router.get('/api/aria/lien-alerts', auth, async (req, res) => {
         `SELECT
           ala.id,
           ala.project_id,
-          p.project_name,
+          p.name AS project_name,
           ala.work_start_date,
           ala.preliminary_notice_due,
           ala.mechanics_lien_deadline,
@@ -528,7 +527,7 @@ router.post('/api/aria/lien-alerts/:projectId', auth, async (req, res) => {
     if (shouldSendAlert) {
       try {
         const projectData = await pool.query(
-          'SELECT owner_email, owner_name, project_name FROM projects WHERE id = $1',
+          'SELECT owner_email, owner AS owner_name, name AS project_name FROM projects WHERE id = $1',
           [projectId]
         );
 
