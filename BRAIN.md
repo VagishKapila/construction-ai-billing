@@ -1,5 +1,5 @@
 # Company Brain
-> Last synced: April 8, 2026
+> Last synced: April 10, 2026
 > Owner: Vagish Kapila
 > Tagline: AI-powered construction billing that keeps contractors cash-flow positive
 
@@ -106,7 +106,7 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 ### ConstructInvoice AI (Primary Product)
 - **Status**: Launched — live at constructinv.varshyl.com
 - **Description**: G702/G703 construction billing platform for GCs and subs. Upload SOV, generate pay apps, download PDFs, send invoices, accept payments.
-- **Key Features**: SOV parsing (Excel/CSV/PDF/DOCX), G702/G703 PDF generation, Stripe Connect payments (ACH + card), lien waivers, email send, admin dashboard, AI assistant, QuickBooks integration (built, pending env vars), reconciliation, job completed tracking
+- **Key Features**: SOV parsing (Excel/CSV/PDF/DOCX), G702/G703 PDF generation, Stripe Connect payments (ACH + card), lien waivers, email send, admin dashboard, AI assistant, QuickBooks integration (built, pending env vars), reconciliation, job completed tracking, 2-step onboarding flow (Company Setup + Meet ARIA), 90-day trial system, Project Hub (Phase 1 live on staging)
 - **Stack**: React 19 + TypeScript + Vite 6, Node.js + Express, PostgreSQL on Railway, PDFKit, Stripe Connect, Resend email
 - **Users**: Live with real users (contractors, PMs, accountants)
 - **Hosting**: Railway (auto-deploy from GitHub), constructinv.varshyl.com via IONOS DNS
@@ -149,11 +149,10 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 ## Strategy & Direction
 
 ### Current Priorities
-1. **Merge Rev 3 to main** — 7 modules built (trial, admin, onboarding, AI, reports, nudges, QA), ready to push
-2. **Build Project Hub (Exp1_ConstructInv3)** — the integrated ecosystem that makes ConstructInvoice AI a complete platform
-3. **Set QuickBooks env vars** — QB integration is fully built, just needs Client ID/Secret on Railway
-4. **Go live with Stripe** — Switch from test mode to live mode for real payments
-5. **SnapClaps content engine** — daily deal posts, blog SEO, affiliate program approvals
+1. **Build Project Hub (Exp1_ConstructInv3)** — the integrated ecosystem that makes ConstructInvoice AI a complete platform
+2. **Set QuickBooks env vars** — QB integration is fully built, just needs Client ID/Secret on Railway
+3. **Go live with Stripe** — Switch from test mode to live mode for real payments
+4. **SnapClaps content engine** — daily deal posts, blog SEO, affiliate program approvals
 
 ### Key Decisions Log
 | Date | Decision | Context |
@@ -170,6 +169,9 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 | Apr 6, 2026 | AI SOV guardrails: warn-only mode | Don't block subs from uploading; just alert the client |
 | Apr 1, 2026 | Stripe Connect payment pipeline completed | ACH + card via Checkout, Express onboarding, test accounts working |
 | Apr 1, 2026 | ACH $25 flat fee, CC 3.3% + $0.40 | Zero absorption — platform keeps application_fee |
+| Apr 10, 2026 | GuidedTour removed from Shell.tsx — replaced by OnboardingFlow route | GuidedTour was rendering fixed inset-0 z-50 black overlay for all new users, blocking the Stripe banner and entire dashboard. Superseded by new /onboarding route. |
+| Apr 10, 2026 | /onboarding is now a dedicated route (no Shell, AuthGuard only) | Register navigates to /onboarding; already-onboarded users auto-redirected to /dashboard |
+| Apr 10, 2026 | Dashboard always shows 2-column layout (never hides behind ternary) | Empty state card shown inside Active Projects section; KPI cards always visible with $0.00 |
 
 ### What We're NOT Doing (and why)
 - NOT building a full accounting system — QB handles that, we sync to it
@@ -429,3 +431,4 @@ TOTAL: 207 checks
 | Apr 6, 2026 | Infrastructure decision: email ingestion | Replaced Mailgun plan with Hostinger + Cloudflare Email Workers (free). Full migration path to Mailgun documented for when user base hits 100-200 users. |
 | Apr 6, 2026 | Project Hub Phase 1 shipped to staging | Full backend (18 endpoints, 5 DB tables) + frontend (Hub tab, DocDetail, Trades, MagicLink) pushed to staging branch. |
 | Apr 7, 2026 | 7-Layer QA test suite built + installed | Architecture sanity (32 checks), mutation watchdog (4 mutations), API contract tests (9 tests), CO cross-layer tests rewritten (7 tests). qa_test.js expanded to 121 checks (MODULE 7C). GitHub Actions CI wired. Discovered + fixed "fixed the wrong file" bug: CO math was in server.js only, not live payApps.js. All 207 checks passing. e2e-qa skill updated to trigger on all test/QA phrases. |
+| Apr 10, 2026 | Fixed 4 production-blocking bugs (new user onboarding + dashboard) | Bug 1/4: GuidedTour removed from Shell.tsx — it was blocking Stripe banner with z-50 overlay. Bug 2: Dashboard always renders 2-column layout; Active Projects shows rich 🏗️ empty card + KPI cards always visible; floating ARIA CTA post-onboarding. Bug 3: New 2-step OnboardingFlow (Company Setup → Meet ARIA) with animated ARIA features stagger at 600ms, "Stop chasing. Start collecting." tagline, teal CTA, no skip on Step 2. Register.tsx now routes to /onboarding. App.tsx has /onboarding route (AuthGuard, no Shell). All 7 QA layers green. Pushed staging + main. |
