@@ -8,6 +8,11 @@ import { createPayApp } from '@/api/payApps'
 import { getProjectReconciliation, completeProject, reopenProject, createProjectChangeOrder, updateChangeOrderStatus, recordManualPayment, type ReconciliationReport } from '@/api/projects'
 import { QBSyncButton, QBEstimateImport } from '@/components/quickbooks'
 import { HubTab } from '@/components/hub/HubTab'
+import OrbitalCanvas from '@/components/hub/OrbitalCanvas'
+import { VendorDetailPanel } from '@/features/hub'
+import type { Trade as VDPTrade } from '@/features/hub'
+import type { Trade as HubTrade } from '@/types/hub'
+import { getTrades } from '@/api/hub'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -358,6 +363,8 @@ export function ProjectDetail() {
   const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'Check', checkNumber: '', notes: '' })
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false)
   const [hubView, setHubView] = useState<'orbital' | 'inbox'>('inbox')
+  const [hubTrades, setHubTrades] = useState<HubTrade[]>([])
+  const [selectedTradeName, setSelectedTradeName] = useState<string | null>(null)
 
   const { project, sovLines, payApps, changeOrders, attachments, isLoading, error, refresh } =
     useProject(projectId)
@@ -419,6 +426,14 @@ export function ProjectDetail() {
 
     checkQBStatus()
   }, [])
+
+  // Load hub trades when the orbital view is shown
+  useEffect(() => {
+    if (activeTab !== 'hub' || hubView !== 'orbital' || !projectId) return
+    getTrades(projectId)
+      .then(res => { if (res.data) setHubTrades(res.data) })
+      .catch(() => {})
+  }, [activeTab, hubView, projectId])
 
   /**
    * Handle adding a new change order
@@ -569,6 +584,49 @@ export function ProjectDetail() {
       [...payApps].sort((a, b) => b.app_number - a.app_number),
     [payApps]
   )
+
+  // --- Orbital view helpers ---
+  const ORBIT_RADII = [90, 130, 165, 200, 235, 268]
+  const TRUST_TIER_COLORS: Record<string, string> = {
+    platinum: '#7c3aed', gold: '#d97706', silver: '#64748b', bronze: '#ea580c', review: '#dc2626',
+  }
+  function getHubTierColor(score: number) {
+    if (score >= 687) return TRUST_TIER_COLORS.platinum
+    if (score >= 534) return TRUST_TIER_COLORS.gold
+    if (score >= 381) return TRUST_TIER_COLORS.silver
+    if (score >= 229) return TRUST_TIER_COLORS.bronze
+    return TRUST_TIER_COLORS.review
+  }
+
+  const orbitalPlanets = useMemo(() =>
+    hubTrades.map((trade, i) => ({
+      name: trade.name,
+      initials: trade.name.substring(0, 3),
+      color: getHubTierColor(500), // default score until per-trade scores are fetched
+      orbitRadius: ORBIT_RADII[i % ORBIT_RADII.length],
+      speed: 0.4 + (i % 4) * 0.25,
+      size: 18,
+      trustScore: 500,
+    })),
+    [hubTrades] // eslint-disable-line react-hooks/exhaustive-deps
+  )
+
+  const selectedVDPTrade: VDPTrade | null = useMemo(() => {
+    if (!selectedTradeName) return null
+    const t = hubTrades.find(h => h.name === selectedTradeName)
+    if (!t) return null
+    return {
+      id: t.id,
+      name: t.name,
+      company_name: t.company_name || t.name,
+      contact_email: t.contact_email || '',
+      status: t.status === 'active' ? 'active' : 'invited',
+      email_alias: t.email_alias ?? undefined,
+      doc_count: t.upload_count,
+      unread_count: t.pending_count,
+      trust_score: 500,
+    }
+  }, [selectedTradeName, hubTrades])
 
   if (isLoading) {
     return (
@@ -981,14 +1039,33 @@ export function ProjectDetail() {
               </button>
             </div>
 
-            {/* Orbital view — placeholder for future */}
+            {/* Orbital view */}
             {hubView === 'orbital' && (
-              <Card className="p-6 bg-gradient-to-br from-slate-900 to-slate-950 border-slate-800 rounded-xl flex items-center justify-center min-h-96">
-                <div className="text-center">
-                  <p className="text-slate-400 text-sm mb-2">🪐 Orbital view coming soon</p>
-                  <p className="text-slate-500 text-xs">Switch to Inbox to manage trades and documents</p>
+              <div style={{ display: 'flex', gap: 16, minHeight: 500, alignItems: 'flex-start' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {orbitalPlanets.length === 0 ? (
+                    <Card className="p-8 bg-gradient-to-br from-slate-900 to-slate-950 border-slate-800 rounded-xl flex items-center justify-center min-h-96">
+                      <div className="text-center">
+                        <p className="text-2xl mb-3">🪐</p>
+                        <p className="text-slate-300 text-sm font-medium mb-1">No trades yet</p>
+                        <p className="text-slate-500 text-xs">Add trades in the Inbox view to see them orbit</p>
+                      </div>
+                    </Card>
+                  ) : (
+                    <OrbitalCanvas
+                      planets={orbitalPlanets}
+                      onPlanetHover={(name) => {
+                        if (name) setSelectedTradeName(name)
+                      }}
+                    />
+                  )}
                 </div>
-              </Card>
+                <VendorDetailPanel
+                  trade={selectedVDPTrade}
+                  projectAddress={project.address || project.name}
+                  onClose={() => setSelectedTradeName(null)}
+                />
+              </div>
             )}
 
             {/* Inbox view */}
