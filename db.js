@@ -794,7 +794,7 @@ async function initDB() {
 
     -- AGENT 1: Schema alignment for vendor_address_book (spec compliance)
     ALTER TABLE vendor_address_book DROP COLUMN IF EXISTS owner_id;
-    ALTER TABLE vendor_address_book ADD COLUMN IF NOT EXISTS owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE;
+    ALTER TABLE vendor_address_book ADD COLUMN IF NOT EXISTS owner_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
     ALTER TABLE vendor_address_book DROP COLUMN IF EXISTS address;
     ALTER TABLE vendor_address_book DROP COLUMN IF EXISTS notes;
     ALTER TABLE vendor_address_book DROP COLUMN IF EXISTS import_source;
@@ -823,8 +823,8 @@ async function initDB() {
     ALTER TABLE aria_lien_alerts DROP COLUMN IF EXISTS alert_day_19_sent;
     ALTER TABLE aria_lien_alerts DROP COLUMN IF EXISTS alert_day_20_sent;
     ALTER TABLE aria_lien_alerts ADD COLUMN IF NOT EXISTS state TEXT DEFAULT 'CA';
-    ALTER TABLE aria_lien_alerts ADD COLUMN IF NOT EXISTS alert_type TEXT NOT NULL CHECK (alert_type IN ('preliminary_20day','filing_deadline','enforcement_deadline','retention_release'));
-    ALTER TABLE aria_lien_alerts ADD COLUMN IF NOT EXISTS deadline_date DATE NOT NULL;
+    ALTER TABLE aria_lien_alerts ADD COLUMN IF NOT EXISTS alert_type TEXT DEFAULT 'preliminary_20day' CHECK (alert_type IN ('preliminary_20day','filing_deadline','enforcement_deadline','retention_release'));
+    ALTER TABLE aria_lien_alerts ADD COLUMN IF NOT EXISTS deadline_date DATE DEFAULT CURRENT_DATE;
     ALTER TABLE aria_lien_alerts ADD COLUMN IF NOT EXISTS alerted_at TIMESTAMP;
     ALTER TABLE aria_lien_alerts ADD COLUMN IF NOT EXISTS dismissed_at TIMESTAMP;
     ALTER TABLE aria_lien_alerts ADD COLUMN IF NOT EXISTS document_generated_at TIMESTAMP;
@@ -863,7 +863,7 @@ async function initDB() {
     ALTER TABLE early_payment_requests DROP COLUMN IF EXISTS stripe_transfer_id;
     ALTER TABLE early_payment_requests ADD COLUMN IF NOT EXISTS upload_id INTEGER;
     ALTER TABLE early_payment_requests ADD COLUMN IF NOT EXISTS requesting_user_id INTEGER REFERENCES users(id);
-    ALTER TABLE early_payment_requests ADD COLUMN IF NOT EXISTS invoice_amount NUMERIC NOT NULL;
+    ALTER TABLE early_payment_requests ADD COLUMN IF NOT EXISTS invoice_amount NUMERIC DEFAULT 0;
     ALTER TABLE early_payment_requests ADD COLUMN IF NOT EXISTS fee_pct NUMERIC DEFAULT 0.015;
     ALTER TABLE early_payment_requests ADD COLUMN IF NOT EXISTS fee_amount NUMERIC;
     ALTER TABLE early_payment_requests ADD COLUMN IF NOT EXISTS ach_fee NUMERIC DEFAULT 25;
@@ -891,7 +891,7 @@ async function initDB() {
     ALTER TABLE aria_knowledge_events DROP COLUMN IF EXISTS category;
     ALTER TABLE aria_knowledge_events DROP COLUMN IF EXISTS answer_given;
     ALTER TABLE aria_knowledge_events DROP COLUMN IF EXISTS was_helpful;
-    ALTER TABLE aria_knowledge_events ADD COLUMN IF NOT EXISTS event_type TEXT NOT NULL;
+    ALTER TABLE aria_knowledge_events ADD COLUMN IF NOT EXISTS event_type TEXT NOT NULL DEFAULT 'legacy_qa';
     ALTER TABLE aria_knowledge_events ADD COLUMN IF NOT EXISTS vendor_id INTEGER;
     ALTER TABLE aria_knowledge_events ADD COLUMN IF NOT EXISTS data_json JSONB DEFAULT '{}';
     ALTER TABLE aria_knowledge_events ADD COLUMN IF NOT EXISTS learned_at TIMESTAMP DEFAULT NOW();
