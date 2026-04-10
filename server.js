@@ -6785,6 +6785,75 @@ app.post('/api/pay-apps/:id/undo-bad-debt', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── STRIPE CONNECT FOR SUBS (reuses GC pattern) ────────────────────────────────
+
+// POST /api/stripe/sub-connect — Sub Stripe Express onboarding
+app.post('/api/stripe/sub-connect', auth, requireStripe, async (req, res) => {
+  try {
+    // Check if sub already has a connected account
+    const existing = await pool.query('SELECT * FROM connected_accounts WHERE user_id=$1', [req.user.id]);
+    let accountId;
+    if (existing.rows[0]) {
+      accountId = existing.rows[0].stripe_account_id;
+    } else {
+      // Create Express connected account (same as GC pattern)
+      const user = (await pool.query('SELECT name, email FROM users WHERE id=$1', [req.user.id])).rows[0];
+      const account = await stripe.accounts.create({
+        type: 'express',
+        country: 'US',
+        email: user.email,
+        business_type: 'individual',
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+          us_bank_account_ach_payments: { requested: true },
+        },
+        metadata: { user_id: String(req.user.id), user_type: 'sub', source: 'join_code_registration' },
+      });
+      accountId = account.id;
+      await pool.query(
+        'INSERT INTO connected_accounts(user_id, stripe_account_id) VALUES($1,$2) ON CONFLICT(user_id) DO UPDATE SET stripe_account_id=$2',
+        [req.user.id, accountId]
+      );
+      await pool.query('UPDATE users SET stripe_connect_id=$1 WHERE id=$2', [accountId, req.user.id]);
+      await logEvent(req.user.id, 'stripe_connect_created_sub', { account_id: accountId, source: 'join_code_registration' });
+    }
+    // Create onboarding link — redirects to join.html (not app.html)
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const link = await stripe.accountLinks.create({
+      account: accountId,
+      refresh_url: `${baseUrl}/join.html?stripe_refresh=true`,
+      return_url: `${baseUrl}/join.html?stripe_success=true`,
+      type: 'account_onboarding',
+    });
+    res.json({ url: link.url, account_id: accountId });
+  } catch(e) { console.error('[Stripe Sub Connect Error]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/stripe/sub-account-status — Check sub's connected account status
+app.get('/api/stripe/sub-account-status', auth, requireStripe, async (req, res) => {
+  try {
+    const row = await pool.query('SELECT * FROM connected_accounts WHERE user_id=$1', [req.user.id]);
+    if (!row.rows[0]) return res.json({ connected: false });
+    const acct = await stripe.accounts.retrieve(row.rows[0].stripe_account_id);
+    const charges = acct.charges_enabled;
+    const payouts = acct.payouts_enabled;
+    await pool.query(
+      'UPDATE connected_accounts SET charges_enabled=$1, payouts_enabled=$2, account_status=$3, business_name=$4, onboarded_at=CASE WHEN $1 AND onboarded_at IS NULL THEN NOW() ELSE onboarded_at END WHERE user_id=$5',
+      [charges, payouts, charges ? 'active' : 'pending', acct.business_profile?.name || '', req.user.id]
+    );
+    if (charges) await pool.query('UPDATE users SET payments_enabled=TRUE WHERE id=$1', [req.user.id]);
+    res.json({
+      connected: true,
+      charges_enabled: charges,
+      payouts_enabled: payouts,
+      account_id: row.rows[0].stripe_account_id,
+      business_name: acct.business_profile?.name,
+      status: charges ? 'active' : 'pending',
+    });
+  } catch(e) { console.error('[Stripe Sub Status Error]', e.message); res.status(500).json({ error: e.message }); }
+});
+
 // ── Other Invoices: Non-contract items (permits, materials, misc) ───────────
 
 // List other invoices for a project
