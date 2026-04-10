@@ -111,7 +111,7 @@ router.post('/api/projects/:id/hub/trades', auth, async (req, res) => {
       trade_name: name
     });
 
-    res.json({ data: result.rows[0] });
+    res.status(201).json({ data: result.rows[0] });
   } catch (e) {
     console.error('[HUB POST trades]', e.message);
     res.status(500).json({ error: e.message });
@@ -695,7 +695,7 @@ router.post('/api/hub/magic/:token/upload', upload.single('file'), async (req, r
       doc_type: doc_type
     });
 
-    res.json({ data: result.rows[0], message: 'Upload received. Awaiting approval.' });
+    res.status(201).json({ data: result.rows[0], message: 'Upload received. Awaiting approval.' });
   } catch (e) {
     console.error('[HUB POST magic upload]', e.message);
     if (req.file) {

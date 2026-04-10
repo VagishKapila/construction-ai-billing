@@ -134,8 +134,9 @@ test.describe('Hub: Magic Link', () => {
     expect(resp.status(), 'Magic link GET should be public').toBe(200);
     const body = await resp.json();
     expect(body.data).toBeDefined();
-    expect(body.data).toHaveProperty('projectName');
-    expect(body.data).toHaveProperty('tradeName', 'Concrete');
+    // API returns snake_case field names
+    expect(body.data).toHaveProperty('project_name');
+    expect(body.data.trade_name).toBe('Concrete');
 
     await deleteProject(request, token, projectId);
   });
@@ -276,8 +277,10 @@ test.describe('Hub: Stats endpoint', () => {
     expect(resp.status()).toBe(200);
     const body = await resp.json();
     expect(body.data).toBeDefined();
-    expect(typeof body.data.total_uploads).toBe('number');
+    // Stats endpoint returns: pending_count, approved_count, rejected_count, trade_count
     expect(typeof body.data.pending_count).toBe('number');
+    expect(typeof body.data.approved_count).toBe('number');
+    expect(typeof body.data.trade_count).toBe('number');
 
     await deleteProject(request, token, projectId);
   });
