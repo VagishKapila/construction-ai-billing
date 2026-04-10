@@ -171,6 +171,16 @@ app.use(trustRouter);
 const { router: earlyPayRouter } = require('./features/early-pay');
 app.use(earlyPayRouter);
 
+// ARIA Cash Intelligence routes
+const { router: ariaRouter } = require('./features/aria');
+app.use(ariaRouter);
+
+// Repository & File Browser routes
+app.use(require('./features/repository'));
+
+// Reporting routes — Hub analytics, charts, export
+app.use(require('./features/reporting'));
+
 // ── Emergency admin reset (standalone) ────────────────────────────────────
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
