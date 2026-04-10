@@ -13,14 +13,15 @@ import {
   CreditCard,
   CheckCircle2,
   AlertCircle,
+  X,
 } from 'lucide-react'
 import type { Project } from '@/types'
 import { useProjects } from '@/hooks/useProjects'
 import { useReports } from '@/hooks/useReports'
 import { useTrial } from '@/hooks/useTrial'
+import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { EmptyState } from '@/components/shared/EmptyState'
 import { Spotlight } from '@/components/aceternity/spotlight'
 import {
   CardContainer,
@@ -241,6 +242,7 @@ export function Dashboard() {
     useProjects()
   const { stats, isLoading: statsLoading, error: statsError } = useReports()
   const { isTrialGated } = useTrial()
+  const { user } = useAuth()
 
   const sortedProjects = useMemo(
     () =>
@@ -258,9 +260,25 @@ export function Dashboard() {
   )
 
   const [showAllProjects, setShowAllProjects] = useState(false)
+  const [ariaCTADismissed, setAriaCTADismissed] = useState(() => {
+    try { return localStorage.getItem('aria_cta_dismissed') === '1' } catch { return false }
+  })
 
   const isLoading = projectsLoading || statsLoading
   const error = projectsError || statsError
+
+  // Dismiss the floating CTA and persist to localStorage
+  const handleDismissAriaCTA = () => {
+    setAriaCTADismissed(true)
+    try { localStorage.setItem('aria_cta_dismissed', '1') } catch { /* noop */ }
+  }
+
+  // Show floating ARIA CTA when: onboarding complete + no projects + not dismissed
+  const showAriaCTA =
+    user?.has_completed_onboarding === true &&
+    !projectsLoading &&
+    sortedProjects.length === 0 &&
+    !ariaCTADismissed
 
   const displayedProjects = showAllProjects
     ? sortedProjects
@@ -403,77 +421,135 @@ export function Dashboard() {
         </div>
       </motion.div>
 
-      {/* Two-column layout: Projects + Activity */}
-      {sortedProjects.length === 0 && !projectsLoading ? (
-        <EmptyState
-          icon={FolderOpen}
-          title="No projects yet"
-          description="Create your first project to start billing your construction work"
-          actions={
-            <Link to="/projects/new">
-              <Button disabled={isTrialGated}>Create Project</Button>
-            </Link>
-          }
-        />
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* Projects list */}
-          <Spotlight
-            className="lg:col-span-3 rounded-2xl bg-white border-2 border-gray-100 p-6"
-            fill="#6366f1"
-          >
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-gray-900">
-                Active Projects
-              </h2>
-              {sortedProjects.length > 6 && (
-                <button
-                  onClick={() => setShowAllProjects(!showAllProjects)}
-                  className="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
-                >
-                  {showAllProjects ? 'Show Less' : `View All (${sortedProjects.length})`}
-                  <ArrowUpRight className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-
-            {projectsLoading ? (
-              <div className="space-y-3">
-                {[1, 2, 3, 4].map((i) => (
-                  <Skeleton key={i} className="h-16 rounded-xl" />
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {displayedProjects.map((project, i) => (
-                  <ProjectRow key={project.id} project={project} index={i} />
-                ))}
-              </div>
-            )}
-          </Spotlight>
-
-          {/* Activity feed */}
-          <Spotlight
-            className="lg:col-span-2 rounded-2xl bg-white border-2 border-gray-100 p-6"
-            fill="#8b5cf6"
-          >
-            <h2 className="text-lg font-bold text-gray-900 mb-5">
-              Recent Activity
+      {/* Two-column layout: Projects + Activity — always visible */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        {/* Projects list */}
+        <Spotlight
+          className="lg:col-span-3 rounded-2xl bg-white border-2 border-gray-100 p-6"
+          fill="#6366f1"
+        >
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-lg font-bold text-gray-900">
+              Active Projects
             </h2>
-            {recentActivity.length > 0 ? (
-              <div className="space-y-4">
-                {recentActivity.map((activity, i) => (
-                  <ActivityItem key={i} index={i} {...activity} />
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-400">
-                Activity will appear here as you create projects and pay apps.
-              </p>
+            {sortedProjects.length > 6 && (
+              <button
+                onClick={() => setShowAllProjects(!showAllProjects)}
+                className="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
+              >
+                {showAllProjects ? 'Show Less' : `View All (${sortedProjects.length})`}
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </button>
             )}
-          </Spotlight>
-        </div>
-      )}
+          </div>
+
+          {sortedProjects.length === 0 && !projectsLoading ? (
+            /* Rich empty state — shown immediately, no skeleton loaders */
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+              className="flex flex-col items-center justify-center py-12 text-center"
+            >
+              <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center mb-4">
+                <span className="text-3xl" role="img" aria-label="construction">🏗️</span>
+              </div>
+              <h3 className="text-base font-bold text-gray-900 mb-1.5">
+                Create your first project
+              </h3>
+              <p className="text-sm text-gray-500 max-w-xs mb-6">
+                Add your project details and schedule of values to start generating G702/G703 pay applications.
+              </p>
+              <Link to="/projects/new">
+                <Button
+                  disabled={isTrialGated}
+                  className="bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white rounded-xl gap-2 px-6"
+                >
+                  <Plus className="w-4 h-4" />
+                  New Project
+                </Button>
+              </Link>
+            </motion.div>
+          ) : projectsLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3, 4].map((i) => (
+                <Skeleton key={i} className="h-16 rounded-xl" />
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {displayedProjects.map((project, i) => (
+                <ProjectRow key={project.id} project={project} index={i} />
+              ))}
+            </div>
+          )}
+        </Spotlight>
+
+        {/* Activity feed */}
+        <Spotlight
+          className="lg:col-span-2 rounded-2xl bg-white border-2 border-gray-100 p-6"
+          fill="#8b5cf6"
+        >
+          <h2 className="text-lg font-bold text-gray-900 mb-5">
+            Recent Activity
+          </h2>
+          {recentActivity.length > 0 ? (
+            <div className="space-y-4">
+              {recentActivity.map((activity, i) => (
+                <ActivityItem key={i} index={i} {...activity} />
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400">
+              Activity will appear here as you create projects and pay apps.
+            </p>
+          )}
+        </Spotlight>
+      </div>
+
+      {/* Floating ARIA CTA — shown after onboarding, disappears once project created or dismissed */}
+      <AnimatePresence>
+        {showAriaCTA && (
+          <motion.div
+            key="aria-cta"
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            transition={{ duration: 0.35, ease: 'easeOut' }}
+            className="fixed bottom-6 right-6 z-30 max-w-xs w-full"
+          >
+            <div className="bg-white rounded-2xl border-2 border-indigo-100 shadow-xl shadow-indigo-500/10 p-4 flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0 mt-0.5">
+                <span className="text-xl" role="img" aria-label="construction">🏗️</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900 leading-snug">
+                  Create your first project to activate ARIA
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5 mb-3">
+                  ARIA starts working the moment your project goes live.
+                </p>
+                <Link to="/projects/new">
+                  <Button
+                    size="sm"
+                    className="w-full bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white rounded-xl gap-1.5 text-xs h-8"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    New Project →
+                  </Button>
+                </Link>
+              </div>
+              <button
+                onClick={handleDismissAriaCTA}
+                className="p-1 rounded-lg hover:bg-gray-100 transition-colors shrink-0"
+                aria-label="Dismiss"
+              >
+                <X className="w-3.5 h-3.5 text-gray-400" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
