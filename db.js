@@ -616,6 +616,18 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_vendor_book_trade ON vendor_address_book(trade_type);
     CREATE INDEX IF NOT EXISTS idx_vendor_book_email ON vendor_address_book(email);
 
+    -- Hub Close-Out Events (Apr 2026) — project close-out ZIP packages
+    CREATE TABLE IF NOT EXISTS hub_close_out_events (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+      zip_filename VARCHAR(300),
+      docs_included INTEGER DEFAULT 0,
+      pay_apps_included INTEGER DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_hub_closeout_project ON hub_close_out_events(project_id);
+    CREATE INDEX IF NOT EXISTS idx_hub_closeout_created ON hub_close_out_events(created_at);
+
     -- Early Payment System (Apr 2026) — sub early access to payment, Stripe fee, GC approval gate
     ALTER TABLE project_trades ADD COLUMN IF NOT EXISTS early_pay_eligible BOOLEAN DEFAULT true;
     ALTER TABLE project_trades ADD COLUMN IF NOT EXISTS gc_early_pay_override BOOLEAN DEFAULT false;
