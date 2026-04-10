@@ -2763,35 +2763,66 @@ app.get('/api/settings', auth, async (req,res) => {
 });
 
 app.post('/api/settings', auth, async (req,res) => {
-  const {company_name,default_payment_terms,default_retainage,contact_name,contact_phone,contact_email,job_number_format,
-    reminder_7before,reminder_due,reminder_7after,reminder_retention,reminder_email,reminder_phone,credit_card_enabled} = req.body;
-  const r = await pool.query(
-    `INSERT INTO company_settings(user_id,company_name,default_payment_terms,default_retainage,contact_name,contact_phone,contact_email,job_number_format,
-       reminder_7before,reminder_due,reminder_7after,reminder_retention,reminder_email,reminder_phone,credit_card_enabled)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-     ON CONFLICT(user_id) DO UPDATE SET
-       company_name=COALESCE(EXCLUDED.company_name, company_settings.company_name),
-       default_payment_terms=COALESCE(EXCLUDED.default_payment_terms, company_settings.default_payment_terms),
-       default_retainage=COALESCE(EXCLUDED.default_retainage, company_settings.default_retainage),
-       contact_name=COALESCE(EXCLUDED.contact_name, company_settings.contact_name),
-       contact_phone=COALESCE(EXCLUDED.contact_phone, company_settings.contact_phone),
-       contact_email=COALESCE(EXCLUDED.contact_email, company_settings.contact_email),
-       job_number_format=COALESCE(EXCLUDED.job_number_format, company_settings.job_number_format),
-       reminder_7before=COALESCE(EXCLUDED.reminder_7before, company_settings.reminder_7before, TRUE),
-       reminder_due=COALESCE(EXCLUDED.reminder_due, company_settings.reminder_due, TRUE),
-       reminder_7after=COALESCE(EXCLUDED.reminder_7after, company_settings.reminder_7after, TRUE),
-       reminder_retention=COALESCE(EXCLUDED.reminder_retention, company_settings.reminder_retention, TRUE),
-       reminder_email=COALESCE(EXCLUDED.reminder_email, company_settings.reminder_email),
-       reminder_phone=COALESCE(EXCLUDED.reminder_phone, company_settings.reminder_phone),
-       credit_card_enabled=COALESCE(EXCLUDED.credit_card_enabled, company_settings.credit_card_enabled, FALSE),
-       updated_at=NOW()
-     RETURNING *`,
-    [req.user.id,company_name,default_payment_terms||'Due on receipt',default_retainage||10,
-     contact_name||null,contact_phone||null,contact_email||null,job_number_format||null,
-     reminder_7before??null,reminder_due??null,reminder_7after??null,reminder_retention??null,
-     reminder_email||null,reminder_phone||null,credit_card_enabled??null]
-  );
-  res.json(r.rows[0]);
+  try {
+    const {
+      company_name, default_payment_terms, default_retainage,
+      contact_name, contact_phone, contact_email, job_number_format,
+      reminder_7before, reminder_due, reminder_7after, reminder_retention,
+      reminder_email, reminder_phone, credit_card_enabled,
+      // New fields: company address + license + notification prefs
+      company_address, company_city, company_state, company_zip, license_number,
+      notifications_pay_app, notifications_payment, notifications_overdue, notifications_lien,
+    } = req.body;
+    const r = await pool.query(
+      `INSERT INTO company_settings(
+         user_id, company_name, default_payment_terms, default_retainage,
+         contact_name, contact_phone, contact_email, job_number_format,
+         reminder_7before, reminder_due, reminder_7after, reminder_retention,
+         reminder_email, reminder_phone, credit_card_enabled,
+         company_address, company_city, company_state, company_zip, license_number,
+         notifications_pay_app, notifications_payment, notifications_overdue, notifications_lien
+       )
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+       ON CONFLICT(user_id) DO UPDATE SET
+         company_name=COALESCE(EXCLUDED.company_name, company_settings.company_name),
+         default_payment_terms=COALESCE(EXCLUDED.default_payment_terms, company_settings.default_payment_terms),
+         default_retainage=COALESCE(EXCLUDED.default_retainage, company_settings.default_retainage),
+         contact_name=COALESCE(EXCLUDED.contact_name, company_settings.contact_name),
+         contact_phone=COALESCE(EXCLUDED.contact_phone, company_settings.contact_phone),
+         contact_email=COALESCE(EXCLUDED.contact_email, company_settings.contact_email),
+         job_number_format=COALESCE(EXCLUDED.job_number_format, company_settings.job_number_format),
+         reminder_7before=COALESCE(EXCLUDED.reminder_7before, company_settings.reminder_7before, TRUE),
+         reminder_due=COALESCE(EXCLUDED.reminder_due, company_settings.reminder_due, TRUE),
+         reminder_7after=COALESCE(EXCLUDED.reminder_7after, company_settings.reminder_7after, TRUE),
+         reminder_retention=COALESCE(EXCLUDED.reminder_retention, company_settings.reminder_retention, TRUE),
+         reminder_email=COALESCE(EXCLUDED.reminder_email, company_settings.reminder_email),
+         reminder_phone=COALESCE(EXCLUDED.reminder_phone, company_settings.reminder_phone),
+         credit_card_enabled=COALESCE(EXCLUDED.credit_card_enabled, company_settings.credit_card_enabled, FALSE),
+         company_address=COALESCE(EXCLUDED.company_address, company_settings.company_address),
+         company_city=COALESCE(EXCLUDED.company_city, company_settings.company_city),
+         company_state=COALESCE(EXCLUDED.company_state, company_settings.company_state),
+         company_zip=COALESCE(EXCLUDED.company_zip, company_settings.company_zip),
+         license_number=COALESCE(EXCLUDED.license_number, company_settings.license_number),
+         notifications_pay_app=COALESCE(EXCLUDED.notifications_pay_app, company_settings.notifications_pay_app, TRUE),
+         notifications_payment=COALESCE(EXCLUDED.notifications_payment, company_settings.notifications_payment, TRUE),
+         notifications_overdue=COALESCE(EXCLUDED.notifications_overdue, company_settings.notifications_overdue, TRUE),
+         notifications_lien=COALESCE(EXCLUDED.notifications_lien, company_settings.notifications_lien, TRUE),
+         updated_at=NOW()
+       RETURNING *`,
+      [
+        req.user.id, company_name, default_payment_terms||'Due on receipt', default_retainage||10,
+        contact_name||null, contact_phone||null, contact_email||null, job_number_format||null,
+        reminder_7before??null, reminder_due??null, reminder_7after??null, reminder_retention??null,
+        reminder_email||null, reminder_phone||null, credit_card_enabled??null,
+        company_address||null, company_city||null, company_state||null, company_zip||null, license_number||null,
+        notifications_pay_app??null, notifications_payment??null, notifications_overdue??null, notifications_lien??null,
+      ]
+    );
+    res.json(r.rows[0]);
+  } catch(e) {
+    console.error('[POST /api/settings]', e.message);
+    res.status(500).json({ error: 'Failed to save settings' });
+  }
 });
 
 // Save nudge preferences (separate endpoint to avoid overwriting all settings)

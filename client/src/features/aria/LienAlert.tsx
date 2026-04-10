@@ -61,7 +61,7 @@ export const LienAlert: React.FC<LienAlertProps> = ({ projectId }) => {
   useEffect(() => {
     const fetchAlert = async () => {
       try {
-        const token = localStorage.getItem('jwt_token');
+        const token = localStorage.getItem('ci_token');
         const response = await fetch('/api/aria/lien-alerts', {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -89,7 +89,7 @@ export const LienAlert: React.FC<LienAlertProps> = ({ projectId }) => {
 
     setDownloadingPdf(true);
     try {
-      const token = localStorage.getItem('jwt_token');
+      const token = localStorage.getItem('ci_token');
       const response = await fetch(`/api/aria/lien-alerts/${projectId}/pdf`, {
         headers: {
           Authorization: `Bearer ${token}`,

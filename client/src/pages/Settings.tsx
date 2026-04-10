@@ -33,6 +33,11 @@ import {
 
 interface ProfileFormState {
   companyName: string
+  companyAddress: string
+  companyCity: string
+  companyState: string
+  companyZip: string
+  licenseNumber: string
   defaultPaymentTerms: string
   defaultRetainage: string
 }
@@ -65,6 +70,11 @@ export function Settings() {
   // Profile form state
   const [profileForm, setProfileForm] = useState<ProfileFormState>({
     companyName: '',
+    companyAddress: '',
+    companyCity: '',
+    companyState: '',
+    companyZip: '',
+    licenseNumber: '',
     defaultPaymentTerms: 'Due on receipt',
     defaultRetainage: '10',
   })
@@ -109,6 +119,11 @@ export function Settings() {
     if (settings) {
       setProfileForm({
         companyName: settings.company_name || '',
+        companyAddress: (settings as any).company_address || '',
+        companyCity: (settings as any).company_city || '',
+        companyState: (settings as any).company_state || '',
+        companyZip: (settings as any).company_zip || '',
+        licenseNumber: (settings as any).license_number || '',
         defaultPaymentTerms: settings.default_payment_terms || 'Due on receipt',
         defaultRetainage: String(settings.default_retainage || 10),
       })
@@ -223,13 +238,18 @@ export function Settings() {
     try {
       const result = await saveSettings({
         company_name: profileForm.companyName,
+        company_address: profileForm.companyAddress || null,
+        company_city: profileForm.companyCity || null,
+        company_state: profileForm.companyState || null,
+        company_zip: profileForm.companyZip || null,
+        license_number: profileForm.licenseNumber || null,
         default_payment_terms: profileForm.defaultPaymentTerms,
         default_retainage: parseFloat(profileForm.defaultRetainage) || 0,
         // Always include contact fields to prevent them being cleared
         contact_name: settings?.contact_name || contactForm.contactName,
         contact_phone: settings?.contact_phone || contactForm.contactPhone,
         contact_email: settings?.contact_email || contactForm.contactEmail,
-      })
+      } as any)
       if (result) {
         showToast('success', 'Company profile updated')
       } else {
@@ -445,19 +465,84 @@ export function Settings() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
+              {/* Company Name */}
               <div>
                 <label className="block text-sm font-medium text-text-primary mb-1">
-                  Company Name
+                  Company Name <span className="text-red-500">*</span>
                 </label>
                 <Input
                   type="text"
+                  autoComplete="organization"
                   value={profileForm.companyName}
                   onChange={(e) =>
                     handleProfileChange('companyName', e.target.value)
                   }
-                  placeholder="Enter company name"
+                  placeholder="ABC General Contractors LLC"
                 />
               </div>
+
+              {/* Street Address */}
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-1">
+                  Street Address
+                </label>
+                <Input
+                  type="text"
+                  autoComplete="street-address"
+                  value={profileForm.companyAddress}
+                  onChange={(e) => handleProfileChange('companyAddress', e.target.value)}
+                  placeholder="123 Main Street"
+                />
+              </div>
+
+              {/* City / State / ZIP */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-1">City</label>
+                  <Input
+                    type="text"
+                    autoComplete="address-level2"
+                    value={profileForm.companyCity}
+                    onChange={(e) => handleProfileChange('companyCity', e.target.value)}
+                    placeholder="Los Angeles"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-1">State</label>
+                  <Input
+                    type="text"
+                    autoComplete="address-level1"
+                    maxLength={2}
+                    value={profileForm.companyState}
+                    onChange={(e) => handleProfileChange('companyState', e.target.value.toUpperCase())}
+                    placeholder="CA"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-1">ZIP</label>
+                  <Input
+                    type="text"
+                    autoComplete="postal-code"
+                    value={profileForm.companyZip}
+                    onChange={(e) => handleProfileChange('companyZip', e.target.value)}
+                    placeholder="90210"
+                  />
+                </div>
+              </div>
+
+              {/* License Number */}
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-1">
+                  Contractor License # <span className="text-gray-400 text-xs font-normal">(optional)</span>
+                </label>
+                <Input
+                  type="text"
+                  value={profileForm.licenseNumber}
+                  onChange={(e) => handleProfileChange('licenseNumber', e.target.value)}
+                  placeholder="CSLB #123456"
+                />
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-text-primary mb-1">
                   Default Payment Terms
@@ -522,6 +607,7 @@ export function Settings() {
                 </label>
                 <Input
                   type="text"
+                  autoComplete="name"
                   value={contactForm.contactName}
                   onChange={(e) =>
                     handleContactChange('contactName', e.target.value)
@@ -535,6 +621,7 @@ export function Settings() {
                 </label>
                 <Input
                   type="tel"
+                  autoComplete="tel"
                   value={contactForm.contactPhone}
                   onChange={(e) =>
                     handleContactChange('contactPhone', e.target.value)
@@ -782,7 +869,7 @@ export function Settings() {
                     Not connected
                   </p>
                   <p className="text-xs text-orange-700 leading-relaxed">
-                    Connect your bank account to receive invoice payments via ACH transfer ($25 flat) or credit card (3.3% + $0.40). Takes about 2 minutes.
+                    Connect your bank account to receive invoice payments via ACH transfer ($25 flat) or credit card (3.3% + $0.40). Takes about 3 minutes.
                   </p>
                 </div>
                 <Button
@@ -900,20 +987,18 @@ export function Settings() {
           <CardContent>
             <div className="space-y-4">
               <div className="space-y-3">
+                <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">All notifications default ON — uncheck to opt out</p>
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={notificationForm.emailOnPaymentReceived}
                     onChange={(e) =>
-                      handleNotificationChange(
-                        'emailOnPaymentReceived',
-                        e.target.checked,
-                      )
+                      handleNotificationChange('emailOnPaymentReceived', e.target.checked)
                     }
                     className="w-4 h-4 rounded"
                   />
                   <span className="text-sm text-text-primary">
-                    Email me when invoices are paid
+                    Pay application activity (new pay apps, status changes)
                   </span>
                 </label>
                 <label className="flex items-center gap-3 cursor-pointer">
@@ -926,7 +1011,7 @@ export function Settings() {
                     className="w-4 h-4 rounded"
                   />
                   <span className="text-sm text-text-primary">
-                    Email me weekly payment summaries
+                    Payment received (ACH confirmations, card payments)
                   </span>
                 </label>
                 <label className="flex items-center gap-3 cursor-pointer">
@@ -934,15 +1019,25 @@ export function Settings() {
                     type="checkbox"
                     checked={notificationForm.emailOverdueReminder}
                     onChange={(e) =>
-                      handleNotificationChange(
-                        'emailOverdueReminder',
-                        e.target.checked,
-                      )
+                      handleNotificationChange('emailOverdueReminder', e.target.checked)
                     }
                     className="w-4 h-4 rounded"
                   />
                   <span className="text-sm text-text-primary">
-                    Email me reminders for overdue invoices
+                    Overdue invoice reminders
+                  </span>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    defaultChecked={true}
+                    onChange={(e) =>
+                      saveSettings({ notifications_lien: e.target.checked } as any)
+                    }
+                    className="w-4 h-4 rounded"
+                  />
+                  <span className="text-sm text-text-primary">
+                    California lien deadline alerts (preliminary notice, mechanics lien)
                   </span>
                 </label>
               </div>

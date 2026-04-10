@@ -222,6 +222,17 @@ async function initDB() {
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS nudge_5payapps BOOLEAN DEFAULT TRUE;
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS nudge_dismiss_days INTEGER DEFAULT 7;
 
+    -- Company address fields + license number + per-user notification preferences
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS company_address VARCHAR(500);
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS company_city    VARCHAR(200);
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS company_state   VARCHAR(100);
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS company_zip     VARCHAR(20);
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS license_number  VARCHAR(100);
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS notifications_pay_app  BOOLEAN DEFAULT TRUE;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS notifications_payment  BOOLEAN DEFAULT TRUE;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS notifications_overdue  BOOLEAN DEFAULT TRUE;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS notifications_lien     BOOLEAN DEFAULT TRUE;
+
     -- Contract document upload (optional signed contract attached to project)
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS contract_filename VARCHAR(300);
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS contract_original_name VARCHAR(300);

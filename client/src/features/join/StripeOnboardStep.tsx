@@ -81,7 +81,7 @@ const StripeOnboardStep: React.FC<StripeOnboardStepProps> = ({ token, onComplete
           transition: 'all 0.2s'
         }}
       >
-        {loading ? 'Opening Stripe...' : 'Connect Bank — 2 minutes'}
+        {loading ? 'Opening Stripe...' : 'Connect Bank — 3 minutes'}
       </button>
 
       <button
