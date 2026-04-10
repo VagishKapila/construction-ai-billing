@@ -8,9 +8,7 @@ import { AIChatWidget } from '@/components/ai'
 import { TrialBanner } from '@/components/trial/TrialBanner'
 import { UpgradeModal } from '@/components/trial/UpgradeModal'
 import { UpgradeNudge } from '@/components/trial/UpgradeNudge'
-import { GuidedTour } from '@/components/onboarding/GuidedTour'
 import { InstallPrompt } from '@/components/pwa'
-import { useOnboarding } from '@/hooks/useOnboarding'
 import { cn } from '@/lib/cn'
 
 /**
@@ -25,7 +23,6 @@ import { cn } from '@/lib/cn'
 export function Shell({ children }: { children?: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false)
-  const { showTour, completeTour, skipTour } = useOnboarding()
 
   return (
     <div className="min-h-screen bg-[#fafafe]">
@@ -119,9 +116,6 @@ export function Shell({ children }: { children?: React.ReactNode }) {
 
       {/* Upgrade Nudge Toast — subtle bottom-right prompt */}
       <UpgradeNudge onUpgradeClick={() => setUpgradeModalOpen(true)} />
-
-      {/* Onboarding Guided Tour — shows on first login */}
-      <GuidedTour isOpen={showTour} onComplete={completeTour} onSkip={skipTour} />
 
       {/* PWA Install Prompt — shows 30s after mobile page load */}
       <InstallPrompt />

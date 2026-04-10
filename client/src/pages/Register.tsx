@@ -42,7 +42,7 @@ export function Register() {
 
     try {
       await register(formData.name, formData.email, formData.password)
-      navigate('/dashboard')
+      navigate('/onboarding')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed')
     } finally {

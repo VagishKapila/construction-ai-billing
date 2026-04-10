@@ -24,6 +24,7 @@ import { AdminDashboard } from '@/pages/AdminDashboard'
 import { Help } from '@/pages/Help'
 import { MagicLinkHub } from '@/pages/MagicLinkHub'
 import { NotFound } from '@/pages/NotFound'
+import { OnboardingFlow } from '@/pages/OnboardingFlow'
 
 /**
  * Protected route wrapper — requires authentication
@@ -86,6 +87,16 @@ function AppRouter() {
 
       {/* Public magic link hub page (no auth, no shell) */}
       <Route path="/hub/:token" element={<PageTransition><MagicLinkHub /></PageTransition>} />
+
+      {/* Onboarding route — auth required, no shell (fullscreen flow) */}
+      <Route
+        path="/onboarding"
+        element={
+          <AuthGuard>
+            <OnboardingFlow />
+          </AuthGuard>
+        }
+      />
 
       {/* Protected routes (auth required + shell layout) */}
       <Route
