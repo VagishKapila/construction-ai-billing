@@ -567,6 +567,54 @@ async function initDB() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_manual_payments_payapp ON manual_payments(pay_app_id);
+
+    -- Trust Score Engine (Apr 2026) — vendor performance tracking
+    CREATE TABLE IF NOT EXISTS vendor_trust_scores (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+      vendor_email VARCHAR(300),
+      score INTEGER DEFAULT 500,
+      tier VARCHAR(50) DEFAULT 'silver',
+      max_score INTEGER DEFAULT 763,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_vendor_trust_project ON vendor_trust_scores(project_id);
+    CREATE INDEX IF NOT EXISTS idx_vendor_trust_email ON vendor_trust_scores(vendor_email);
+
+    CREATE TABLE IF NOT EXISTS vendor_trust_events (
+      id SERIAL PRIMARY KEY,
+      vendor_trust_score_id INTEGER REFERENCES vendor_trust_scores(id) ON DELETE CASCADE,
+      event_type VARCHAR(50) NOT NULL,
+      score_delta INTEGER NOT NULL,
+      score_after INTEGER NOT NULL,
+      rejection_category VARCHAR(100),
+      coaching_note TEXT,
+      upload_id INTEGER,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_vendor_trust_events_score ON vendor_trust_events(vendor_trust_score_id);
+    CREATE INDEX IF NOT EXISTS idx_vendor_trust_events_type ON vendor_trust_events(event_type);
+
+    -- Vendor Address Book (Apr 2026) — trade partners, subs, suppliers
+    CREATE TABLE IF NOT EXISTS vendor_address_book (
+      id SERIAL PRIMARY KEY,
+      owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      company_name VARCHAR(255) NOT NULL,
+      contact_name VARCHAR(255),
+      email VARCHAR(255),
+      phone VARCHAR(20),
+      trade_type VARCHAR(100),
+      address TEXT,
+      notes TEXT,
+      import_source VARCHAR(50),
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(owner_id, email)
+    );
+    CREATE INDEX IF NOT EXISTS idx_vendor_book_owner ON vendor_address_book(owner_id);
+    CREATE INDEX IF NOT EXISTS idx_vendor_book_trade ON vendor_address_book(trade_type);
+    CREATE INDEX IF NOT EXISTS idx_vendor_book_email ON vendor_address_book(email);
   `);
   console.log('Database ready');
 }

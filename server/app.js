@@ -160,6 +160,13 @@ app.use(hubPhase2Router);
 // Join code routes — sub registration via codes (ELM-2026-X4K9 format)
 app.use(require('./features/join-code'));
 
+// Vendor book routes — address book, AI column mapping, SOV suggestions
+app.use(require('./features/vendor-book'));
+
+// Trust Score Engine routes
+const { router: trustRouter } = require('./features/trust');
+app.use(trustRouter);
+
 // ── Emergency admin reset (standalone) ────────────────────────────────────
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
