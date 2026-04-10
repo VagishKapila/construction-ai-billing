@@ -591,7 +591,7 @@ async function initDB() {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_vendor_trust_project ON vendor_trust_scores(project_id);
-    CREATE INDEX IF NOT EXISTS idx_vendor_trust_email ON vendor_trust_scores(vendor_email);
+    -- idx_vendor_trust_email intentionally omitted: vendor_email column is dropped by Hub v2 migration below
 
     CREATE TABLE IF NOT EXISTS vendor_trust_events (
       id SERIAL PRIMARY KEY,
@@ -604,7 +604,7 @@ async function initDB() {
       upload_id INTEGER,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
-    CREATE INDEX IF NOT EXISTS idx_vendor_trust_events_score ON vendor_trust_events(vendor_trust_score_id);
+    -- idx_vendor_trust_events_score intentionally omitted: vendor_trust_score_id column is dropped by Hub v2 migration below
     CREATE INDEX IF NOT EXISTS idx_vendor_trust_events_type ON vendor_trust_events(event_type);
 
     -- Vendor Address Book (Apr 2026) — trade partners, subs, suppliers
@@ -623,7 +623,7 @@ async function initDB() {
       updated_at TIMESTAMPTZ DEFAULT NOW(),
       UNIQUE(owner_id, email)
     );
-    CREATE INDEX IF NOT EXISTS idx_vendor_book_owner ON vendor_address_book(owner_id);
+    -- idx_vendor_book_owner intentionally omitted: owner_id column is dropped by Hub v2 migration below (replaced by owner_user_id)
     CREATE INDEX IF NOT EXISTS idx_vendor_book_trade ON vendor_address_book(trade_type);
     CREATE INDEX IF NOT EXISTS idx_vendor_book_email ON vendor_address_book(email);
 
@@ -662,7 +662,7 @@ async function initDB() {
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
-    CREATE INDEX IF NOT EXISTS idx_early_payment_hub_upload ON early_payment_requests(hub_upload_id);
+    -- idx_early_payment_hub_upload intentionally omitted: hub_upload_id column is dropped by Hub v2 migration below (replaced by upload_id)
     CREATE INDEX IF NOT EXISTS idx_early_payment_project ON early_payment_requests(project_id);
     CREATE INDEX IF NOT EXISTS idx_early_payment_status ON early_payment_requests(status);
 
@@ -737,7 +737,7 @@ async function initDB() {
       UNIQUE(user_id, forecast_date)
     );
     CREATE INDEX IF NOT EXISTS idx_cash_forecast_user ON cash_flow_forecasts(user_id);
-    CREATE INDEX IF NOT EXISTS idx_cash_forecast_date ON cash_flow_forecasts(forecast_date);
+    -- idx_cash_forecast_date intentionally omitted: forecast_date column is dropped by Hub v2 migration below
 
     -- Hub close-out events (ZIP export records)
     ALTER TABLE hub_close_out_events ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
@@ -753,7 +753,7 @@ async function initDB() {
       was_helpful BOOLEAN,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
-    CREATE INDEX IF NOT EXISTS idx_aria_knowledge_user ON aria_knowledge_events(user_id);
+    -- idx_aria_knowledge_user intentionally omitted: user_id column is dropped by Hub v2 migration below
 
     -- User role fields for sub/gc distinction
     ALTER TABLE users ADD COLUMN IF NOT EXISTS joined_via_code VARCHAR(20);
