@@ -157,6 +157,9 @@ app.use(require('./routes/hub'));
 const { router: hubPhase2Router } = require('./features/hub');
 app.use(hubPhase2Router);
 
+// Join code routes — sub registration via codes (ELM-2026-X4K9 format)
+app.use(require('./features/join-code'));
+
 // ── Emergency admin reset (standalone) ────────────────────────────────────
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
