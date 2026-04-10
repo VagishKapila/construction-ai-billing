@@ -153,6 +153,10 @@ app.use(require('./routes/ai'));
 // Hub routes — Project document intake (Phase 1)
 app.use(require('./routes/hub'));
 
+// Hub Phase 2 — enhanced routes (join codes, bulk operations, vendor management)
+const { router: hubPhase2Router } = require('./features/hub');
+app.use(hubPhase2Router);
+
 // ── Emergency admin reset (standalone) ────────────────────────────────────
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
