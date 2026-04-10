@@ -23,6 +23,8 @@ const StripeOnboardStep: React.FC<StripeOnboardStepProps> = ({ token, onComplete
       });
       const data = await resp.json();
       if (data.url) {
+        // After Stripe onboarding, it will redirect back to join.html — call onComplete there
+        onComplete();
         window.location.href = data.url;
       } else {
         throw new Error(data.error || 'Failed to start onboarding');

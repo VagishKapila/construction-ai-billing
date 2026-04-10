@@ -1,12 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { useToast } from '@/hooks/use-toast';
 import EarlyPayModal from './EarlyPayModal';
 
 interface EarlyPayButtonProps {
@@ -17,15 +10,12 @@ interface EarlyPayButtonProps {
   onRequested?: () => void;
 }
 
-interface EligibilityResponse {
-  data: {
-    eligible: boolean;
-    reason: string;
-    fee_pct: number;
-    estimated_fee: number;
-    net_amount: number;
-  } | null;
-  error: string | null;
+interface EligibilityData {
+  eligible: boolean;
+  reason: string;
+  fee_pct: number;
+  estimated_fee: number;
+  net_amount: number;
 }
 
 const EarlyPayButton: React.FC<EarlyPayButtonProps> = ({
@@ -35,26 +25,23 @@ const EarlyPayButton: React.FC<EarlyPayButtonProps> = ({
   status = 'pending',
   onRequested,
 }) => {
-  const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [eligibility, setEligibility] = useState<EligibilityResponse['data'] | null>(null);
+  const [eligibility, setEligibility] = useState<EligibilityData | null>(null);
+  const [ineligibleReason, setIneligibleReason] = useState<string | null>(null);
 
   // Only show button if it's an approved invoice
   const shouldShow = docType === 'invoice' && status === 'approved';
 
   const checkEligibility = async () => {
     setIsLoading(true);
+    setIneligibleReason(null);
     try {
       const response = await fetch(`/api/early-pay/eligibility/${hubUploadId}`);
-      const result: EligibilityResponse = await response.json();
+      const result = await response.json();
 
       if (result.error) {
-        toast({
-          variant: 'destructive',
-          title: 'Error',
-          description: result.error,
-        });
+        setIneligibleReason(result.error);
         return;
       }
 
@@ -63,19 +50,11 @@ const EarlyPayButton: React.FC<EarlyPayButtonProps> = ({
       if (result.data?.eligible) {
         setIsOpen(true);
       } else {
-        toast({
-          variant: 'destructive',
-          title: 'Not Eligible',
-          description: result.data?.reason || 'This invoice is not eligible for early payment',
-        });
+        setIneligibleReason(result.data?.reason || 'This invoice is not eligible for early payment');
       }
     } catch (err) {
       console.error('Failed to check eligibility:', err);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to check early payment eligibility',
-      });
+      setIneligibleReason('Failed to check eligibility. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -87,24 +66,21 @@ const EarlyPayButton: React.FC<EarlyPayButtonProps> = ({
 
   return (
     <>
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={checkEligibility}
-              disabled={isLoading}
-              className="text-xs font-medium border-[#db2777] text-[#db2777] hover:bg-[#fdf2f8]"
-            >
-              {isLoading ? 'Checking...' : 'Request Early Pay'}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            <p className="text-xs">Request early payment with a 2.5% processing fee</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <div className="flex flex-col gap-1">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={checkEligibility}
+          disabled={isLoading}
+          title="Request early payment with a 2.5% processing fee"
+          className="text-xs font-medium border-[#db2777] text-[#db2777] hover:bg-[#fdf2f8]"
+        >
+          {isLoading ? 'Checking...' : 'Request Early Pay'}
+        </Button>
+        {ineligibleReason && (
+          <p className="text-xs text-red-600 max-w-[180px]">{ineligibleReason}</p>
+        )}
+      </div>
 
       {eligibility && (
         <EarlyPayModal
