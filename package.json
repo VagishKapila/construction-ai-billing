@@ -10,7 +10,9 @@
     "test": "node qa_test.js",
     "test:e2e": "npx playwright test",
     "test:e2e:headed": "npx playwright test --headed",
-    "test:all": "node qa_test.js && npx playwright test"
+    "test:all": "node qa_test.js && npx playwright test",
+    "payment-health": "node scripts/payment-health-check.js",
+    "aria-daily": "node scripts/aria-daily.js"
   },
   "dependencies": {
     "archiver": "^7.0.1",

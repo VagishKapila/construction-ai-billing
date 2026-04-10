@@ -217,10 +217,40 @@ app.get('/api/config', (req, res) => {
 // ── Public pages (catch-all MUST be LAST) ─────────────────────────────────
 app.use(require('./routes/publicPages'));
 
-// ── Global error handler ──────────────────────────────────────────────────
-app.use((err, _req, res, _next) => {
-  console.error('[Error]', err.message);
-  res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+// ── Global error handler — structured logging for Railway log drains ──────
+app.use((err, req, res, _next) => {
+  const status = err.status || 500;
+
+  // Always log 500s with full context so Railway surfaces them immediately
+  if (status >= 500) {
+    console.error('[ERROR]', JSON.stringify({
+      ts: new Date().toISOString(),
+      path: req.path,
+      method: req.method,
+      userId: req.user?.id ?? null,
+      userEmail: req.user?.email ?? null,
+      status,
+      message: err.message,
+      // Only first meaningful stack frame — no noise
+      frame: err.stack?.split('\n').find(l => l.includes('construction-ai-billing') && !l.includes('node_modules')) || err.stack?.split('\n')[1] || null,
+    }));
+  } else {
+    // 4xx — log at warn level, no stack trace
+    console.warn('[WARN]', JSON.stringify({
+      ts: new Date().toISOString(),
+      path: req.path,
+      method: req.method,
+      userId: req.user?.id ?? null,
+      status,
+      message: err.message,
+    }));
+  }
+
+  res.status(status).json({
+    error: status >= 500 ? 'Internal server error' : err.message,
+    // Expose original message in non-prod for easier debugging
+    ...(process.env.NODE_ENV !== 'production' && status >= 500 ? { _debug: err.message } : {}),
+  });
 });
 
 module.exports = app;
