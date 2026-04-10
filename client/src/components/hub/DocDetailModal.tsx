@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Download, MessageCircle } from 'lucide-react';
+import { X, Download, MessageCircle, AlertCircle } from 'lucide-react';
 import type { HubUpload, HubComment } from '@/types/hub';
 import {
   getUpload,
@@ -10,6 +10,15 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { formatDate, formatCurrency } from '@/lib/formatters';
+
+// Pre-built rejection reasons — quick-select chips
+const REJECTION_CHIPS = [
+  'Missing retainage deduction (10%)',
+  'Missing lien waiver',
+  'Incorrect amount',
+  'Missing backup documentation',
+  'Other',
+];
 
 interface DocDetailModalProps {
   upload: HubUpload | null;
@@ -206,6 +215,23 @@ export function DocDetailModal({
                   <p className="text-sm text-text-primary">{formatDate(upload.created_at)}</p>
                 </div>
 
+                {upload.rejection_reason && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-semibold text-red-700 uppercase mb-1">
+                          Rejection Reason
+                        </p>
+                        <p className="text-sm text-red-800">{upload.rejection_reason}</p>
+                        <p className="text-xs text-red-500 mt-1">
+                          Sub notified — awaiting resubmission
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {upload.notes && (
                   <div>
                     <p className="text-xs text-text-muted uppercase font-semibold">Notes</p>
@@ -313,22 +339,48 @@ export function DocDetailModal({
 
                 {revisionStep === 1 && (
                   <>
+                    {/* Quick-select reason chips */}
+                    <div>
+                      <p className="text-xs font-semibold text-text-muted uppercase mb-2">
+                        Quick Select
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {REJECTION_CHIPS.map(chip => (
+                          <button
+                            key={chip}
+                            type="button"
+                            onClick={() => setRejectionReason(chip)}
+                            className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                              rejectionReason === chip
+                                ? 'bg-red-600 text-white border-red-600'
+                                : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                            }`}
+                          >
+                            {chip}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     <textarea
                       value={rejectionReason}
                       onChange={e => setRejectionReason(e.target.value)}
-                      placeholder="Reason for revision request *"
-                      className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E8622A]"
-                      rows={4}
+                      placeholder="Rejection reason (required) — sub will see this"
+                      className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+                      rows={3}
                     />
+                    <p className="text-xs text-text-muted">
+                      Sub receives an email with this reason and a link to resubmit.
+                    </p>
                     <Button
                       onClick={handleReject}
                       disabled={loading || !rejectionReason.trim()}
-                      className="w-full bg-[#E8622A] hover:bg-[#d4501f]"
+                      className="w-full bg-red-600 hover:bg-red-700 text-white"
                     >
-                      {loading ? 'Sending...' : 'Send to Sub'}
+                      {loading ? 'Sending...' : 'Reject & Notify Sub'}
                     </Button>
                     <Button
-                      onClick={() => setRevisionStep(0)}
+                      onClick={() => { setRevisionStep(0); setRejectionReason(''); }}
                       variant="outline"
                       className="w-full"
                     >
@@ -338,12 +390,12 @@ export function DocDetailModal({
                 )}
 
                 {revisionStep === 2 && (
-                  <div className="text-center py-4">
-                    <p className="text-emerald-600 font-semibold text-sm">
-                      ✓ Revision requested. Sub notified.
+                  <div className="text-center py-4 rounded-lg bg-red-50 border border-red-200">
+                    <p className="text-red-700 font-semibold text-sm">
+                      ✕ Invoice rejected — sub notified
                     </p>
-                    <p className="text-xs text-text-muted mt-2">
-                      Waiting for re-upload...
+                    <p className="text-xs text-red-500 mt-1.5">
+                      Awaiting resubmission via their upload link
                     </p>
                   </div>
                 )}

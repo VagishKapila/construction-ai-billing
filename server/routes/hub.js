@@ -35,6 +35,75 @@ function slugify(text) {
     .replace(/-+/g, '-');
 }
 
+// ── Email helper — sends rejection notice to sub via Resend ─────────────────
+async function sendRejectionEmail({ toEmail, tradeName, projectAddress, rejectionReason, magicLinkToken }) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.FROM_EMAIL || 'noreply@varshyl.com';
+  const baseUrl = process.env.BASE_URL || 'https://constructinv.varshyl.com';
+
+  if (!apiKey) {
+    console.log(`[DEV] Rejection email for ${toEmail}: "${rejectionReason}"`);
+    return;
+  }
+
+  const resubmitUrl = `${baseUrl}/hub/${magicLinkToken}`;
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#fff">
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px 20px;margin-bottom:24px">
+        <p style="margin:0;font-size:13px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:0.05em">
+          Action Needed — Invoice Rejected
+        </p>
+      </div>
+      <h2 style="margin:0 0 8px;font-size:18px;color:#1a1a2e">
+        Invoice rejected on ${projectAddress}
+      </h2>
+      <p style="color:#555;font-size:14px;line-height:1.6;margin-bottom:20px">
+        Hi ${tradeName || 'there'},<br><br>
+        Your invoice has been reviewed and requires corrections before it can be approved.
+      </p>
+      <div style="background:#fef2f2;border-left:4px solid #dc2626;border-radius:4px;padding:14px 18px;margin-bottom:24px">
+        <p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#dc2626;text-transform:uppercase">Rejection Reason</p>
+        <p style="margin:0;font-size:14px;color:#7f1d1d;font-weight:500">${rejectionReason}</p>
+      </div>
+      <p style="color:#555;font-size:14px;line-height:1.6;margin-bottom:24px">
+        Please correct your invoice and resubmit using the button below.
+      </p>
+      <a href="${resubmitUrl}"
+         style="display:inline-block;background:#E8622A;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px">
+        Resubmit Invoice →
+      </a>
+      <p style="color:#aaa;font-size:11px;margin-top:24px">
+        If you have questions, reply to this email or contact your GC directly.
+      </p>
+    </div>
+  `;
+
+  try {
+    const resp = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [toEmail],
+        subject: `Action needed — Invoice rejected on ${projectAddress}`,
+        html,
+      }),
+    });
+    if (!resp.ok) {
+      const errBody = await resp.text().catch(() => '');
+      console.error(`[Hub] Rejection email failed ${resp.status}: ${errBody}`);
+    } else {
+      console.log(`[Hub] Rejection email sent to ${toEmail}`);
+    }
+  } catch (e) {
+    console.error('[Hub] sendRejectionEmail error:', e.message);
+  }
+}
+
 // Helper: verify project ownership
 async function verifyProjectOwnership(projectId, userId) {
   const result = await pool.query(
@@ -412,6 +481,30 @@ router.put('/api/projects/:id/hub/uploads/:uploadId', auth, async (req, res) => 
         upload_id: uploadId,
         reupload_slot_id: newUploadResult.rows[0].id
       });
+
+      // Send rejection email to sub if they have a contact email
+      try {
+        const tradeResult = await pool.query(
+          `SELECT pt.contact_email, pt.name, pt.magic_link_token, p.address, p.name as project_name
+           FROM project_trades pt
+           JOIN projects p ON p.id = pt.project_id
+           WHERE pt.id = $1`,
+          [upload.trade_id]
+        );
+        const trade = tradeResult.rows[0];
+        if (trade && trade.contact_email) {
+          await sendRejectionEmail({
+            toEmail: trade.contact_email,
+            tradeName: trade.name,
+            projectAddress: trade.address || trade.project_name,
+            rejectionReason: rejection_reason,
+            magicLinkToken: trade.magic_link_token,
+          });
+        }
+      } catch (emailErr) {
+        // Don't fail the request if email fails
+        console.error('[Hub] Rejection email skipped:', emailErr.message);
+      }
 
       res.json({ data: updateResult.rows[0], reupload_slot: newUploadResult.rows[0] });
     } else {

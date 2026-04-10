@@ -267,7 +267,13 @@ export function HubTab({ projectId }: HubTabProps) {
                     return (
                       <tr
                         key={upload.id}
-                        className={`border-b border-border hover:bg-gray-50 ${stale ? 'bg-amber-50' : ''}`}
+                        className={`border-b border-border hover:bg-gray-50 ${
+                          upload.status === 'rejected'
+                            ? 'bg-red-50/40'
+                            : stale
+                              ? 'bg-amber-50'
+                              : ''
+                        }`}
                       >
                         <td className="py-3 px-4">
                           <div>
@@ -285,17 +291,32 @@ export function HubTab({ projectId }: HubTabProps) {
                           {upload.amount ? formatCurrency(Number(upload.amount)) : '—'}
                         </td>
                         <td className="py-3 px-4">
-                          <Badge
-                            variant={
-                              upload.status === 'approved'
-                                ? 'success'
-                                : upload.status === 'rejected'
-                                  ? 'danger'
-                                  : 'warning'
-                            }
-                          >
-                            {upload.status}
-                          </Badge>
+                          <div className="flex flex-col gap-1">
+                            <Badge
+                              variant={
+                                upload.status === 'approved'
+                                  ? 'success'
+                                  : upload.status === 'rejected'
+                                    ? 'danger'
+                                    : 'warning'
+                              }
+                            >
+                              {upload.status === 'rejected' ? 'Rejected' : upload.status}
+                            </Badge>
+                            {upload.status === 'rejected' && (
+                              <span className="text-xs text-amber-600 font-medium whitespace-nowrap">
+                                ↩ Awaiting resubmission
+                              </span>
+                            )}
+                            {upload.status === 'rejected' && upload.rejection_reason && (
+                              <span
+                                className="text-xs text-red-600 max-w-[140px] truncate"
+                                title={upload.rejection_reason}
+                              >
+                                {upload.rejection_reason}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 px-4 text-text-secondary">
                           <div className="flex items-center gap-1">
