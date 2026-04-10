@@ -236,6 +236,15 @@ export interface CompanySettings {
   // Company identity
   company_name?: string;
 
+  // Company address
+  company_address?: string;
+  company_city?: string;
+  company_state?: string;
+  company_zip?: string;
+
+  // Contractor license
+  license_number?: string;
+
   // Defaults
   default_payment_terms?: string; // e.g., "Net 30"
   default_retainage?: number; // percentage
@@ -252,6 +261,12 @@ export interface CompanySettings {
 
   // Feature flags
   credit_card_enabled: boolean;
+
+  // Notification preferences (default: all ON)
+  notifications_pay_app?: boolean;
+  notifications_payment?: boolean;
+  notifications_overdue?: boolean;
+  notifications_lien?: boolean;
 
   // Timestamps
   created_at?: string; // ISO 8601

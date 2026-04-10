@@ -80,7 +80,7 @@ export function StripeGateModal({ isOpen, onClose, onSaveAsDraft }: StripeGateMo
                 </h3>
                 <p className="text-sm text-gray-500 mt-2 leading-relaxed">
                   You need to connect your bank account to receive invoice payments directly.
-                  It takes about 2 minutes and allows owners to pay you via ACH or credit card.
+                  It takes about 3 minutes and allows owners to pay you via ACH or credit card.
                 </p>
 
                 <div className="mt-5 space-y-3">

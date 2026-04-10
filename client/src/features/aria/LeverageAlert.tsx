@@ -26,7 +26,7 @@ export const LeverageAlert: React.FC<LeverageAlertProps> = ({ projectId }) => {
   useEffect(() => {
     const fetchTiming = async () => {
       try {
-        const token = localStorage.getItem('jwt_token');
+        const token = localStorage.getItem('ci_token');
         const response = await fetch(`/api/aria/leverage-timing/${projectId}`, {
           headers: {
             Authorization: `Bearer ${token}`,

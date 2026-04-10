@@ -51,7 +51,7 @@ export const ARIAInsights: React.FC<ARIAInsightsProps> = ({ projectId }) => {
   useEffect(() => {
     const fetchInsights = async () => {
       try {
-        const token = localStorage.getItem('jwt_token');
+        const token = localStorage.getItem('ci_token');
         const response = await fetch(`/api/aria/insights/${projectId}`, {
           headers: {
             Authorization: `Bearer ${token}`,

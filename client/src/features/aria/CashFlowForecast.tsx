@@ -34,7 +34,7 @@ export const CashFlowForecast: React.FC = () => {
   useEffect(() => {
     const fetchForecast = async () => {
       try {
-        const token = localStorage.getItem('jwt_token');
+        const token = localStorage.getItem('ci_token');
         const response = await fetch('/api/aria/cash-forecast', {
           headers: {
             Authorization: `Bearer ${token}`,

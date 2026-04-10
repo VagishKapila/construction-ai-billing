@@ -30,7 +30,7 @@ export const FollowUpQueue: React.FC = () => {
 
   const fetchQueue = async () => {
     try {
-      const token = localStorage.getItem('jwt_token');
+      const token = localStorage.getItem('ci_token');
       const response = await fetch('/api/aria/follow-up-queue', {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -52,7 +52,7 @@ export const FollowUpQueue: React.FC = () => {
   const handleSendFollowUp = async (payAppId: number) => {
     setSendingId(payAppId);
     try {
-      const token = localStorage.getItem('jwt_token');
+      const token = localStorage.getItem('ci_token');
       const response = await fetch(`/api/aria/trigger-follow-up/${payAppId}`, {
         method: 'POST',
         headers: {

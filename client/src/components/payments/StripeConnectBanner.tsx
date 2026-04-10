@@ -70,7 +70,7 @@ export function StripeConnectBanner() {
                 Set up payments to get paid
               </p>
               <p className="text-xs text-orange-700 mt-0.5">
-                Connect your bank account to receive invoice payments directly. Takes 2 minutes.
+                Connect your bank account to receive invoice payments directly. Takes 3 minutes.
               </p>
             </div>
           </div>

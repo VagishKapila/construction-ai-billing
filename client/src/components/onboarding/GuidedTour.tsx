@@ -43,7 +43,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="welcome"]',
     title: 'Welcome to ConstructInvoice AI',
-    description: "Let's get you set up in 2 minutes. You'll learn how to create projects, upload schedules of value, and generate G702/G703 pay applications.",
+    description: "Let's get you set up in 3 minutes. You'll learn how to create projects, upload schedules of value, and generate G702/G703 pay applications.",
     icon: <Sparkles className="h-8 w-8 text-indigo-500" />,
   },
   {
