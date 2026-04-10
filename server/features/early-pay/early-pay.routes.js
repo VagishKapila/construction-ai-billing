@@ -17,7 +17,7 @@ function getStripe() {
 /**
  * ENDPOINT 1: GET /api/early-pay/eligibility/:hubUploadId
  * Check if an approved invoice is eligible for early payment
- * Returns: { eligible: bool, reason: string, fee_pct: 0.025, estimated_fee: number, net_amount: number }
+ * Returns: { eligible: bool, reason: string, fee_pct: 0.015, estimated_fee: number, net_amount: number }
  */
 router.get('/api/early-pay/eligibility/:hubUploadId', auth, async (req, res) => {
   try {
@@ -42,7 +42,7 @@ router.get('/api/early-pay/eligibility/:hubUploadId', auth, async (req, res) => 
         data: {
           eligible: false,
           reason: upload.status !== 'approved' ? 'Invoice not yet approved' : 'Document is not an invoice',
-          fee_pct: 0.025,
+          fee_pct: 0.015,
           estimated_fee: 0,
           net_amount: 0
         },
@@ -55,7 +55,7 @@ router.get('/api/early-pay/eligibility/:hubUploadId', auth, async (req, res) => 
         data: {
           eligible: false,
           reason: 'Invoice amount is missing or zero',
-          fee_pct: 0.025,
+          fee_pct: 0.015,
           estimated_fee: 0,
           net_amount: 0
         },
@@ -69,7 +69,7 @@ router.get('/api/early-pay/eligibility/:hubUploadId', auth, async (req, res) => 
       [upload.trade_id, upload.project_id]
     );
     if (overrideResult.rows.length > 0 && overrideResult.rows[0].gc_early_pay_override) {
-      const feePct = 0.025;
+      const feePct = 0.015;
       const feeAmount = Number((upload.amount * feePct).toFixed(2));
       const netAmount = Number((upload.amount - feeAmount).toFixed(2));
       return res.json({
@@ -95,7 +95,7 @@ router.get('/api/early-pay/eligibility/:hubUploadId', auth, async (req, res) => 
     if (trustResult.rows.length > 0) {
       const score = trustResult.rows[0].score;
       if (score >= 381) {
-        const feePct = 0.025;
+        const feePct = 0.015;
         const feeAmount = Number((upload.amount * feePct).toFixed(2));
         const netAmount = Number((upload.amount - feeAmount).toFixed(2));
         return res.json({
@@ -116,7 +116,7 @@ router.get('/api/early-pay/eligibility/:hubUploadId', auth, async (req, res) => 
       data: {
         eligible: false,
         reason: 'Vendor does not meet eligibility requirements (trust score < 381)',
-        fee_pct: 0.025,
+        fee_pct: 0.015,
         estimated_fee: 0,
         net_amount: 0
       },
@@ -185,7 +185,7 @@ router.post('/api/early-pay/request/:hubUploadId', auth, async (req, res) => {
     }
 
     // Calculate fees
-    const feePct = 0.025;
+    const feePct = 0.015;
     const feeAmount = Number((upload.amount * feePct).toFixed(2));
     const netAmount = Number((upload.amount - feeAmount).toFixed(2));
 

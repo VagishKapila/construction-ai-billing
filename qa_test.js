@@ -581,6 +581,44 @@ check('HubTab: OrbitalCanvas appears in trades tab conditionally',
 
 // ─────────────────────────────────────────────────────────────────────────────
 console.log('\n══════════════════════════════════════════════════');
+console.log('  Hub v2 File Existence Checks');
+console.log('══════════════════════════════════════════════════');
+const checkFileExists = (filePath) => {
+  check(`File exists: ${filePath}`, fs.existsSync(filePath));
+};
+
+const checkFileContains = (filePath, pattern) => {
+  if (!fs.existsSync(filePath)) {
+    check(`File contains "${pattern.slice(0,40)}...": ${filePath}`, false, 'File does not exist');
+    return;
+  }
+  const content = fs.readFileSync(filePath, 'utf8');
+  check(`File contains "${pattern.slice(0,40)}...": ${filePath}`, content.includes(pattern));
+};
+
+checkFileExists('client/src/features/hub/VendorDetailPanel.tsx');
+checkFileExists('client/src/components/hub/OrbitalCanvas.tsx');
+checkFileExists('client/src/features/trust/TrustScoreBadge.tsx');
+checkFileExists('client/src/features/trust/TrustScoreBreakdown.tsx');
+checkFileExists('client/src/features/aria/LienAlert.tsx');
+checkFileExists('client/src/features/aria/ARIAInsights.tsx');
+checkFileExists('server/features/aria/lien/california.js');
+checkFileExists('server/features/aria/lien/index.js');
+checkFileExists('server/features/trust/trust.service.js');
+checkFileExists('server/features/early-pay/early-pay.routes.js');
+checkFileExists('server/features/repository/repo.service.js');
+checkFileExists('server/features/vendor-book/vendor-book.service.js');
+checkFileExists('public/join.html');
+checkFileExists('public/magic-upload.html');
+
+checkFileContains('client/src/components/hub/OrbitalCanvas.tsx', 'hoveredRef');
+checkFileContains('server/features/aria/lien/california.js', '20');
+checkFileContains('server/features/early-pay/early-pay.routes.js', '0.015');
+checkFileContains('client/src/features/trust/TrustScoreBadge.tsx', '763');
+checkFileContains('public/join.html', 'f8fafc');
+
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n══════════════════════════════════════════════════');
 console.log('  RESULTS');
 console.log('══════════════════════════════════════════════════');
 const total = passed + failed;

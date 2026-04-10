@@ -765,6 +765,145 @@ async function initDB() {
     ALTER TABLE project_trades ADD COLUMN IF NOT EXISTS trust_score_id INTEGER;
     ALTER TABLE project_trades ADD COLUMN IF NOT EXISTS early_pay_eligible BOOLEAN DEFAULT true;
     ALTER TABLE project_trades ADD COLUMN IF NOT EXISTS gc_early_pay_override BOOLEAN DEFAULT false;
+
+    -- AGENT 1: Schema alignment for vendor_trust_scores (spec compliance)
+    ALTER TABLE vendor_trust_scores ADD COLUMN IF NOT EXISTS vendor_user_id INTEGER REFERENCES users(id);
+    ALTER TABLE vendor_trust_scores ADD COLUMN IF NOT EXISTS evaluating_user_id INTEGER REFERENCES users(id);
+    ALTER TABLE vendor_trust_scores DROP COLUMN IF EXISTS vendor_email;
+    ALTER TABLE vendor_trust_scores DROP COLUMN IF EXISTS max_score;
+    ALTER TABLE vendor_trust_scores ADD COLUMN IF NOT EXISTS score INTEGER DEFAULT 0 CHECK (score >= 0 AND score <= 763);
+    ALTER TABLE vendor_trust_scores ADD COLUMN IF NOT EXISTS tier TEXT DEFAULT 'review' CHECK (tier IN ('platinum','gold','silver','bronze','review'));
+    ALTER TABLE vendor_trust_scores ADD COLUMN IF NOT EXISTS signal_breakdown JSONB DEFAULT '{}';
+    ALTER TABLE vendor_trust_scores ADD COLUMN IF NOT EXISTS is_visible_to_vendor BOOLEAN DEFAULT FALSE;
+    ALTER TABLE vendor_trust_scores ADD COLUMN IF NOT EXISTS manual_override_score INTEGER;
+    ALTER TABLE vendor_trust_scores ADD COLUMN IF NOT EXISTS manual_override_reason TEXT;
+    ALTER TABLE vendor_trust_scores ADD COLUMN IF NOT EXISTS imported_baseline_score NUMERIC;
+    ALTER TABLE vendor_trust_scores ADD COLUMN IF NOT EXISTS imported_baseline_scale TEXT;
+    ALTER TABLE vendor_trust_scores ADD COLUMN IF NOT EXISTS computed_at TIMESTAMP;
+
+    -- AGENT 1: Schema alignment for vendor_trust_events (spec compliance)
+    ALTER TABLE vendor_trust_events DROP COLUMN IF EXISTS vendor_trust_score_id;
+    ALTER TABLE vendor_trust_events ADD COLUMN IF NOT EXISTS vendor_user_id INTEGER REFERENCES users(id);
+    ALTER TABLE vendor_trust_events ADD COLUMN IF NOT EXISTS project_id INTEGER REFERENCES projects(id);
+    ALTER TABLE vendor_trust_events DROP COLUMN IF EXISTS score_delta;
+    ALTER TABLE vendor_trust_events DROP COLUMN IF EXISTS score_after;
+    ALTER TABLE vendor_trust_events ADD COLUMN IF NOT EXISTS rejection_note_raw TEXT;
+    ALTER TABLE vendor_trust_events ADD COLUMN IF NOT EXISTS rejection_category TEXT;
+    ALTER TABLE vendor_trust_events ADD COLUMN IF NOT EXISTS score_delta INTEGER DEFAULT 0;
+    ALTER TABLE vendor_trust_events ADD COLUMN IF NOT EXISTS aria_coaching_note TEXT;
+
+    -- AGENT 1: Schema alignment for vendor_address_book (spec compliance)
+    ALTER TABLE vendor_address_book DROP COLUMN IF EXISTS owner_id;
+    ALTER TABLE vendor_address_book ADD COLUMN IF NOT EXISTS owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE;
+    ALTER TABLE vendor_address_book DROP COLUMN IF EXISTS address;
+    ALTER TABLE vendor_address_book DROP COLUMN IF EXISTS notes;
+    ALTER TABLE vendor_address_book DROP COLUMN IF EXISTS import_source;
+    ALTER TABLE vendor_address_book ADD COLUMN IF NOT EXISTS has_account BOOLEAN DEFAULT FALSE;
+    ALTER TABLE vendor_address_book ADD COLUMN IF NOT EXISTS account_user_id INTEGER REFERENCES users(id);
+    ALTER TABLE vendor_address_book ADD COLUMN IF NOT EXISTS stripe_connect_id TEXT;
+    ALTER TABLE vendor_address_book ADD COLUMN IF NOT EXISTS projects_count INTEGER DEFAULT 0;
+    ALTER TABLE vendor_address_book ADD COLUMN IF NOT EXISTS imported_score NUMERIC;
+    ALTER TABLE vendor_address_book ADD COLUMN IF NOT EXISTS imported_score_scale TEXT;
+
+    -- AGENT 1: Schema alignment for payer_trust_scores (spec compliance)
+    ALTER TABLE payer_trust_scores ADD COLUMN IF NOT EXISTS evaluating_user_id INTEGER REFERENCES users(id);
+    ALTER TABLE payer_trust_scores DROP COLUMN IF EXISTS payment_count;
+    ALTER TABLE payer_trust_scores DROP COLUMN IF EXISTS last_payment_at;
+    ALTER TABLE payer_trust_scores ADD COLUMN IF NOT EXISTS score INTEGER DEFAULT 381 CHECK (score >= 0 AND score <= 763);
+    ALTER TABLE payer_trust_scores ADD COLUMN IF NOT EXISTS tier TEXT DEFAULT 'silver';
+    ALTER TABLE payer_trust_scores ADD COLUMN IF NOT EXISTS dispute_count INTEGER DEFAULT 0;
+    ALTER TABLE payer_trust_scores ADD COLUMN IF NOT EXISTS signal_breakdown JSONB DEFAULT '{}';
+    ALTER TABLE payer_trust_scores ADD COLUMN IF NOT EXISTS computed_at TIMESTAMP DEFAULT NOW();
+
+    -- AGENT 1: Schema alignment for aria_lien_alerts (spec compliance)
+    ALTER TABLE aria_lien_alerts DROP COLUMN IF EXISTS work_start_date;
+    ALTER TABLE aria_lien_alerts DROP COLUMN IF EXISTS preliminary_notice_due;
+    ALTER TABLE aria_lien_alerts DROP COLUMN IF EXISTS mechanics_lien_deadline;
+    ALTER TABLE aria_lien_alerts DROP COLUMN IF EXISTS alert_day_15_sent;
+    ALTER TABLE aria_lien_alerts DROP COLUMN IF EXISTS alert_day_19_sent;
+    ALTER TABLE aria_lien_alerts DROP COLUMN IF EXISTS alert_day_20_sent;
+    ALTER TABLE aria_lien_alerts ADD COLUMN IF NOT EXISTS state TEXT DEFAULT 'CA';
+    ALTER TABLE aria_lien_alerts ADD COLUMN IF NOT EXISTS alert_type TEXT NOT NULL CHECK (alert_type IN ('preliminary_20day','filing_deadline','enforcement_deadline','retention_release'));
+    ALTER TABLE aria_lien_alerts ADD COLUMN IF NOT EXISTS deadline_date DATE NOT NULL;
+    ALTER TABLE aria_lien_alerts ADD COLUMN IF NOT EXISTS alerted_at TIMESTAMP;
+    ALTER TABLE aria_lien_alerts ADD COLUMN IF NOT EXISTS dismissed_at TIMESTAMP;
+    ALTER TABLE aria_lien_alerts ADD COLUMN IF NOT EXISTS document_generated_at TIMESTAMP;
+    ALTER TABLE aria_lien_alerts ADD COLUMN IF NOT EXISTS document_path TEXT;
+
+    -- AGENT 1: Schema alignment for aria_follow_up_log (spec compliance)
+    ALTER TABLE aria_follow_up_log ADD COLUMN IF NOT EXISTS project_id INTEGER REFERENCES projects(id);
+    ALTER TABLE aria_follow_up_log DROP COLUMN IF EXISTS follow_up_day;
+    ALTER TABLE aria_follow_up_log ADD COLUMN IF NOT EXISTS pay_app_id INTEGER;
+    ALTER TABLE aria_follow_up_log ADD COLUMN IF NOT EXISTS owner_email TEXT;
+    ALTER TABLE aria_follow_up_log ADD COLUMN IF NOT EXISTS follow_up_number INTEGER DEFAULT 1;
+    ALTER TABLE aria_follow_up_log ADD COLUMN IF NOT EXISTS tone TEXT DEFAULT 'friendly' CHECK (tone IN ('friendly','firm','lien_warning'));
+    ALTER TABLE aria_follow_up_log DROP COLUMN IF EXISTS days_overdue;
+    ALTER TABLE aria_follow_up_log DROP COLUMN IF EXISTS resend_message_id;
+    ALTER TABLE aria_follow_up_log DROP COLUMN IF EXISTS email_sent_at;
+    ALTER TABLE aria_follow_up_log ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP DEFAULT NOW();
+    ALTER TABLE aria_follow_up_log ADD COLUMN IF NOT EXISTS opened_at TIMESTAMP;
+    ALTER TABLE aria_follow_up_log ADD COLUMN IF NOT EXISTS payment_received_at TIMESTAMP;
+
+    -- AGENT 1: Schema alignment for cash_flow_forecasts (spec compliance)
+    ALTER TABLE cash_flow_forecasts DROP COLUMN IF EXISTS forecast_date;
+    ALTER TABLE cash_flow_forecasts DROP COLUMN IF EXISTS projected_inflow;
+    ALTER TABLE cash_flow_forecasts DROP COLUMN IF EXISTS projected_outflow;
+    ALTER TABLE cash_flow_forecasts DROP COLUMN IF EXISTS projected_net_flow;
+    ALTER TABLE cash_flow_forecasts ADD COLUMN IF NOT EXISTS computed_at TIMESTAMP DEFAULT NOW();
+    ALTER TABLE cash_flow_forecasts ADD COLUMN IF NOT EXISTS forecast_json JSONB DEFAULT '[]';
+    ALTER TABLE cash_flow_forecasts ADD COLUMN IF NOT EXISTS gap_detected BOOLEAN DEFAULT FALSE;
+    ALTER TABLE cash_flow_forecasts ADD COLUMN IF NOT EXISTS gap_amount NUMERIC;
+    ALTER TABLE cash_flow_forecasts ADD COLUMN IF NOT EXISTS gap_date DATE;
+
+    -- AGENT 1: Schema alignment for early_payment_requests (spec compliance)
+    ALTER TABLE early_payment_requests DROP COLUMN IF EXISTS hub_upload_id;
+    ALTER TABLE early_payment_requests DROP COLUMN IF EXISTS trade_id;
+    ALTER TABLE early_payment_requests DROP COLUMN IF EXISTS requested_by;
+    ALTER TABLE early_payment_requests DROP COLUMN IF EXISTS fee_pct;
+    ALTER TABLE early_payment_requests DROP COLUMN IF EXISTS stripe_transfer_id;
+    ALTER TABLE early_payment_requests ADD COLUMN IF NOT EXISTS upload_id INTEGER;
+    ALTER TABLE early_payment_requests ADD COLUMN IF NOT EXISTS requesting_user_id INTEGER REFERENCES users(id);
+    ALTER TABLE early_payment_requests ADD COLUMN IF NOT EXISTS invoice_amount NUMERIC NOT NULL;
+    ALTER TABLE early_payment_requests ADD COLUMN IF NOT EXISTS fee_pct NUMERIC DEFAULT 0.015;
+    ALTER TABLE early_payment_requests ADD COLUMN IF NOT EXISTS fee_amount NUMERIC;
+    ALTER TABLE early_payment_requests ADD COLUMN IF NOT EXISTS ach_fee NUMERIC DEFAULT 25;
+    ALTER TABLE early_payment_requests ADD COLUMN IF NOT EXISTS net_amount NUMERIC;
+    ALTER TABLE early_payment_requests ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'ach' CHECK (payment_method IN ('ach','check'));
+    ALTER TABLE early_payment_requests ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending' CHECK (status IN ('pending','approved','processing','completed','rejected'));
+    ALTER TABLE early_payment_requests ADD COLUMN IF NOT EXISTS stripe_payment_intent_id TEXT;
+    ALTER TABLE early_payment_requests ADD COLUMN IF NOT EXISTS requested_at TIMESTAMP DEFAULT NOW();
+    ALTER TABLE early_payment_requests ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP;
+    ALTER TABLE early_payment_requests ADD COLUMN IF NOT EXISTS processed_at TIMESTAMP;
+
+    -- AGENT 1: Schema alignment for hub_close_out_events (spec compliance)
+    ALTER TABLE hub_close_out_events DROP COLUMN IF EXISTS zip_filename;
+    ALTER TABLE hub_close_out_events DROP COLUMN IF EXISTS docs_included;
+    ALTER TABLE hub_close_out_events DROP COLUMN IF EXISTS pay_apps_included;
+    ALTER TABLE hub_close_out_events ADD COLUMN IF NOT EXISTS triggered_at TIMESTAMP;
+    ALTER TABLE hub_close_out_events ADD COLUMN IF NOT EXISTS zip_path TEXT;
+    ALTER TABLE hub_close_out_events ADD COLUMN IF NOT EXISTS zip_size INTEGER;
+    ALTER TABLE hub_close_out_events ADD COLUMN IF NOT EXISTS download_count INTEGER;
+    ALTER TABLE hub_close_out_events ADD COLUMN IF NOT EXISTS notified_at TIMESTAMP;
+
+    -- AGENT 1: Schema alignment for aria_knowledge_events (spec compliance)
+    ALTER TABLE aria_knowledge_events DROP COLUMN IF EXISTS user_id;
+    ALTER TABLE aria_knowledge_events DROP COLUMN IF EXISTS question;
+    ALTER TABLE aria_knowledge_events DROP COLUMN IF EXISTS category;
+    ALTER TABLE aria_knowledge_events DROP COLUMN IF EXISTS answer_given;
+    ALTER TABLE aria_knowledge_events DROP COLUMN IF EXISTS was_helpful;
+    ALTER TABLE aria_knowledge_events ADD COLUMN IF NOT EXISTS event_type TEXT NOT NULL;
+    ALTER TABLE aria_knowledge_events ADD COLUMN IF NOT EXISTS vendor_id INTEGER;
+    ALTER TABLE aria_knowledge_events ADD COLUMN IF NOT EXISTS data_json JSONB DEFAULT '{}';
+    ALTER TABLE aria_knowledge_events ADD COLUMN IF NOT EXISTS learned_at TIMESTAMP DEFAULT NOW();
+
+    -- AGENT 1: Missing indexes for spec compliance
+    CREATE INDEX IF NOT EXISTS idx_project_join_codes_project ON project_join_codes(project_id);
+    CREATE INDEX IF NOT EXISTS idx_vendor_book_owner ON vendor_address_book(owner_user_id);
+    CREATE INDEX IF NOT EXISTS idx_trust_scores_vendor ON vendor_trust_scores(vendor_user_id);
+    CREATE INDEX IF NOT EXISTS idx_trust_events_vendor ON vendor_trust_events(vendor_user_id);
+    CREATE INDEX IF NOT EXISTS idx_lien_alerts_project ON aria_lien_alerts(project_id);
+    CREATE INDEX IF NOT EXISTS idx_early_pay_upload ON early_payment_requests(upload_id);
+    CREATE INDEX IF NOT EXISTS idx_cash_forecasts_user ON cash_flow_forecasts(user_id);
   `);
   console.log('Database ready');
 }

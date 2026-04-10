@@ -357,6 +357,7 @@ export function ProjectDetail() {
   const [recordPaymentOpen, setRecordPaymentOpen] = useState<number | null>(null)
   const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'Check', checkNumber: '', notes: '' })
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false)
+  const [hubView, setHubView] = useState<'orbital' | 'inbox'>('inbox')
 
   const { project, sovLines, payApps, changeOrders, attachments, isLoading, error, refresh } =
     useProject(projectId)
@@ -941,7 +942,60 @@ export function ProjectDetail() {
         )}
 
         {activeTab === 'hub' && (
-          <HubTab projectId={projectId} />
+          <div>
+            {/* View toggle */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              <button
+                onClick={() => setHubView('orbital')}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: 8,
+                  border: '1.5px solid',
+                  borderColor: hubView === 'orbital' ? '#2563eb' : '#e2e8f0',
+                  background: hubView === 'orbital' ? '#2563eb' : '#ffffff',
+                  color: hubView === 'orbital' ? '#ffffff' : '#64748b',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                🪐 Orbital
+              </button>
+              <button
+                onClick={() => setHubView('inbox')}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: 8,
+                  border: '1.5px solid',
+                  borderColor: hubView === 'inbox' ? '#2563eb' : '#e2e8f0',
+                  background: hubView === 'inbox' ? '#2563eb' : '#ffffff',
+                  color: hubView === 'inbox' ? '#ffffff' : '#64748b',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                📥 Inbox
+              </button>
+            </div>
+
+            {/* Orbital view — placeholder for future */}
+            {hubView === 'orbital' && (
+              <Card className="p-6 bg-gradient-to-br from-slate-900 to-slate-950 border-slate-800 rounded-xl flex items-center justify-center min-h-96">
+                <div className="text-center">
+                  <p className="text-slate-400 text-sm mb-2">🪐 Orbital view coming soon</p>
+                  <p className="text-slate-500 text-xs">Switch to Inbox to manage trades and documents</p>
+                </div>
+              </Card>
+            )}
+
+            {/* Inbox view */}
+            {hubView === 'inbox' && (
+              <HubTab projectId={projectId} />
+            )}
+          </div>
         )}
 
         {activeTab === 'documents' && (

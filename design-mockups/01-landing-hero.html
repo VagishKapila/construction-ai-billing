@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ConstructInvoice AI — Landing Page Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #0a0f1c; color: #fff; overflow-x: hidden; }
+
+/* ===== ANIMATED GRADIENT MESH BACKGROUND ===== */
+.hero-bg {
+  position: relative;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0a0f1c 0%, #0d1330 25%, #131847 50%, #1a1054 75%, #0a0f1c 100%);
+  overflow: hidden;
+}
+.hero-bg::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background:
+    radial-gradient(ellipse 600px 600px at 20% 30%, rgba(99,102,241,0.25) 0%, transparent 70%),
+    radial-gradient(ellipse 500px 500px at 80% 60%, rgba(139,92,246,0.2) 0%, transparent 70%),
+    radial-gradient(ellipse 400px 400px at 50% 80%, rgba(14,165,233,0.15) 0%, transparent 70%);
+  animation: meshFloat 20s ease-in-out infinite;
+}
+@keyframes meshFloat {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  33% { transform: translate(30px, -20px) rotate(1deg); }
+  66% { transform: translate(-20px, 15px) rotate(-1deg); }
+}
+
+/* Grid pattern overlay */
+.grid-overlay {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(99,102,241,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99,102,241,0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+}
+
+/* Floating orbs */
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.4;
+  animation: orbFloat 15s ease-in-out infinite;
+}
+.orb-1 { width: 500px; height: 500px; background: #6366f1; top: -10%; right: -10%; animation-delay: 0s; }
+.orb-2 { width: 400px; height: 400px; background: #8b5cf6; bottom: -15%; left: -5%; animation-delay: -7s; }
+.orb-3 { width: 300px; height: 300px; background: #0ea5e9; top: 40%; right: 20%; animation-delay: -3s; opacity: 0.2; }
+@keyframes orbFloat {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(30px, -30px) scale(1.05); }
+}
+
+/* ===== NAV ===== */
+nav {
+  position: fixed;
+  top: 0;
+  width: 100%;
+  z-index: 100;
+  padding: 0 24px;
+  backdrop-filter: blur(20px) saturate(180%);
+  background: rgba(10, 15, 28, 0.6);
+  border-bottom: 1px solid rgba(99,102,241,0.1);
+}
+.nav-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 72px;
+}
+.logo {
+  font-size: 20px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #818cf8, #c084fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.5px;
+}
+.nav-links { display: flex; gap: 32px; }
+.nav-links a {
+  color: rgba(255,255,255,0.6);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+.nav-links a:hover { color: #fff; }
+.nav-actions { display: flex; gap: 12px; align-items: center; }
+
+/* ===== BUTTONS ===== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+  text-decoration: none;
+}
+.btn-ghost {
+  background: transparent;
+  color: rgba(255,255,255,0.7);
+}
+.btn-ghost:hover { color: #fff; background: rgba(255,255,255,0.06); }
+.btn-primary {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(99,102,241,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
+}
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 30px rgba(99,102,241,0.5), inset 0 1px 0 rgba(255,255,255,0.15);
+}
+.btn-lg { padding: 16px 32px; font-size: 16px; border-radius: 14px; }
+.btn-white {
+  background: #fff;
+  color: #1a1a2e;
+  box-shadow: 0 4px 20px rgba(255,255,255,0.15);
+}
+.btn-white:hover { transform: translateY(-1px); box-shadow: 0 8px 30px rgba(255,255,255,0.25); }
+.btn-outline-white {
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.15);
+  backdrop-filter: blur(10px);
+}
+.btn-outline-white:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.25); }
+
+/* ===== HERO CONTENT ===== */
+.hero-content {
+  position: relative;
+  z-index: 10;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 160px 24px 80px;
+  text-align: center;
+}
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(99,102,241,0.12);
+  border: 1px solid rgba(99,102,241,0.2);
+  padding: 6px 16px;
+  border-radius: 100px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #a5b4fc;
+  margin-bottom: 28px;
+  backdrop-filter: blur(10px);
+}
+.hero-badge .dot { width: 6px; height: 6px; background: #6366f1; border-radius: 50%; animation: pulse 2s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+h1 {
+  font-size: clamp(40px, 6vw, 68px);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  margin-bottom: 24px;
+}
+h1 .gradient-text {
+  background: linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #f0abfc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.hero-sub {
+  font-size: 18px;
+  line-height: 1.7;
+  color: rgba(255,255,255,0.55);
+  max-width: 560px;
+  margin: 0 auto 40px;
+}
+.hero-actions { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+.hero-note { font-size: 13px; color: rgba(255,255,255,0.35); margin-top: 20px; }
+
+/* ===== FLOATING APP PREVIEW (3D perspective) ===== */
+.app-preview-wrapper {
+  position: relative;
+  z-index: 10;
+  max-width: 1000px;
+  margin: 0 auto 0;
+  padding: 0 24px 100px;
+  perspective: 1200px;
+}
+.app-preview {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 20px;
+  padding: 2px;
+  transform: rotateX(8deg) rotateY(-2deg);
+  transition: transform 0.5s ease;
+  box-shadow:
+    0 40px 100px rgba(0,0,0,0.5),
+    0 0 0 1px rgba(255,255,255,0.05),
+    inset 0 1px 0 rgba(255,255,255,0.06);
+}
+.app-preview:hover { transform: rotateX(2deg) rotateY(0deg); }
+.app-inner {
+  background: linear-gradient(180deg, rgba(20,23,50,0.95), rgba(15,18,40,0.98));
+  border-radius: 18px;
+  overflow: hidden;
+}
+/* Browser chrome bar */
+.browser-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  background: rgba(0,0,0,0.2);
+}
+.browser-dots { display: flex; gap: 6px; }
+.browser-dots span { width: 10px; height: 10px; border-radius: 50%; }
+.browser-dots span:nth-child(1) { background: #f43f5e; }
+.browser-dots span:nth-child(2) { background: #eab308; }
+.browser-dots span:nth-child(3) { background: #22c55e; }
+.browser-url {
+  flex: 1;
+  margin-left: 12px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 12px;
+  color: rgba(255,255,255,0.4);
+}
+
+/* Dashboard mockup inside preview */
+.dash-mock { padding: 24px; display: flex; gap: 20px; min-height: 380px; }
+.dash-sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dash-sidebar .logo-sm { font-size: 14px; font-weight: 700; color: #818cf8; margin-bottom: 20px; padding: 0 12px; }
+.sidebar-item {
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  color: rgba(255,255,255,0.4);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sidebar-item.active {
+  background: rgba(99,102,241,0.12);
+  color: #818cf8;
+  border-left: 3px solid #6366f1;
+}
+.sidebar-icon { width: 16px; height: 16px; border-radius: 4px; background: currentColor; opacity: 0.4; }
+.dash-main { flex: 1; display: flex; flex-direction: column; gap: 16px; }
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.kpi-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px;
+  padding: 16px;
+}
+.kpi-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255,255,255,0.35); font-weight: 600; }
+.kpi-value { font-size: 22px; font-weight: 700; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.kpi-value.indigo { color: #818cf8; }
+.kpi-value.green { color: #34d399; }
+.kpi-value.amber { color: #fbbf24; }
+.kpi-value.sky { color: #38bdf8; }
+.chart-area {
+  flex: 1;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 14px;
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+}
+.chart-title { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.5); margin-bottom: 16px; }
+/* Fake chart bars */
+.chart-bars { display: flex; align-items: flex-end; gap: 10px; height: 140px; padding-top: 10px; }
+.chart-bar {
+  flex: 1;
+  border-radius: 6px 6px 0 0;
+  background: linear-gradient(180deg, #6366f1, #4f46e5);
+  position: relative;
+  transition: height 0.5s ease;
+  box-shadow: 0 0 20px rgba(99,102,241,0.2);
+}
+.chart-bar:nth-child(even) { background: linear-gradient(180deg, #8b5cf6, #7c3aed); }
+.chart-bar:hover { opacity: 0.85; }
+
+/* ===== STATS BAR ===== */
+.stats-bar {
+  position: relative;
+  z-index: 10;
+  background: rgba(255,255,255,0.02);
+  border-top: 1px solid rgba(255,255,255,0.05);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  padding: 60px 24px;
+}
+.stats-inner {
+  max-width: 900px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 40px;
+  text-align: center;
+}
+.stat-number {
+  font-size: 42px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #818cf8, #c084fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.02em;
+}
+.stat-label { font-size: 14px; color: rgba(255,255,255,0.4); margin-top: 6px; font-weight: 500; }
+
+/* ===== FEATURES SECTION ===== */
+.features-section {
+  position: relative;
+  z-index: 10;
+  padding: 100px 24px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.section-header { text-align: center; margin-bottom: 64px; }
+.section-header h2 {
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: 16px;
+}
+.section-header p { font-size: 17px; color: rgba(255,255,255,0.45); max-width: 500px; margin: 0 auto; }
+
+.features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.feature-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 20px;
+  padding: 32px;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+.feature-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(99,102,241,0.3), transparent);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.feature-card:hover {
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(99,102,241,0.15);
+  transform: translateY(-4px);
+  box-shadow: 0 20px 60px rgba(99,102,241,0.1);
+}
+.feature-card:hover::before { opacity: 1; }
+.feature-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  font-size: 22px;
+}
+.feature-icon.indigo { background: rgba(99,102,241,0.12); }
+.feature-icon.purple { background: rgba(139,92,246,0.12); }
+.feature-icon.sky { background: rgba(14,165,233,0.12); }
+.feature-icon.green { background: rgba(16,185,129,0.12); }
+.feature-icon.amber { background: rgba(245,158,11,0.12); }
+.feature-icon.rose { background: rgba(244,63,94,0.12); }
+.feature-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 10px; letter-spacing: -0.01em; }
+.feature-card p { font-size: 14px; line-height: 1.6; color: rgba(255,255,255,0.45); }
+
+/* ===== PRICING ===== */
+.pricing-section {
+  position: relative;
+  z-index: 10;
+  padding: 100px 24px;
+  max-width: 520px;
+  margin: 0 auto;
+}
+.price-card {
+  background: rgba(255,255,255,0.04);
+  border: 2px solid rgba(99,102,241,0.2);
+  border-radius: 24px;
+  padding: 48px 40px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.price-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6, #c084fc);
+}
+.price-card .plan-name { font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: #818cf8; margin-bottom: 16px; }
+.price-amount { font-size: 56px; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 4px; }
+.price-amount span { font-size: 18px; color: rgba(255,255,255,0.4); font-weight: 500; }
+.price-trial { font-size: 15px; color: rgba(255,255,255,0.5); margin-bottom: 32px; }
+.price-features { list-style: none; text-align: left; margin-bottom: 36px; }
+.price-features li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  font-size: 14px;
+  color: rgba(255,255,255,0.65);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.price-features li::before {
+  content: '✓';
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(99,102,241,0.15);
+  color: #818cf8;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.btn-full { width: 100%; justify-content: center; }
+
+/* ===== CTA BAND ===== */
+.cta-band {
+  position: relative;
+  z-index: 10;
+  padding: 100px 24px;
+  text-align: center;
+  background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(139,92,246,0.08));
+  border-top: 1px solid rgba(99,102,241,0.1);
+}
+.cta-band h2 { font-size: 36px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 16px; }
+.cta-band p { font-size: 17px; color: rgba(255,255,255,0.45); margin-bottom: 32px; }
+
+/* ===== FOOTER ===== */
+footer {
+  position: relative;
+  z-index: 10;
+  padding: 60px 24px 40px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+.footer-inner { max-width: 1100px; margin: 0 auto; display: flex; justify-content: space-between; }
+.footer-brand { color: rgba(255,255,255,0.3); font-size: 13px; }
+.footer-brand strong { color: rgba(255,255,255,0.6); font-weight: 600; }
+.footer-links { display: flex; gap: 24px; }
+.footer-links a { color: rgba(255,255,255,0.3); text-decoration: none; font-size: 13px; transition: color 0.2s; }
+.footer-links a:hover { color: rgba(255,255,255,0.6); }
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+  .nav-links { display: none; }
+  .features-grid { grid-template-columns: 1fr; }
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .stats-inner { grid-template-columns: 1fr; gap: 24px; }
+  .dash-sidebar { display: none; }
+  .hero-content { padding-top: 120px; }
+  h1 { font-size: 36px; }
+  .footer-inner { flex-direction: column; gap: 16px; text-align: center; }
+  .footer-links { justify-content: center; }
+}
+</style>
+</head>
+<body>
+
+<!-- Navigation -->
+<nav>
+  <div class="nav-inner">
+    <div class="logo">ConstructInvoice AI</div>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#contact">Help</a>
+    </div>
+    <div class="nav-actions">
+      <a href="#" class="btn btn-ghost">Sign In</a>
+      <a href="#" class="btn btn-primary">Start Free</a>
+    </div>
+  </div>
+</nav>
+
+<div class="hero-bg">
+  <!-- Animated background elements -->
+  <div class="grid-overlay"></div>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+
+  <!-- Hero -->
+  <div class="hero-content">
+    <div class="hero-badge">
+      <span class="dot"></span>
+      Now with Stripe ACH + Card payments
+    </div>
+    <h1>
+      Construction Billing,<br>
+      <span class="gradient-text">Beautifully Simplified.</span>
+    </h1>
+    <p class="hero-sub">
+      Create professional G702/G703 pay applications in minutes.
+      Upload your Schedule of Values, track progress, collect payments, and get paid faster.
+    </p>
+    <div class="hero-actions">
+      <a href="#" class="btn btn-white btn-lg">Start Free Trial</a>
+      <a href="#" class="btn btn-outline-white btn-lg">Watch Demo</a>
+    </div>
+    <p class="hero-note">No credit card required &bull; 90-day free trial &bull; Cancel anytime</p>
+  </div>
+
+  <!-- 3D App Preview -->
+  <div class="app-preview-wrapper">
+    <div class="app-preview">
+      <div class="app-inner">
+        <div class="browser-bar">
+          <div class="browser-dots">
+            <span></span><span></span><span></span>
+          </div>
+          <div class="browser-url">constructinv.varshyl.com/dashboard</div>
+        </div>
+        <div class="dash-mock">
+          <div class="dash-sidebar">
+            <div class="logo-sm">CI</div>
+            <div class="sidebar-item active"><div class="sidebar-icon"></div> Dashboard</div>
+            <div class="sidebar-item"><div class="sidebar-icon"></div> Projects</div>
+            <div class="sidebar-item"><div class="sidebar-icon"></div> Pay Apps</div>
+            <div class="sidebar-item"><div class="sidebar-icon"></div> Payments</div>
+            <div class="sidebar-item"><div class="sidebar-icon"></div> Reports</div>
+            <div class="sidebar-item"><div class="sidebar-icon"></div> Settings</div>
+          </div>
+          <div class="dash-main">
+            <div class="kpi-row">
+              <div class="kpi-card">
+                <div class="kpi-label">Projects</div>
+                <div class="kpi-value indigo">12</div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-label">Total Billed</div>
+                <div class="kpi-value green">$2.4M</div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-label">Outstanding</div>
+                <div class="kpi-value amber">$340K</div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-label">This Month</div>
+                <div class="kpi-value sky">$185K</div>
+              </div>
+            </div>
+            <div class="chart-area">
+              <div class="chart-title">Monthly Billing Overview</div>
+              <div class="chart-bars">
+                <div class="chart-bar" style="height:45%"></div>
+                <div class="chart-bar" style="height:65%"></div>
+                <div class="chart-bar" style="height:55%"></div>
+                <div class="chart-bar" style="height:80%"></div>
+                <div class="chart-bar" style="height:70%"></div>
+                <div class="chart-bar" style="height:90%"></div>
+                <div class="chart-bar" style="height:60%"></div>
+                <div class="chart-bar" style="height:75%"></div>
+                <div class="chart-bar" style="height:85%"></div>
+                <div class="chart-bar" style="height:95%"></div>
+                <div class="chart-bar" style="height:70%"></div>
+                <div class="chart-bar" style="height:55%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Stats Bar -->
+<div class="stats-bar">
+  <div class="stats-inner">
+    <div>
+      <div class="stat-number">500+</div>
+      <div class="stat-label">Pay Apps Generated</div>
+    </div>
+    <div>
+      <div class="stat-number">$12M+</div>
+      <div class="stat-label">Billing Tracked</div>
+    </div>
+    <div>
+      <div class="stat-number">90</div>
+      <div class="stat-label">Day Free Trial</div>
+    </div>
+  </div>
+</div>
+
+<!-- Features -->
+<div class="features-section" id="features">
+  <div class="section-header">
+    <h2>Built for Modern Contractors</h2>
+    <p>Everything you need to manage construction billing from start to finish.</p>
+  </div>
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="feature-icon indigo">&#x1F4C4;</div>
+      <h3>SOV Upload</h3>
+      <p>Upload Excel, CSV, PDF, or Word. Our AI parser auto-detects line items, descriptions, and amounts instantly.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon purple">&#x1F4CB;</div>
+      <h3>G702/G703 PDFs</h3>
+      <p>AIA-standard pay applications generated in seconds. Professional formatting with your company branding.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon green">&#x2705;</div>
+      <h3>Lien Waivers</h3>
+      <p>Auto-generate conditional and unconditional lien waivers. California, Virginia, and DC supported.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon sky">&#x1F4B3;</div>
+      <h3>Payment Collection</h3>
+      <p>Accept ACH bank transfers and credit card payments directly through your invoices via Stripe.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon amber">&#x2709;&#xFE0F;</div>
+      <h3>Email & Send</h3>
+      <p>Send pay apps directly to project owners with one click. PDF and lien waivers auto-attached.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon rose">&#x1F4CA;</div>
+      <h3>Reporting</h3>
+      <p>Track revenue, filter by project or date range, and export to CSV. See your billing at a glance.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Pricing -->
+<div class="pricing-section" id="pricing">
+  <div class="section-header">
+    <h2>Simple Pricing</h2>
+    <p>One plan. Everything contractors need.</p>
+  </div>
+  <div class="price-card">
+    <div class="plan-name">Pro Plan</div>
+    <div class="price-amount">$40<span>/mo</span></div>
+    <div class="price-trial">Start with a 90-day free trial. No credit card required.</div>
+    <ul class="price-features">
+      <li>Unlimited projects & pay apps</li>
+      <li>G702/G703 PDF generation</li>
+      <li>ACH + credit card payments</li>
+      <li>Auto lien waivers</li>
+      <li>AI billing assistant</li>
+      <li>Email delivery with PDF</li>
+      <li>Reports & CSV export</li>
+      <li>Priority support</li>
+    </ul>
+    <a href="#" class="btn btn-primary btn-lg btn-full">Start Free Trial</a>
+  </div>
+</div>
+
+<!-- CTA Band -->
+<div class="cta-band">
+  <h2>Ready to simplify your billing?</h2>
+  <p>Join hundreds of contractors saving hours every month.</p>
+  <a href="#" class="btn btn-primary btn-lg">Get Started Free</a>
+</div>
+
+<!-- Footer -->
+<footer id="contact">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <strong>ConstructInvoice AI</strong> &bull; A product of Varshyl Inc. &bull; &copy; 2026
+    </div>
+    <div class="footer-links">
+      <a href="#">Features</a>
+      <a href="#">Pricing</a>
+      <a href="mailto:vaakapila@gmail.com">Contact</a>
+      <a href="#">Privacy</a>
+      <a href="#">Terms</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

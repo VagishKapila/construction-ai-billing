@@ -169,12 +169,19 @@ export const LienAlert: React.FC<LienAlertProps> = ({ projectId }) => {
       <button
         onClick={handleDownloadPdf}
         disabled={downloadingPdf}
-        className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white text-sm font-semibold py-2 rounded-md transition-colors"
+        className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white text-sm font-semibold py-2 rounded-md transition-colors mb-3"
       >
         {downloadingPdf ? 'Downloading...' : 'Download Preliminary Notice PDF'}
       </button>
 
-      <p className="text-xs text-gray-600 mt-3">
+      <div className="bg-red-50 border border-red-200 rounded p-2 mb-3">
+        <p className="text-xs text-red-900 font-semibold mb-1">⚠️ LEGAL REQUIREMENT:</p>
+        <p className="text-xs text-red-800">
+          California Civil Code §8202 requires this notice be sent by <strong>certified mail, return receipt requested, or personal service</strong>. Email alone is NOT legally sufficient.
+        </p>
+      </div>
+
+      <p className="text-xs text-gray-600">
         Required by California Civil Code §8202. Send to all parties to preserve mechanics lien rights.
       </p>
     </div>
