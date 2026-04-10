@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Project Hub — Orbital Light Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+    }
+
+    /* TOP BAR */
+    .topbar {
+      background: #ffffff;
+      border-bottom: 1.5px solid #e2e8f0;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 40px;
+    }
+
+    .topbar-logo {
+      font-size: 16px;
+      font-weight: 700;
+      color: #2563eb;
+      min-width: 200px;
+    }
+
+    .topbar-center {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .address-tab {
+      padding: 6px 16px;
+      border-radius: 20px;
+      border: 1.5px solid transparent;
+      background: #ffffff;
+      color: #64748b;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .address-tab:hover {
+      background: #f1f5f9;
+    }
+
+    .address-tab.active {
+      background: #2563eb;
+      color: #ffffff;
+      border-color: #2563eb;
+    }
+
+    .address-tab.add-btn {
+      background: #f1f5f9;
+      color: #2563eb;
+      font-weight: 600;
+    }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      font-size: 13px;
+      font-weight: 600;
+      position: relative;
+    }
+
+    .pro-badge {
+      position: absolute;
+      bottom: -4px;
+      right: -4px;
+      background: #7c3aed;
+      color: #ffffff;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 2px 5px;
+      border-radius: 8px;
+      border: 2px solid #ffffff;
+    }
+
+    /* MAIN CONTAINER */
+    .container {
+      display: flex;
+      padding: 24px;
+      gap: 24px;
+      height: calc(100vh - 80px);
+    }
+
+    /* CANVAS AREA */
+    .canvas-container {
+      flex: 0 0 600px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    #orbitCanvas {
+      width: 100%;
+      height: 520px;
+      background: #0d1117;
+      border-radius: 12px;
+      border: 1.5px solid #e2e8f0;
+      display: block;
+    }
+
+    .canvas-controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px;
+      background: #0d1117;
+      border-radius: 12px;
+      color: #94a3b8;
+      font-size: 12px;
+    }
+
+    .canvas-controls label {
+      min-width: 70px;
+    }
+
+    .canvas-controls input[type="range"] {
+      flex: 1;
+      height: 4px;
+      background: #1e293b;
+      border-radius: 2px;
+      outline: none;
+      -webkit-appearance: none;
+    }
+
+    .canvas-controls input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 12px;
+      height: 12px;
+      background: #2563eb;
+      cursor: pointer;
+      border-radius: 50%;
+    }
+
+    .canvas-controls input[type="range"]::-moz-range-thumb {
+      width: 12px;
+      height: 12px;
+      background: #2563eb;
+      cursor: pointer;
+      border-radius: 50%;
+      border: none;
+    }
+
+    .canvas-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 10px;
+      color: #64748b;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    /* DETAIL PANEL */
+    .detail-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+      padding-right: 8px;
+    }
+
+    .card {
+      background: #ffffff;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 24px rgba(37, 99, 235, 0.08);
+    }
+
+    .card-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 4px;
+    }
+
+    .card-subtitle {
+      font-size: 13px;
+      color: #64748b;
+      margin-bottom: 12px;
+    }
+
+    .card-text {
+      font-size: 13px;
+      color: #475569;
+      line-height: 1.5;
+      margin-bottom: 8px;
+    }
+
+    .trust-bar {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 12px 0;
+    }
+
+    .trust-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #0f172a;
+    }
+
+    .trust-track {
+      width: 100%;
+      height: 8px;
+      background: #e2e8f0;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .trust-fill {
+      height: 100%;
+      background: #2563eb;
+      width: 68%;
+    }
+
+    .trust-text {
+      font-size: 11px;
+      color: #64748b;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 16px;
+      font-size: 11px;
+      font-weight: 600;
+      margin: 8px 0;
+    }
+
+    .badge.active {
+      background: #d1fae5;
+      color: #059669;
+    }
+
+    .button-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .btn {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1.5px solid;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background: transparent;
+    }
+
+    .btn-outline-blue {
+      border-color: #2563eb;
+      color: #2563eb;
+    }
+
+    .btn-outline-blue:hover {
+      background: #eff6ff;
+    }
+
+    .btn-outline-cyan {
+      border-color: #0891b2;
+      color: #0891b2;
+    }
+
+    .btn-outline-cyan:hover {
+      background: #ecf9ff;
+    }
+
+    .btn-primary {
+      background: #db2777;
+      color: #ffffff;
+      border-color: #db2777;
+    }
+
+    .btn-primary:hover {
+      background: #be185d;
+      border-color: #be185d;
+    }
+
+    .doc-list {
+      margin: 12px 0;
+    }
+
+    .doc-item {
+      padding: 10px;
+      background: #f8fafc;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+    }
+
+    .doc-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .doc-info {
+      flex: 1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .doc-name {
+      color: #0f172a;
+      font-weight: 500;
+    }
+
+    .doc-date {
+      color: #94a3b8;
+    }
+
+    .status-pill {
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 10px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .status-pending {
+      background: #fef3c7;
+      color: #b45309;
+    }
+
+    .status-approved {
+      background: #d1fae5;
+      color: #059669;
+    }
+
+    .view-all-link {
+      color: #2563eb;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+
+    .view-all-link:hover {
+      text-decoration: underline;
+    }
+
+    .aria-card {
+      border-left: 3px solid #7c3aed;
+    }
+
+    .aria-header {
+      color: #7c3aed;
+      font-weight: 600;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+
+    .aria-item {
+      padding: 10px;
+      background: #f8fafc;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      font-size: 12px;
+      color: #475569;
+      line-height: 1.4;
+    }
+
+    .btn-aria {
+      border-color: #7c3aed;
+      color: #7c3aed;
+      margin-top: 12px;
+    }
+
+    .btn-aria:hover {
+      background: #f5f3ff;
+    }
+
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="topbar-logo">ConstructInvoice AI</div>
+    <div class="topbar-center">
+      <button class="address-tab active" data-address="500 Test St">500 Test St</button>
+      <button class="address-tab" data-address="123 Main Ave">123 Main Ave</button>
+      <button class="address-tab" data-address="Oak St Kitchen">Oak St Kitchen</button>
+      <button class="address-tab add-btn">+</button>
+    </div>
+    <div class="topbar-right">
+      <div class="avatar">
+        MR
+        <div class="pro-badge">Pro</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN CONTAINER -->
+  <div class="container">
+    <!-- CANVAS AREA -->
+    <div class="canvas-container">
+      <canvas id="orbitCanvas" width="580" height="520"></canvas>
+      <div class="canvas-controls">
+        <label>Orbit Speed</label>
+        <input type="range" id="speedSlider" min="0.5" max="3" step="0.1" value="1">
+        <span id="speedValue">1.0x</span>
+      </div>
+      <div class="canvas-legend">
+        <div class="legend-item">
+          <div class="legend-dot" style="background: #3b82f6;"></div>
+          <span>Pacific Plumbing</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background: #eab308;"></div>
+          <span>Bay Electric</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background: #14b8a6;"></div>
+          <span>Central HVAC</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background: #f97316;"></div>
+          <span>Concrete Pro</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background: #a855f7;"></div>
+          <span>Atlas Masonry</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- DETAIL PANEL -->
+    <div class="detail-panel">
+      <!-- TRADE INFO CARD -->
+      <div class="card">
+        <div class="card-title" id="tradeName">Pacific Plumbing</div>
+        <div class="card-subtitle" id="tradeSubtitle">Plumbing | 3 docs uploaded</div>
+        <div class="card-text" id="tradeContact">contact@pacificplumbing.com | (415) 555-0182</div>
+
+        <div class="trust-bar">
+          <div class="trust-label">Trust Score</div>
+          <div class="trust-track">
+            <div class="trust-fill"></div>
+          </div>
+          <div class="trust-text">520 / 763 · Silver tier</div>
+        </div>
+
+        <div class="badge active">Active</div>
+
+        <div class="button-row">
+          <button class="btn btn-outline-blue">View Docs</button>
+          <button class="btn btn-outline-cyan">Send Invite</button>
+          <button class="btn btn-primary">Early Pay</button>
+        </div>
+      </div>
+
+      <!-- DOCUMENTS CARD -->
+      <div class="card">
+        <div class="card-title">Recent Documents <span style="background: #e0e7ff; color: #2563eb; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600;">3</span></div>
+
+        <div class="doc-list">
+          <div class="doc-item">
+            <div class="doc-dot" style="background: #3b82f6;"></div>
+            <div class="doc-info">
+              <span class="doc-name">Invoice_Nov_2026.pdf</span>
+              <span class="doc-date">Nov 8</span>
+            </div>
+            <div class="status-pill status-pending">Pending</div>
+          </div>
+          <div class="doc-item">
+            <div class="doc-dot" style="background: #10b981;"></div>
+            <div class="doc-info">
+              <span class="doc-name">Lien_Waiver_Oct.pdf</span>
+              <span class="doc-date">Oct 30</span>
+            </div>
+            <div class="status-pill status-approved">Approved</div>
+          </div>
+          <div class="doc-item">
+            <div class="doc-dot" style="background: #3b82f6;"></div>
+            <div class="doc-info">
+              <span class="doc-name">Invoice_Oct_2026.pdf</span>
+              <span class="doc-date">Oct 15</span>
+            </div>
+            <div class="status-pill status-approved">Approved</div>
+          </div>
+        </div>
+
+        <div class="view-all-link">View All Docs →</div>
+      </div>
+
+      <!-- ARIA INSIGHTS CARD -->
+      <div class="card aria-card">
+        <div class="aria-header">🤖 ARIA Insights</div>
+        <div class="aria-item">
+          ⚠️ Invoice #INV-2847 is 8 days overdue — $14,200 outstanding
+        </div>
+        <div class="aria-item">
+          📋 Lien deadline in 12 days for 500 Test St (CA)
+        </div>
+        <button class="btn btn-aria">Ask ARIA</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // CANVAS SETUP
+    const canvas = document.getElementById('orbitCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Trade data
+    const trades = [
+      {
+        name: 'Pacific Plumbing',
+        initials: 'PLM',
+        color: '#3b82f6',
+        orbitRadius: 120,
+        speed: 12,
+        docCount: 3,
+        contact: 'contact@pacificplumbing.com | (415) 555-0182'
+      },
+      {
+        name: 'Bay Electric',
+        initials: 'ELC',
+        color: '#eab308',
+        orbitRadius: 165,
+        speed: 18,
+        docCount: 5,
+        contact: 'info@bayelectric.com | (415) 555-0145'
+      },
+      {
+        name: 'Central HVAC',
+        initials: 'HVA',
+        color: '#14b8a6',
+        orbitRadius: 210,
+        speed: 24,
+        docCount: 2,
+        contact: 'central@hvacpro.com | (415) 555-0198'
+      },
+      {
+        name: 'Concrete Pro',
+        initials: 'CON',
+        color: '#f97316',
+        orbitRadius: 255,
+        speed: 32,
+        docCount: 4,
+        contact: 'sales@concretepro.com | (415) 555-0176'
+      },
+      {
+        name: 'Atlas Masonry',
+        initials: 'MAS',
+        color: '#a855f7',
+        orbitRadius: 295,
+        speed: 42,
+        docCount: 6,
+        contact: 'atlas.masonry@gmail.com | (415) 555-0162'
+      }
+    ];
+
+    // Animation state
+    let angles = [0, 0, 0, 0, 0];
+    let hoveredPlanet = null;
+    let clickedPlanet = 0;
+    let speedMultiplier = 1.0;
+
+    // Center of canvas
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+
+    // SPEED SLIDER
+    document.getElementById('speedSlider').addEventListener('input', (e) => {
+      speedMultiplier = parseFloat(e.target.value);
+      document.getElementById('speedValue').textContent = speedMultiplier.toFixed(1) + 'x';
+    });
+
+    // ADDRESS TAB SWITCHING
+    document.querySelectorAll('.address-tab').forEach(tab => {
+      tab.addEventListener('click', (e) => {
+        if (e.target.classList.contains('add-btn')) {
+          alert('Add new project feature coming soon!');
+          return;
+        }
+        document.querySelectorAll('.address-tab').forEach(t => t.classList.remove('active'));
+        e.target.classList.add('active');
+      });
+    });
+
+    // UPDATE DETAIL PANEL
+    function updateDetailPanel(index) {
+      const trade = trades[index];
+      document.getElementById('tradeName').textContent = trade.name;
+      document.getElementById('tradeSubtitle').textContent = trade.name.split(' ')[0] + ' | ' + trade.docCount + ' docs uploaded';
+      document.getElementById('tradeContact').textContent = trade.contact;
+    }
+
+    // CANVAS ANIMATION
+    function drawOrbit() {
+      // Clear canvas
+      ctx.fillStyle = '#0d1117';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw orbit rings (faint)
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.lineWidth = 1;
+      trades.forEach(trade => {
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, trade.orbitRadius, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+
+      // Update angles if not hovering
+      if (hoveredPlanet === null) {
+        trades.forEach((trade, i) => {
+          const angleIncrement = (2 * Math.PI) / (trade.speed * 60);
+          angles[i] += angleIncrement * speedMultiplier;
+        });
+      }
+
+      // Draw center planet
+      const centerGradient = ctx.createRadialGradient(centerX, centerY, 10, centerX, centerY, 50);
+      centerGradient.addColorStop(0, '#1e3a5f');
+      centerGradient.addColorStop(1, '#2563eb');
+      ctx.fillStyle = centerGradient;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 50, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Glow effect for center
+      ctx.strokeStyle = 'rgba(37, 99, 235, 0.3)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 50, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Center text
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 10px Inter';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('500 Test St', centerX, centerY);
+
+      // Draw planets
+      trades.forEach((trade, i) => {
+        const x = centerX + Math.cos(angles[i]) * trade.orbitRadius;
+        const y = centerY + Math.sin(angles[i]) * trade.orbitRadius;
+
+        // Planet circle
+        ctx.fillStyle = trade.color;
+        ctx.beginPath();
+        ctx.arc(x, y, 36, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Glow if clicked
+        if (i === clickedPlanet) {
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(x, y, 36, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        // Initials
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 11px Inter';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(trade.initials, x, y - 6);
+
+        // Doc count badge
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(x + 24, y - 18, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = trade.color;
+        ctx.font = 'bold 8px Inter';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(trade.docCount, x + 24, y - 18);
+      });
+
+      requestAnimationFrame(drawOrbit);
+    }
+
+    // MOUSE TRACKING FOR PLANETS
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      let foundPlanet = null;
+      trades.forEach((trade, i) => {
+        const x = centerX + Math.cos(angles[i]) * trade.orbitRadius;
+        const y = centerY + Math.sin(angles[i]) * trade.orbitRadius;
+        const distance = Math.hypot(mouseX - x, mouseY - y);
+        if (distance < 40) {
+          foundPlanet = i;
+        }
+      });
+
+      hoveredPlanet = foundPlanet;
+      canvas.style.cursor = foundPlanet !== null ? 'pointer' : 'default';
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      hoveredPlanet = null;
+    });
+
+    // CLICK PLANET
+    canvas.addEventListener('click', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      trades.forEach((trade, i) => {
+        const x = centerX + Math.cos(angles[i]) * trade.orbitRadius;
+        const y = centerY + Math.sin(angles[i]) * trade.orbitRadius;
+        const distance = Math.hypot(mouseX - x, mouseY - y);
+        if (distance < 40) {
+          clickedPlanet = i;
+          updateDetailPanel(i);
+        }
+      });
+    });
+
+    // START ANIMATION
+    updateDetailPanel(0);
+    drawOrbit();
+  </script>
+</body>
+</html>
