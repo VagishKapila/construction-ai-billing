@@ -7,13 +7,24 @@
 
 const express = require('express');
 const { Pool } = require('pg');
-const { Resend } = require('resend');
 const { auth } = require('../../middleware/auth');
 const { california } = require('./lien');
 
 const router = express.Router();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const resend = new Resend(process.env.RESEND_API_KEY);
+
+// Send email via Resend REST API (matches pattern in server.js — no npm package needed)
+async function sendEmail({ from, to, subject, text }) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) { console.warn('[ARIA] RESEND_API_KEY not set — skipping email'); return; }
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    body: JSON.stringify({ from, to, subject, text }),
+  });
+  if (!res.ok) { const e = await res.json(); throw new Error(e.message || 'Resend API error'); }
+  return res.json();
+}
 
 /**
  * GET /api/aria/follow-up-queue
@@ -156,7 +167,7 @@ ${gcName}`;
     // Send email via Resend
     const fromEmail = process.env.FROM_EMAIL || 'noreply@constructinv.varshyl.com';
     try {
-      await resend.emails.send({
+      await sendEmail({
         from: fromEmail,
         to: ownerEmail,
         subject,
@@ -526,7 +537,7 @@ router.post('/api/aria/lien-alerts/:projectId', auth, async (req, res) => {
           const fromEmail = process.env.FROM_EMAIL || 'noreply@constructinv.varshyl.com';
 
           try {
-            await resend.emails.send({
+            await sendEmail({
               from: fromEmail,
               to: proj.owner_email,
               subject: `⚖️ CA Preliminary Notice Deadline - ${proj.project_name}`,

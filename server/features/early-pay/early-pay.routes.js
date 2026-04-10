@@ -4,7 +4,15 @@ const router = express.Router();
 const { auth } = require('../../middleware/auth');
 const { pool } = require('../../../db');
 
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+// Lazy Stripe init — avoids startup crash when STRIPE_SECRET_KEY is not set in local dev
+let _stripe = null;
+function getStripe() {
+  if (!_stripe) {
+    if (!process.env.STRIPE_SECRET_KEY) throw new Error('STRIPE_SECRET_KEY not configured');
+    _stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+  }
+  return _stripe;
+}
 
 /**
  * ENDPOINT 1: GET /api/early-pay/eligibility/:hubUploadId
@@ -332,7 +340,7 @@ router.post('/api/early-pay/approve/:requestId', auth, async (req, res) => {
           const gcStripeId = gcConnectedResult.rows[0].stripe_connect_id;
 
           // Create PaymentIntent on GC's account (charge their account for the fee)
-          const paymentIntent = await stripe.paymentIntents.create(
+          const paymentIntent = await getStripe().paymentIntents.create(
             {
               amount: Math.round(request.fee_amount * 100), // Convert to cents
               currency: 'usd',
@@ -346,7 +354,7 @@ router.post('/api/early-pay/approve/:requestId', auth, async (req, res) => {
           stripePaymentIntentId = paymentIntent.id;
 
           // Create Transfer to vendor's account (send net amount)
-          const transfer = await stripe.transfers.create(
+          const transfer = await getStripe().transfers.create(
             {
               amount: Math.round(request.net_amount * 100), // Convert to cents
               currency: 'usd',
