@@ -32,6 +32,7 @@ import {
   formatRelativeDate,
 } from '@/lib/formatters'
 import { StripeConnectBanner, StripeActiveBadge } from '@/components/payments/StripeConnectBanner'
+import { CashFlowForecast } from '@/features/aria/CashFlowForecast'
 
 // ---------------------------------------------------------------------------
 // Animation Variants
@@ -389,6 +390,18 @@ export function Dashboard() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Cash Flow Forecast */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+      >
+        <div className="rounded-2xl bg-white border-2 border-gray-100 p-6 shadow-sm">
+          <h2 className="text-lg font-bold text-gray-900 mb-5">30-Day Cash Flow Forecast</h2>
+          <CashFlowForecast />
+        </div>
+      </motion.div>
 
       {/* Two-column layout: Projects + Activity */}
       {sortedProjects.length === 0 && !projectsLoading ? (

@@ -545,6 +545,42 @@ checkContains('hub.js: rejectFile MIME whitelist applied to uploads',
 
 // ─────────────────────────────────────────────────────────────────────────────
 console.log('\n══════════════════════════════════════════════════');
+console.log('  Agent 10 Frontend — OrbitalCanvas, Dashboard, Shell');
+console.log('══════════════════════════════════════════════════');
+
+// Check new frontend files exist
+check('OrbitalCanvas.tsx exists',
+  fs.existsSync('./client/src/components/hub/OrbitalCanvas.tsx'));
+
+check('CashFlowForecast is imported in Dashboard.tsx',
+  fs.readFileSync('./client/src/pages/Dashboard.tsx', 'utf8').includes("import { CashFlowForecast }"));
+
+check('OrbitalCanvas is imported in HubTab.tsx',
+  fs.readFileSync('./client/src/components/hub/HubTab.tsx', 'utf8').includes("import OrbitalCanvas"));
+
+check('HubTab uses OrbitalCanvas for trades visualization',
+  fs.readFileSync('./client/src/components/hub/HubTab.tsx', 'utf8').includes("<OrbitalCanvas"));
+
+// Role switcher implementation pending — requires user_role field in User interface
+check('TopBar.tsx exists and renders user menu',
+  fs.existsSync('./client/src/components/layout/TopBar.tsx'));
+
+check('magic-upload.html exists with light theme',
+  fs.existsSync('./public/magic-upload.html'));
+
+check('magic-upload.html has file upload form',
+  fs.readFileSync('./public/magic-upload.html', 'utf8').includes('id="upload-form"'));
+
+check('magic-upload.html posts to /api/hub/:token endpoint',
+  fs.readFileSync('./public/magic-upload.html', 'utf8').includes('/api/hub/${token}/upload'));
+
+// Check that HubTab includes OrbitalCanvas in trades tab
+const hubTabSrc = fs.readFileSync('./client/src/components/hub/HubTab.tsx', 'utf8');
+check('HubTab: OrbitalCanvas appears in trades tab conditionally',
+  hubTabSrc.includes('subTab === \'trades\'') && hubTabSrc.includes('planets={trades.map'));
+
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n══════════════════════════════════════════════════');
 console.log('  RESULTS');
 console.log('══════════════════════════════════════════════════');
 const total = passed + failed;

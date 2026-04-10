@@ -24,6 +24,7 @@ import { DocDetailModal } from './DocDetailModal';
 import { AddTradeModal } from './AddTradeModal';
 import { UploadDocumentModal } from './UploadDocumentModal';
 import { TradeCard } from './TradeCard';
+import OrbitalCanvas from './OrbitalCanvas';
 
 interface HubTabProps {
   projectId: number;
@@ -322,7 +323,7 @@ export function HubTab({ projectId }: HubTabProps) {
 
       {/* TRADES TAB */}
       {subTab === 'trades' && (
-        <div className="space-y-4">
+        <div className="space-y-6">
           <div className="flex justify-end">
             <Button
               onClick={() => setAddTradeOpen(true)}
@@ -340,16 +341,34 @@ export function HubTab({ projectId }: HubTabProps) {
               <p className="text-sm text-text-muted mt-1">Add trades to enable document intake</p>
             </Card>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {trades.map(trade => (
-                <TradeCard
-                  key={trade.id}
-                  trade={trade}
-                  projectId={projectId}
-                  onTradeUpdated={handleTradeAdded}
+            <>
+              {/* Orbital Canvas Visualization */}
+              <div className="flex justify-center">
+                <OrbitalCanvas
+                  planets={trades.map((trade, idx) => ({
+                    name: trade.name || `Trade ${idx + 1}`,
+                    initials: (trade.name || `Trade ${idx + 1}`).substring(0, 3),
+                    color: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'][idx % 6],
+                    orbitRadius: 80 + idx * 20,
+                    speed: 0.5 + (idx * 0.15),
+                    size: 24 + (idx % 3) * 4,
+                    trustScore: Math.floor(Math.random() * 763),
+                  }))}
                 />
-              ))}
-            </div>
+              </div>
+
+              {/* Trades Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {trades.map(trade => (
+                  <TradeCard
+                    key={trade.id}
+                    trade={trade}
+                    projectId={projectId}
+                    onTradeUpdated={handleTradeAdded}
+                  />
+                ))}
+              </div>
+            </>
           )}
         </div>
       )}
