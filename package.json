@@ -13,6 +13,7 @@
     "test:all": "node qa_test.js && npx playwright test"
   },
   "dependencies": {
+    "archiver": "^7.0.1",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
