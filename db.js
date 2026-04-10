@@ -748,6 +748,7 @@ async function initDB() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS joined_via_code VARCHAR(20);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS user_role VARCHAR(20) DEFAULT 'gc';
     ALTER TABLE users ADD COLUMN IF NOT EXISTS company_trade VARCHAR(100);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS company_name VARCHAR(300);
 
     -- Trade fields for early pay
     ALTER TABLE project_trades ADD COLUMN IF NOT EXISTS trust_score_id INTEGER;

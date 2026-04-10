@@ -24,12 +24,14 @@ const hubService = {
   },
 
   async validateJoinCode(code) {
+    // users table has no company_name — join company_settings instead
     const result = await db.query(`
       SELECT jc.*, p.address as project_address, p.name as project_name,
-             u.company_name as gc_company
+             COALESCE(cs.company_name, u.name) as gc_company
       FROM project_join_codes jc
       JOIN projects p ON p.id = jc.project_id
       JOIN users u ON u.id = p.user_id
+      LEFT JOIN company_settings cs ON cs.user_id = u.id
       WHERE jc.code = $1 AND jc.is_active = true
       AND (jc.expires_at IS NULL OR jc.expires_at > NOW())
     `, [code]);
