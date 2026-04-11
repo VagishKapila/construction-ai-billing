@@ -214,6 +214,18 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+// ── Health check (must come before catch-all publicPages) ─────────────────
+app.get('/api/health', async (req, res) => {
+  const { pool } = require('../db');
+  const dbOk = await pool.query('SELECT 1').then(() => true).catch(() => false);
+  res.status(dbOk ? 200 : 503).json({
+    status: dbOk ? 'healthy' : 'degraded',
+    timestamp: new Date().toISOString(),
+    version: process.env.npm_package_version || '2.1.0',
+    database: dbOk ? 'connected' : 'error',
+  });
+});
+
 // ── Public pages (catch-all MUST be LAST) ─────────────────────────────────
 app.use(require('./routes/publicPages'));
 
