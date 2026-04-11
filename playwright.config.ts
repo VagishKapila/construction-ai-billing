@@ -39,5 +39,12 @@ export default defineConfig({
       testMatch: '**/unit/**/*.test.ts',
       use: {},
     },
+    {
+      name: 'agents',
+      testMatch: 'tests/e2e/agents/**/*.spec.ts',
+      use: {
+        baseURL: process.env.TEST_BASE_URL || 'https://construction-ai-billing-staging.up.railway.app',
+      },
+    },
   ],
 });

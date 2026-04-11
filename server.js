@@ -1,4 +1,31 @@
 require('dotenv').config();
+
+// ── Sentry — graceful init (only active when SENTRY_DSN is set) ───────────
+let Sentry;
+try {
+  Sentry = require('@sentry/node');
+  if (process.env.SENTRY_DSN) {
+    Sentry.init({
+      dsn: process.env.SENTRY_DSN,
+      environment: process.env.NODE_ENV || 'production',
+      tracesSampleRate: 0.2,
+    });
+    console.log('[Sentry] Error tracking initialized');
+  } else {
+    console.log('[Sentry] No SENTRY_DSN set — error tracking disabled');
+  }
+} catch(e) {
+  // Graceful no-op if @sentry/node not installed
+  Sentry = {
+    captureException: () => {},
+    Handlers: {
+      requestHandler: () => (_req, _res, next) => next(),
+      errorHandler:   () => (_err, _req, _res, next) => next(_err),
+    },
+  };
+  console.warn('[Sentry] Package not available — error tracking disabled');
+}
+
 const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
@@ -86,6 +113,39 @@ app.use((req, res, next) => {
   if (req.originalUrl === '/api/stripe/webhook') return next();
   express.json()(req, res, next);
 });
+// ── Sentry request handler (must be first middleware after routes are defined) ─
+app.use(Sentry.Handlers.requestHandler());
+
+// ── Structured HTTP logging (pino-http) ───────────────────────────────────
+let pinoHttp;
+try {
+  pinoHttp = require('pino-http');
+  const logger = require('./server/utils/logger');
+  app.use(pinoHttp({
+    logger,
+    customLogLevel: (_req, res) => res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info',
+    customSuccessMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode}`,
+    // Don't log health checks — they fire every 30s from BetterStack
+    autoLogging: { ignore: (req) => req.url === '/api/health' },
+  }));
+  console.log('[pino-http] Request logging enabled');
+} catch(e) {
+  console.warn('[pino-http] Not available — using default logging');
+}
+
+// ── Tiered rate limiting (auth brute-force, pay Stripe abuse, general API) ─
+const { authLimiter: fileAuthLimiter, payLimiter, apiLimiter } = (() => {
+  try {
+    return require('./server/middleware/rateLimiter');
+  } catch(e) {
+    const noop = (req, res, next) => next();
+    return { authLimiter: noop, payLimiter: noop, apiLimiter: noop };
+  }
+})();
+app.use('/api/auth/', fileAuthLimiter);
+app.use('/api/pay/', payLimiter);
+app.use('/api/', apiLimiter);
+
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: (res, filePath) => {
     // Prevent aggressive caching of HTML files so users always get latest version
@@ -151,6 +211,18 @@ async function logEvent(userId, event, meta = {}) {
     );
   } catch(e) { /* silent — analytics must never crash the app */ }
 }
+
+// ── Health check (BetterStack + Railway monitoring) ──────────────────────
+app.get('/api/health', async (req, res) => {
+  const dbOk = await pool.query('SELECT 1').then(() => true).catch(() => false);
+  const status = dbOk ? 'healthy' : 'degraded';
+  res.status(dbOk ? 200 : 503).json({
+    status,
+    timestamp: new Date().toISOString(),
+    version: process.env.npm_package_version || '2.1.0',
+    database: dbOk ? 'connected' : 'error',
+  });
+});
 
 // ── Request timing middleware (logs slow API calls) ───────────────────────
 app.use('/api', (req, res, next) => {
@@ -7141,6 +7213,9 @@ app.get('/api/other-invoices/:id/pdf', auth, async (req, res) => {
 app.get('/pay/:token', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'pay.html'));
 });
+
+// ── Sentry error handler (must come after all routes, before catch-all) ──
+app.use(Sentry.Handlers.errorHandler());
 
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 

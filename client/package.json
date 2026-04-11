@@ -28,6 +28,7 @@
     "@react-three/fiber": "^9.5.0",
     "@remotion/player": "^4.0.443",
     "@remotion/three": "^4.0.443",
+    "@sentry/react": "^10.48.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",

@@ -1,5 +1,5 @@
 # Company Brain
-> Last synced: April 10, 2026
+> Last synced: April 11, 2026 (Infrastructure sprint — Sentry + rate limiting + feature flags + pino + AI testing team)
 > Owner: Vagish Kapila
 > Tagline: AI-powered construction billing that keeps contractors cash-flow positive
 
@@ -172,6 +172,7 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 | Apr 10, 2026 | GuidedTour removed from Shell.tsx — replaced by OnboardingFlow route | GuidedTour was rendering fixed inset-0 z-50 black overlay for all new users, blocking the Stripe banner and entire dashboard. Superseded by new /onboarding route. |
 | Apr 10, 2026 | /onboarding is now a dedicated route (no Shell, AuthGuard only) | Register navigates to /onboarding; already-onboarded users auto-redirected to /dashboard |
 | Apr 10, 2026 | Dashboard always shows 2-column layout (never hides behind ternary) | Empty state card shown inside Active Projects section; KPI cards always visible with $0.00 |
+| Apr 11, 2026 | Infrastructure sprint: Sentry + rate limiting + feature flags + pino + AI testing team | server/features/flags.js (8 flags, all OFF by default), server/middleware/rateLimiter.js (auth 20/15min, pay 10/1min, api 200/1min), server/utils/logger.js (pino structured logging), CHANGELOG.md, Sam/Mike/Paul Playwright agents, VITE_SENTRY_DSN + SENTRY_DSN env vars needed on Railway |
 
 ### What We're NOT Doing (and why)
 - NOT building a full accounting system — QB handles that, we sync to it
@@ -432,3 +433,4 @@ TOTAL: 207 checks
 | Apr 6, 2026 | Project Hub Phase 1 shipped to staging | Full backend (18 endpoints, 5 DB tables) + frontend (Hub tab, DocDetail, Trades, MagicLink) pushed to staging branch. |
 | Apr 7, 2026 | 7-Layer QA test suite built + installed | Architecture sanity (32 checks), mutation watchdog (4 mutations), API contract tests (9 tests), CO cross-layer tests rewritten (7 tests). qa_test.js expanded to 121 checks (MODULE 7C). GitHub Actions CI wired. Discovered + fixed "fixed the wrong file" bug: CO math was in server.js only, not live payApps.js. All 207 checks passing. e2e-qa skill updated to trigger on all test/QA phrases. |
 | Apr 10, 2026 | Fixed 4 production-blocking bugs (new user onboarding + dashboard) | Bug 1/4: GuidedTour removed from Shell.tsx — it was blocking Stripe banner with z-50 overlay. Bug 2: Dashboard always renders 2-column layout; Active Projects shows rich 🏗️ empty card + KPI cards always visible; floating ARIA CTA post-onboarding. Bug 3: New 2-step OnboardingFlow (Company Setup → Meet ARIA) with animated ARIA features stagger at 600ms, "Stop chasing. Start collecting." tagline, teal CTA, no skip on Step 2. Register.tsx now routes to /onboarding. App.tsx has /onboarding route (AuthGuard, no Shell). All 7 QA layers green. Pushed staging + main. |
+| Apr 11, 2026 | Infrastructure sprint deployed to staging | Sentry error monitoring (backend + frontend), rate limiting (3 tiers), feature flags (8 flags, all OFF), pino structured logging in payApps.js, Sam/Mike/Paul AI testing agents, CHANGELOG.md, MONITORING_SETUP.md. Vagish must add SENTRY_DSN and VITE_SENTRY_DSN to Railway to activate Sentry. BetterStack setup instructions in MONITORING_SETUP.md. |

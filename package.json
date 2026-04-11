@@ -15,12 +15,13 @@
     "aria-daily": "node scripts/aria-daily.js"
   },
   "dependencies": {
+    "@sentry/node": "^10.48.0",
     "archiver": "^7.0.1",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
-    "express-rate-limit": "^7.1.5",
+    "express-rate-limit": "^7.5.1",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "mammoth": "^1.7.2",
@@ -29,6 +30,8 @@
     "pdf-parse": "^1.1.1",
     "pdfkit": "^0.14.0",
     "pg": "^8.11.3",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
     "puppeteer": "^22.0.0",
     "railway": "^2.0.17",
     "stripe": "^21.0.1",

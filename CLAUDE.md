@@ -1,3 +1,45 @@
+
+# ConstructInvoice AI — CLAUDE.md
+## Standards That Are ALWAYS Active (No Exceptions)
+### Before Writing Any Code
+1. READ this file completely
+2. READ BRAIN.md for current product state
+3. Activate skills: brainstorming, writing-plans, 
+   test-driven-development, ecc-zenith, ui-ux-pro-max
+### The Smart Build Framework (MANDATORY EVERY TIME)
+BEFORE code:    brainstorming → writing-plans → design if UI
+WHILE coding:   test-driven-development → ecc-zenith → ui-ux-pro-max
+                Feature flag = OFF while building new features
+BEFORE merging: verification-before-completion → review → e2e-qa
+AFTER staging:  monitor Sentry 10 min → BetterStack green → Sam/Mike/Paul pass
+MERGE to main:  ship → CHANGELOG update → brainsync
+### Non-Negotiable Technical Standards (Apply to Every File)
+- Every route: try/catch + validate input + parameterized queries
+- Every response: { data, error, message }
+- Every secret: env var only — NEVER hardcode
+- Every new feature: feature flag in server/features/flags.js
+- Every dollar amount: formatMoney() — never raw numbers in UI
+- Every error: Sentry.captureException() — never silent failures
+- All work to STAGING first — never directly to main
+- Run all 7 QA layers — ALL must be green before main merge
+- brainsync at the end of EVERY session
+### DO NOT TOUCH (Protected)
+- G702/G703 math formulas — 13 unit tests protect them
+- Stripe fee amounts — $25 ACH, 3.3%+$0.40 CC, 1.5% early pay
+- sk_live_ keys — never switch to test mode
+- server.js Stripe application_fee logic
+### Architecture Rules
+- Feature-driven: server/features/{name}/ and client/src/features/{name}/
+- Every file under 200 lines — single responsibility
+- No cross-feature imports except through index.ts public interface
+- Vite 6 only — NOT Vite 8 (crashes Railway)
+### Role Terminology (Always)
+- NEVER use "GC" — use "Contractor"
+- NEVER use "GC mode" — use "Contractor mode"  
+- Blue theme = Contractor. Orange theme = Vendor/Sub.
+
+---
+
 # Construction AI Billing — Project Context for Claude
 
 > **READ THIS FIRST** before touching any code.
@@ -64,6 +106,10 @@ Users create projects, upload a Schedule of Values (SOV), then generate G702/G70
 | Payments | Stripe Connect Express (ACH + card via Checkout), `stripe` npm v21+ |
 | QuickBooks | OAuth 2.0 integration via `intuit-oauth` + REST API v3 (`server/services/quickbooks.js`) |
 | File storage | Railway Volume `construction-ai-billing-volume` mounted at `/app/uploads` (persistent across deploys) |
+| Error tracking | Sentry (backend + frontend error monitoring, VITE_SENTRY_DSN + SENTRY_DSN env vars) |
+| Rate limiting | 3-tier middleware in server/middleware/rateLimiter.js (auth 20/15min, pay 10/1min, api 200/1min) |
+| Structured logging | Pino logger in server/utils/logger.js (used in payApps.js and server.js) |
+| Feature flags | server/features/flags.js (8 flags, all OFF by default) |
 
 ### Rev 3 Frontend Stack (constructinv-3.0 branch → merged to main)
 
@@ -93,6 +139,17 @@ construction-ai-billing/
 ├── parse_sov.py       ← Python parser for PDF and DOCX SOV files only
 ├── server/
 │   ├── app.js             ← Express app setup, route mounting, middleware wiring
+│   ├── features/          ← Feature-flag-gated modules (all with *disabled* flags)
+│   │   ├── flags.js       ← 8 feature flags (pay_early_payment, ai_testing_team, etc.)
+│   │   ├── payApps/       ← Pay app logic under feature flag
+│   │   ├── billing/       ← Billing intelligence under feature flag
+│   │   └── index.ts       ← Public interface for features/
+│   ├── middleware/
+│   │   ├── auth.js        ← JWT auth + adminAuth middleware
+│   │   ├── trialGate.js   ← Blocks expired trial users from write operations
+│   │   └── rateLimiter.js ← 3-tier rate limiting (auth, pay, api endpoints)
+│   ├── utils/
+│   │   └── logger.js      ← Pino structured logging
 │   ├── routes/
 │   │   ├── projects.js    ← Project routes including reconciliation, complete/reopen
 │   │   ├── quickbooks.js  ← All QB API routes (OAuth, sync, estimates)
@@ -105,9 +162,6 @@ construction-ai-billing/
 │   ├── services/
 │   │   ├── quickbooks.js  ← QB service layer (OAuth, API calls, token encryption)
 │   │   └── trial.js       ← Trial logic: getTrialStatus, createProSubscription (Rev 3)
-│   ├── middleware/
-│   │   ├── auth.js        ← JWT auth + adminAuth middleware
-│   │   └── trialGate.js   ← Blocks expired trial users from write operations (Rev 3)
 │   └── lib/
 │       └── logEvent.js    ← Audit event logging helper
 ├── client/            ← Rev 3 React frontend (Vite + React 19 + TypeScript)
@@ -151,8 +205,11 @@ construction-ai-billing/
 │   ├── pay.html       ← Public payment page (no auth — accessed by payer via /pay/:token)
 │   ├── varshyl-logo.png        ← ConstructInvoice AI logo (white bg, 35KB, 400×266px)
 │   └── constructinvoice-logo.png  ← Same logo, alternate filename (35KB)
-├── qa_test.js         ← Run with `node qa_test.js` — 109 tests, must all pass
+├── qa_test.js         ← Run with `node qa_test.js` — 118 tests, must all pass
 ├── CLAUDE.md          ← This file
+├── BRAIN.md           ← Company brain + feature inventory
+├── CHANGELOG.md       ← Versioned changelog (auto-updated by /ship skill)
+├── MONITORING_SETUP.md ← Sentry + BetterStack setup instructions (Apr 11 2026)
 └── package.json
 ```
 
@@ -201,6 +258,13 @@ The app was split from one file into two. **Any server-side redirect must point 
 - **Job Completed** — when all SOV lines are 100% billed, "Create Pay Application" button is hidden, green "Job Completed" banner shows with trophy icon. Projects can be reopened (Reopen Job button) to resume billing. DB columns: `projects.status` ('active'|'completed'), `projects.completed_at`
 - **Reconciliation** — per-project reconciliation report showing total_work_completed vs total_billed + total_retainage_held. Uses < $0.02 threshold for "Fully Reconciled" status (green banner). Accessible from Pay Apps tab.
 - **QuickBooks Integration (UI wired, backend built, NOT YET CONNECTED)** — QB components wired into Settings page (QBConnectionCard, QBSyncLog) and ProjectDetail page (QBSyncButton, QBEstimateImport). Backend routes in `server/routes/quickbooks.js`, service layer in `server/services/quickbooks.js`. **BLOCKED: needs QB env vars on Railway to activate** (see QuickBooks section below).
+- **Stripe Connect Payment Pipeline** ✅ **LIVE** — Owner pays contractor through platform via Stripe Checkout (ACH + card), Stripe Connect Express handles KYC/onboarding, fully working in test and live mode
+- **Trial & Subscription System** ✅ **LIVE (Rev 3, Apr 6 2026)** — 90-day free trial with soft block on expired trials, Pro tier upgrade via Stripe Checkout, trial dates + subscription_status tracked in users table, all webhook events handled
+- **Rate Limiting** ✅ **DEPLOYED** — 3-tier middleware (auth 20/15min, pay 10/1min, api 200/1min) deployed to staging, Railway env vars ready
+- **Sentry Error Monitoring** ✅ **DEPLOYED** — Backend + frontend error tracking with Sentry SDK, VITE_SENTRY_DSN + SENTRY_DSN env vars ready (not yet set on Railway production)
+- **Structured Logging (Pino)** ✅ **DEPLOYED** — payApps.js and server.js using pino logger for structured logs, deployable immediately
+- **Feature Flags** ✅ **DEPLOYED** — 8 feature flags in server/features/flags.js (all OFF by default), framework in place for rolling out new features safely
+- **AI Testing Team (Sam/Mike/Paul)** ✅ **AGENTS BUILT** — Playwright-based testing agents, test data seeding, comprehensive coverage
 
 ### ⚠️ Known Behavior
 - "By Others" in SOV amount column → treated as $0 (skipped), correct behavior
@@ -339,7 +403,7 @@ Retainage is per-line (can vary). Default from project settings.
 
 ---
 
-## Modules — Master Roadmap (updated Apr 6 2026)
+## Modules — Master Roadmap (updated Apr 11 2026 — Infrastructure Sprint)
 
 > **THIS IS THE SINGLE SOURCE OF TRUTH for all features.**
 > Every new Claude session should read this section first.
@@ -468,30 +532,35 @@ Retainage is per-line (can vary). Default from project settings.
 
 ---
 
-### Module 7: QA & Testing Automation — ONGOING
-**Status: ✅ DONE (Rev 3, Apr 6 2026) — Phase A complete, Phase B planned**
-**Files:** `qa_test.js` (109 tests), TypeScript strict mode, Vite build verification
+### Module 7: Infrastructure & Observability — PRIORITY 7
+**Status: ✅ DEPLOYED (Apr 11 2026 infrastructure sprint)**
+**Files:** 
+- `server/features/flags.js` — 8 feature flags (all OFF by default): pay_early_payment, ai_testing_team, project_hub_mvp, qb_auto_sync, advanced_reporting, sentry_sampling, rate_limit_strict, pino_detailed_logs
+- `server/middleware/rateLimiter.js` — 3-tier rate limiting: auth endpoints (20/15min), pay endpoints (10/1min), general API (200/1min)
+- `server/utils/logger.js` — Pino structured logging (used in payApps.js and server.js)
+- `CHANGELOG.md` — Auto-updated by ship skill with version history + deployment dates
+- `MONITORING_SETUP.md` — Sentry + BetterStack setup guide (created Apr 11)
+- Sam/Mike/Paul Playwright agents — AI testing team for cross-layer validation
 
-**Phase A: API Integration Tests (expand qa_test.js)**
-- Test every critical endpoint with real HTTP requests
-- Lien waiver download → verify response is PDF, not HTML
-- Email send → verify Resend API called with correct attachments
-- Pay app save → verify notes/PO persist correctly
-- SOV upload → verify parser returns correct line items
-- Auth flows → verify JWT, Google OAuth, password reset
+**What's deployed:**
+- Sentry SDK integrated (frontend + backend), env vars ready (VITE_SENTRY_DSN + SENTRY_DSN)
+- Rate limiting active (3 tiers, configurable via env vars)
+- Feature flags framework in place (safe to roll out new features)
+- Structured Pino logging in payApps + server.js
+- CHANGELOG tracking all versions
+- Monitoring setup doc for Vagish to follow
 
-**Phase B: Playwright End-to-End Browser Tests (new file: e2e_test.js)**
-- Full user flows in real Chromium browser
-- Create account → create project → upload SOV → generate pay app → download PDF → send email
-- Verify PDF opens correctly (not HTML)
-- Verify lien waiver downloads correctly
-- Mobile viewport testing
-- Screenshot comparisons for visual regression
+**What's NOT yet on production:**
+- Sentry env vars not yet set on Railway production (staging has them)
+- BetterStack setup pending (instructions in MONITORING_SETUP.md)
+- Feature flags all OFF — safe to deploy, no activation yet
+
+**Next step:** Vagish adds SENTRY_DSN + VITE_SENTRY_DSN to Railway production env vars, triggers redeploy.
 
 ---
 
-### Module 8: Exp1_ConstructInv3 — Project Hub (DESIGNED Apr 6 2026)
-**Status: 🟡 PRD Complete, ready for implementation**
+### Module 8: Project Hub (DESIGNED Apr 6 2026, development TBD)
+**Status: 🟡 PRD Complete, awaiting Vagish prioritization**
 **Internal codename:** Exp1_ConstructInv3
 **PRD:** `Exp1_ConstructInv3_Project_Hub_PRD.docx` (v2.1, 30KB)
 **Branch:** `staging` (all work goes through staging → main)
@@ -666,17 +735,17 @@ The full loop: Sub uploads invoice → Hub intake → Client reviews/approves �
 |--------|----------|--------|----------------|
 | ACH | GC (contractor) | $25 flat | $25 application_fee |
 | Credit Card | Payer (owner) | 3.3% + $0.40 on top | Processing fee as application_fee |
-| Payouts | GC (from balance) | 0.28% + $0.28 | Markup over Stripe's 0.25%+$0.25 |
+| Payouts | GC (from balance) | 0.28% + 0.28 | Markup over Stripe's 0.25%+$0.25 |
 
 ### How It Works
-1. GC connects Stripe via Express onboarding (Settings → Accept Payments)
-2. GC sends pay app email → email includes "Pay Now" button with unique `/pay/:token` link
+1. Contractor connects Stripe via Express onboarding (Settings → Accept Payments)
+2. Contractor sends pay app email → email includes "Pay Now" button with unique `/pay/:token` link
 3. Owner clicks link → `pay.html` loads invoice data, shows ACH (recommended) + card options
 4. Owner pays → Stripe Checkout handles payment → webhook updates pay_app status
-5. GC sees payment in 💳 Payments dashboard + status badge on pay app
+5. Contractor sees payment in 💳 Payments dashboard + status badge on pay app
 
 ### Database Tables
-- `connected_accounts` — GC's Stripe Connect accounts
+- `connected_accounts` — Contractor's Stripe Connect accounts
 - `payments` — individual payment records (links to pay_apps)
 - `payment_followups` — scheduled follow-up tracking
 - `pay_apps` additions: `payment_status`, `amount_paid`, `payment_link_token`, `bad_debt`, `bad_debt_at`, `bad_debt_reason`
@@ -696,14 +765,14 @@ The full loop: Sub uploads invoice → Hub intake → Client reviews/approves �
 
 ### Server Routes (all in server.js)
 - `POST /api/stripe/connect` — Start Connect Express onboarding
-- `GET /api/stripe/account-status` — Check GC's connected account
+- `GET /api/stripe/account-status` — Check Contractor's connected account
 - `POST /api/stripe/dashboard-link` — Generate Stripe Express dashboard link
 - `POST /api/pay-apps/:id/payment-link` — Generate payment link for a pay app
 - `GET /api/pay/:token` — Public: get pay app data for payment page (returns `retainage_held`, `retainage_pct`, `has_pending_payment`)
 - `POST /api/pay/:token/checkout` — Create Stripe Checkout session (ACH or card)
 - `POST /api/pay/:token/verify` — Verify payment on success redirect (fallback if webhook delayed)
 - `POST /api/stripe/webhook` — Handle Stripe webhook events (9 event types)
-- `GET /api/payments` — List GC's payments with summary stats
+- `GET /api/payments` — List Contractor's payments with summary stats
 - `POST /api/pay-apps/:id/bad-debt` — Mark as uncollectable
 - `POST /api/pay-apps/:id/undo-bad-debt` — Undo bad debt
 - `GET /pay/:token` — Serve pay.html (public payment page)
@@ -714,7 +783,7 @@ All protected by `adminAuth` middleware. For creating realistic Stripe payment t
 - `POST /api/admin/test/complete-onboarding` — Creates Custom connected account with full API control (replaces Express for test mode)
 - `POST /api/admin/test/create-test-payapp` — Creates project + 10 SOV lines + pay app with 30% progress + payment link
 - `GET /api/admin/test/reconciliation` — Complete money flow report (all payments, balances, Stripe charges, subscriptions)
-- `GET /api/admin/test/list-test-gcs` — Lists all test GC accounts with live Stripe status
+- `GET /api/admin/test/list-test-gcs` — Lists all test Contractor accounts with live Stripe status
 - `POST /api/admin/test/cleanup` — Removes test users and deletes their Stripe accounts
 
 ### Test Accounts (staging, as of Apr 1 2026)
@@ -749,9 +818,9 @@ All protected by `adminAuth` middleware. For creating realistic Stripe payment t
 - [ ] Switch Stripe to live mode, get `sk_live_` and `pk_live_` keys
 - [ ] Update Railway production env vars with live keys
 - [ ] Create live webhook endpoint pointing to production URL
-- [ ] Verify GC onboarding flow works end-to-end with real Stripe
+- [ ] Verify Contractor onboarding flow works end-to-end with real Stripe
 - [ ] Test real ACH and card payment (use small amount)
-- [ ] Confirm payouts to GC's bank account
+- [ ] Confirm payouts to Contractor's bank account
 
 ---
 
@@ -911,5 +980,3 @@ qa_test.js                        ← Static code scan (118 tests)
 - **After any G702/CO/math change:** + unit tests + e2e cross-layer tests
 - **Before merging to main:** Full suite, all tests green
 - **Do NOT merge if any test is red** — find the root cause first
-
----

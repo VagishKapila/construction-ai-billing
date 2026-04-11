@@ -14,10 +14,15 @@ const { generateLienDocPDF } = require('./lienWaivers');
 const { generatePaymentToken } = require('../services/stripe');
 const { generatePayAppHTML } = require('../lib/generatePayAppHTML');
 const { PDFDocument: PDFLibDocument } = require('pdf-lib');
+const logger = require('../utils/logger');
+
+// Sentry error capture (graceful fallback if not installed)
+let Sentry;
+try { Sentry = require('@sentry/node'); } catch(e) { Sentry = { captureException: () => {} }; }
 
 // PDF generation via Puppeteer (fallback to PDFKit if unavailable)
 let puppeteer = null;
-try { puppeteer = require('puppeteer'); } catch(e) { console.warn('[PDF] Puppeteer not available, falling back to PDFKit'); }
+try { puppeteer = require('puppeteer'); } catch(e) { logger.warn({ component: 'pdf' }, 'Puppeteer not available, falling back to PDFKit'); }
 
 // JWT_SECRET and other config from environment
 const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret';
@@ -232,7 +237,7 @@ router.put('/api/payapps/:id', auth, async (req,res) => {
           [totalAmountDue, retentionHeld, req.params.id]
         );
       }
-    } catch(snapErr) { console.error('[Snap amount_due]', snapErr.message); }
+    } catch(snapErr) { logger.error({ error: snapErr.message, payAppId: req.params.id }, 'snap_amount_due_error'); }
 
     // Auto-calculate payment_due_date from project payment_terms (e.g. "Net 30" → today + 30 days)
     try {
@@ -256,7 +261,7 @@ router.put('/api/payapps/:id', auth, async (req,res) => {
           [dueDate.toISOString().split('T')[0], req.params.id]
         );
       }
-    } catch(dueErr) { console.error('[Auto due date]', dueErr.message); }
+    } catch(dueErr) { logger.error({ error: dueErr.message, payAppId: req.params.id }, 'auto_due_date_error'); }
 
     // Auto-generate lien waiver on submit (non-blocking)
     // - Progress payments → Conditional Waiver (with amount, conditional on receiving payment)
@@ -326,7 +331,7 @@ router.put('/api/payapps/:id', auth, async (req,res) => {
           });
         }
       }
-    } catch(lienErr) { console.error('[Auto lien release]', lienErr.message); }
+    } catch(lienErr) { logger.error({ error: lienErr.message, payAppId: req.params.id }, 'auto_lien_release_error'); }
 
     // Auto-generate Final Retainage Release pay app when project reaches 100% billed
     // Also skip if this IS the retainage release being submitted
@@ -412,11 +417,11 @@ router.put('/api/payapps/:id', auth, async (req,res) => {
               await logEvent(req.user.id, 'retainage_release_created', {
                 project_id: projId, pay_app_id: releasePaId, amount: totalRetainage
               });
-              console.log(`[Retainage Release] Created PA #${releaseNum} for project ${projId}, amount: $${totalRetainage.toFixed(2)}`);
+              logger.info({ projectId: projId, payAppNumber: releaseNum, amount: totalRetainage }, 'retainage_release_created');
             }
           }
         }
-      } catch(retErr) { console.error('[Auto retainage release]', retErr.message); }
+      } catch(retErr) { logger.error({ error: retErr.message, projectId: req.params.id }, 'auto_retainage_release_error'); }
     }
   }
   res.json(r.rows[0]);
@@ -489,7 +494,13 @@ router.delete('/api/payapps/:id', auth, async (req, res) => {
       deleted_count: toDelete.length,
       app_numbers: [app_number, ...subsequent.rows.map(r => r.app_number)]
     });
-  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch(e) {
+    logger.error({ error: e.message, userId: req.user?.id, payAppId: req.params.id }, 'delete_payapps_error');
+    if (Sentry?.captureException) {
+      Sentry.captureException(e, { extra: { userId: req.user?.id, payAppId: req.params.id } });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // POST /api/payapps/:id/restore - Restore a soft-deleted pay app
@@ -506,7 +517,13 @@ router.post('/api/payapps/:id/restore', auth, async (req, res) => {
     if (!r.rows[0]) return res.status(404).json({ error: 'Pay application not found or not deleted' });
     await logEvent(req.user.id, 'payapp_restored', { pay_app_id: parseInt(req.params.id) });
     res.json({ ok: true, id: r.rows[0].id, app_number: r.rows[0].app_number });
-  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch(e) {
+    logger.error({ error: e.message, userId: req.user?.id, payAppId: req.params.id }, 'restore_payapp_error');
+    if (Sentry?.captureException) {
+      Sentry.captureException(e, { extra: { userId: req.user?.id, payAppId: req.params.id } });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // GET /api/projects/:id/payapps/deleted - Get deleted pay apps for a project
@@ -527,7 +544,13 @@ router.get('/api/projects/:id/payapps/deleted', auth, async (req, res) => {
       [req.params.id, req.user.id]
     );
     res.json(r.rows);
-  } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch(e) {
+    logger.error({ error: e.message, userId: req.user?.id, projectId: req.params.id }, 'list_deleted_payapps_error');
+    if (Sentry?.captureException) {
+      Sentry.captureException(e, { extra: { userId: req.user?.id, projectId: req.params.id } });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // PUT /api/payapps/:id/lines - Update pay app lines (percentages, retainage, stored materials)
@@ -819,10 +842,10 @@ router.get('/api/payapps/:id/pdf', async (req,res) => {
   const docAttachments = docAttsRes.rows.map(a => ({ name: a.original_name || a.filename }));
 
   if (!pa.logo_filename) {
-    console.log(`[PDF] No logo_filename for user_id=${decoded.id} (pay_app=${req.params.id})`);
+    logger.info({ userId: decoded.id, payAppId: req.params.id }, 'pdf_no_logo_filename');
   } else {
     const lp = path.join(__dirname, '..', '..', 'uploads', pa.logo_filename);
-    if (!fs.existsSync(lp)) console.log(`[PDF] Logo file missing: ${lp}`);
+    if (!fs.existsSync(lp)) logger.warn({ logoPath: lp, payAppId: req.params.id }, 'pdf_logo_file_missing');
   }
 
   // ── Auto-generate payment link token (always, so Pay Now appears on every invoice) ──
@@ -831,8 +854,10 @@ router.get('/api/payapps/:id/pdf', async (req,res) => {
       const payToken = generatePaymentToken();
       await pool.query('UPDATE pay_apps SET payment_link_token=$1 WHERE id=$2', [payToken, req.params.id]);
       pa.payment_link_token = payToken;
-      console.log('[PDF] Auto-generated payment link token for pay app', req.params.id);
-    } catch(e) { console.error('[PDF] Payment token gen error:', e.message); }
+      logger.info({ payAppId: req.params.id }, 'pdf_payment_token_auto_generated');
+    } catch(e) {
+      logger.error({ error: e.message, payAppId: req.params.id }, 'pdf_payment_token_gen_error');
+    }
   }
 
   const totals = { tComp, tRet, tPrevCert, tCO, contract, earned, due };
@@ -861,8 +886,10 @@ router.get('/api/payapps/:id/pdf', async (req,res) => {
             maker_of_check: pa.owner || '', check_payable_to: sigName,
             signatory_name: sigName, signedAt: new Date(lienDoc.signed_at || Date.now()), ip: 'auto-regen',
           });
-          console.log('[PDF] Regenerated lien waiver with current signature:', lienDoc.filename);
-        } catch(regenErr) { console.error('[PDF] Lien regen error:', regenErr.message); }
+          logger.info({ lienDocId: lienDoc.id, filename: lienDoc.filename }, 'pdf_lien_regenerated');
+        } catch(regenErr) {
+          logger.error({ error: regenErr.message, lienDocId: lienDoc?.id }, 'pdf_lien_regen_error');
+        }
       }
       // Auto-generate conditional waiver if none exists
       if (!lienDoc && due > 0 && (pa.contact_name || pa.company_name)) {
@@ -881,13 +908,15 @@ router.get('/api/payapps/:id/pdf', async (req,res) => {
           [pa.project_id, req.params.id, decoded.id, due, lienFilename, today, sigName, pa.owner || '']
         );
         lienDoc = insertRes.rows[0];
-        console.log('[PDF] Auto-generated conditional lien waiver:', lienFilename);
+        logger.info({ lienDocId: lienDoc.id, filename: lienFilename, payAppId: req.params.id }, 'pdf_lien_auto_generated');
       }
       if (lienDoc && lienDoc.filename) {
         const lienPath = path.join(__dirname, '..', '..', 'uploads', lienDoc.filename);
         if (fs.existsSync(lienPath)) return fs.readFileSync(lienPath);
       }
-    } catch(e) { console.error('[PDF] Lien waiver error:', e.message); }
+    } catch(e) {
+      logger.error({ error: e.message, payAppId: req.params.id }, 'pdf_lien_waiver_error');
+    }
     return null;
   };
 
@@ -904,7 +933,7 @@ router.get('/api/payapps/:id/pdf', async (req,res) => {
       lienPages.forEach(p => merged.addPage(p));
       return Buffer.from(await merged.save());
     } catch(e) {
-      console.error('[PDF] Merge error:', e.message);
+      logger.error({ error: e.message, payAppId: req.params.id }, 'pdf_merge_error');
       return mainBuf; // fallback: return pay app only
     }
   };
@@ -930,7 +959,7 @@ router.get('/api/payapps/:id/pdf', async (req,res) => {
       res.send(finalPdf);
       return;
     } catch(puppErr) {
-      console.error('[PDF] Puppeteer error, falling back to PDFKit:', puppErr.message);
+      logger.error({ error: puppErr.message, payAppId: req.params.id }, 'pdf_puppeteer_error_fallback_pdfkit');
     } finally {
       if (browser) await browser.close().catch(()=>{});
     }
@@ -1094,7 +1123,9 @@ router.post('/api/payapps/:id/email', auth, trialGate, async (req, res) => {
           await pool.query('UPDATE pay_apps SET payment_link_token=$1 WHERE id=$2', [payToken, req.params.id]);
         }
         payNowUrl = `${baseUrl}/pay/${payToken}`;
-      } catch(payLinkErr) { console.error('[Email] Payment link gen error:', payLinkErr.message); }
+      } catch(payLinkErr) {
+        logger.error({ error: payLinkErr.message, payAppId: req.params.id }, 'email_payment_link_gen_error');
+      }
     }
 
     const fmtD = n => '$' + parseFloat(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -1169,9 +1200,9 @@ router.post('/api/payapps/:id/email', auth, trialGate, async (req, res) => {
           const page = await browser.newPage();
           await page.setContent(html, { waitUntil: 'networkidle0' });
           pdfBuf = await page.pdf({ format: 'Letter', printBackground: true, margin: { top: '0.5in', right: '0.45in', bottom: '0.5in', left: '0.45in' } });
-          console.log('[Email PDF] Puppeteer generated', pdfBuf.length, 'bytes');
+          logger.info({ payAppId: req.params.id, pdfBytes: pdfBuf.length }, 'email_pdf_puppeteer_generated');
         } catch(puppErr) {
-          console.error('[Email PDF] Puppeteer error, falling back to PDFKit:', puppErr.message);
+          logger.error({ error: puppErr.message, payAppId: req.params.id }, 'email_pdf_puppeteer_error_fallback_pdfkit');
         } finally {
           if (browser) await browser.close().catch(()=>{});
         }
@@ -1227,12 +1258,12 @@ router.post('/api/payapps/:id/email', auth, trialGate, async (req, res) => {
           pdfDoc.end();
         });
         pdfBuf = Buffer.concat(chunks);
-        console.log('[Email PDF] PDFKit generated', pdfBuf.length, 'bytes');
+        logger.info({ payAppId: req.params.id, pdfBytes: pdfBuf.length }, 'email_pdf_pdfkit_generated');
       }
 
       emailAttachments.push({ filename: pdfFilename, content: pdfBuf.toString('base64') });
     } catch(pdfErr) {
-      console.error('[Email PDF] Failed:', pdfErr.message);
+      logger.error({ error: pdfErr.message, payAppId: req.params.id }, 'email_pdf_generation_failed');
     }
 
     // ── Auto-generate lien waiver if none exists and attach it ──
@@ -1264,7 +1295,7 @@ router.post('/api/payapps/:id/email', auth, trialGate, async (req, res) => {
             [pa.project_id, req.params.id, req.user.id, due, lienFilename, today, sigName, pa.owner || '']
           );
           lienDoc = insertRes.rows[0];
-          console.log('[Email] Auto-generated conditional lien waiver:', lienFilename);
+          logger.info({ lienDocId: lienDoc.id, filename: lienFilename, payAppId: req.params.id }, 'email_lien_auto_generated');
         }
 
         // Attach lien waiver PDF if available
@@ -1277,17 +1308,17 @@ router.post('/api/payapps/:id/email', auth, trialGate, async (req, res) => {
               filename: `${lienType}_Lien_Waiver_${(pa.pname||'').replace(/\s+/g,'_')}.pdf`,
               content: lienBuf.toString('base64')
             });
-            console.log('[Email] Attached lien waiver:', lienDoc.filename);
+            logger.info({ lienDocId: lienDoc.id, filename: lienDoc.filename, payAppId: req.params.id }, 'email_lien_attached');
           }
         }
       } catch(lienErr) {
-        console.error('[Email] Lien waiver error:', lienErr.message);
+        logger.error({ error: lienErr.message, payAppId: req.params.id }, 'email_lien_waiver_error');
       }
     }
 
     const fromEmail = process.env.FROM_EMAIL || 'billing@varshyl.com';
     if (!process.env.RESEND_API_KEY) {
-      console.log(`[DEV Email] TO:${to} CC:${cc||'-'} | ${subject||'Pay App #'+pa.app_number} | attachments:${emailAttachments.length}`);
+      logger.info({ to, cc: cc || '-', subject: subject || `Pay App #${pa.app_number}`, attachmentCount: emailAttachments.length }, 'dev_email_no_resend_key');
     } else {
       const payload = {
         from: fromEmail,
@@ -1304,7 +1335,7 @@ router.post('/api/payapps/:id/email', auth, trialGate, async (req, res) => {
       });
       if (!r.ok) {
         const errBody = await r.text().catch(()=>'');
-        console.error('[Email Route] Resend error:', r.status, errBody);
+        logger.error({ status: r.status, error: errBody, to, payAppId: req.params.id }, 'resend_api_error');
         return res.status(502).json({ error: 'Email delivery failed', detail: errBody });
       }
     }
@@ -1316,7 +1347,10 @@ router.post('/api/payapps/:id/email', auth, trialGate, async (req, res) => {
     res.json({ ok: true, attachments: emailAttachments.length });
 
   } catch(e) {
-    console.error('[Email Route] Error:', e.message, e.stack);
+    logger.error({ error: e.message, stack: e.stack, userId: req.user?.id, payAppId: req.params.id }, 'email_route_error');
+    if (Sentry?.captureException) {
+      Sentry.captureException(e, { extra: { userId: req.user?.id, payAppId: req.params.id } });
+    }
     res.status(500).json({ error: 'Failed to send email', detail: e.message });
   }
 });
