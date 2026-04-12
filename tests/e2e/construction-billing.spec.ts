@@ -76,7 +76,7 @@ test.describe('Projects CRUD', () => {
       headers: h(token),
       data: { name, original_contract: 100000, payment_terms: 'Net 30', default_retainage: 10 },
     });
-    expect(createResp.status()).toBe(200);
+    expect(createResp.status()).toBe(201);
     const proj = await createResp.json();
     expect(proj.name).toBe(name);
     expect(proj.id).toBeTruthy();

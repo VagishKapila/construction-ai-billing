@@ -87,7 +87,7 @@ test.describe.serial('CO Math Cross-Layer Consistency', () => {
         payment_terms: 'Net 30',
       },
     });
-    expect(projResp.status()).toBe(200);
+    expect(projResp.status()).toBe(201);
     const proj = await projResp.json();
     projectId = proj.id;
 
