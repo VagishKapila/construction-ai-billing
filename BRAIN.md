@@ -1,5 +1,5 @@
 # Company Brain
-> Last synced: April 11, 2026 (v2.1.0 full product sprint — 11 bugs, Trust /763, CA lien, join code, vendor book, early pay, UI redesign, infra, AI testing team)
+> Last synced: April 12, 2026 (Module 8 Phase C shipped — stale alerts, ZIP export, email ingestion, AI collection tracking; Hub visual bugs fixed; Key Decisions Log updated)
 > Owner: Vagish Kapila
 > Tagline: AI-powered construction billing that keeps contractors cash-flow positive
 
@@ -114,12 +114,12 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 - **Stripe**: Product `prod_UHoK09nnd940UV`, test mode active
 
 ### ConstructInvoice AI — Project Hub (Exp1_ConstructInv3)
-- **Status**: PRD Complete (v2.1), ready for implementation
+- **Status**: ✅ Phase C SHIPPED to staging (Apr 12, 2026). Hub Phase 1 was live since Apr 6; Phase C adds stale alerts, ZIP export, email ingestion endpoint, and AI collection tracking. Pending Railway env vars + merge to main.
 - **Description**: Project Hub eliminates the "email black hole" in construction. Per-project document intake from subs/vendors with magic links, email aliases, approval workflows, and AI cash flow intelligence. Fully integrated with existing billing engine.
-- **Key Features (V1)**: Trade management, magic link invites, email aliases (hub.constructinv.com), document upload/categorize, unified inbox, 3 fixed roles, approve/reject/comment, RFI reply, stale alerts (2/5/7 day), AI SOV guardrails, ZIP export, notifications
-- **AI Layer**: Collection tracking + follow-up (P0), cash flow forecasting (P1), SOV budget guardian (P2)
-- **Email Ingestion**: Mailgun Routes on hub.constructinv.com (~$35/month)
-- **Timeline**: 7 phases, ~10 weeks
+- **Key Features BUILT**: Trade management + OrbitalCanvas visualization, magic link invites, document upload/categorize/approve/reject, unified inbox (table view with filters), 3 fixed roles (Office/Accountant, PM/PMCM, Superintendent), stale alerts cron (2/5/7 day, runs daily 3AM UTC), ZIP export (`GET /api/projects/:id/hub/export-zip`, archiver package), email ingestion (`POST /api/hub/inbound-email`, X-Hub-Secret auth, Cloudflare Workers), AI collection tracking (Claude Haiku follow-up drafts, `CollectionAlerts.tsx` on Cash Flow page)
+- **AI Layer**: Collection tracking + follow-up (P0 — BUILT), cash flow forecasting (P1 — pending), SOV budget guardian (P2 — pending)
+- **Email Ingestion**: Cloudflare Email Workers → `POST /api/hub/inbound-email` (env var: `HUB_INBOUND_SECRET` needed on Railway)
+- **Hub UI bugs fixed Apr 12**: "Inbox0"/"Trades0" badge concatenation (React 0 falsy short-circuit), trade count badge stale after add (stats now refreshed in handleTradeAdded), OrbitalCanvas trust score flickering (was Math.random(), now uses trade.trust_score)
 - **PRD**: `Exp1_ConstructInv3_Project_Hub_PRD.docx`
 - **Competitive gap**: Procore/Autodesk/GCPay all focus on outgoing billing — NONE solve incoming document intake
 
@@ -149,14 +149,15 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 ## Strategy & Direction
 
 ### Current Priorities
-1. **Verify staging deploy** — confirm all new routes live at construction-ai-billing-staging.up.railway.app/api/health
-2. **Run Layer 7 E2E tests** — Sam/Mike/Paul agents against staging: `TEST_BASE_URL=https://... npx playwright test tests/e2e/agents/`
-3. **Merge staging → main** — after Layer 7 green, deploy to production
-4. **Set Railway env vars** — SENTRY_DSN, VITE_SENTRY_DSN, FF_* feature flags (all false)
-5. **Set QuickBooks env vars** — QB integration built, needs Client ID/Secret on Railway
-6. **Go live with Stripe** — Switch from test mode to live mode
-7. **Dashboard sidebar** — ProjectSidebar.tsx left-rail with search + status sections (Agent 7 partial — needs completion)
-8. **ProjectDetail split-screen** — FinancialPanel + EcosystemPanel refactor (Agent 7 partial — needs completion)
+1. **Set Railway env vars for Hub** — `HUB_INBOUND_SECRET` (email ingestion auth), confirm `ANTHROPIC_API_KEY` set (AI collection tracking needs it)
+2. **Verify staging Hub deploy** — confirm Phase C routes live: `/api/projects/:id/hub/export-zip`, `/api/hub/inbound-email`, `/api/collection/overdue`, stale alerts cron firing at 3AM UTC
+3. **Run Layer 7 E2E tests** — Sam/Mike/Paul agents against staging after Phase C lands
+4. **Merge staging → main** — after all tests green, deploy Phase C to production
+5. **Set Railway env vars (existing)** — SENTRY_DSN, VITE_SENTRY_DSN, FF_* feature flags
+6. **Set QuickBooks env vars** — QB integration built, needs Client ID/Secret on Railway
+7. **Go live with Stripe** — Switch from test mode to live mode
+8. **Configure Cloudflare Email Workers** — Route `*@hub.constructinv.com` → POST /api/hub/inbound-email with X-Hub-Secret header
+9. **Cash flow forecasting** — AI cash flow P1 (30-day projections, gap warnings) — next Hub feature after Phase C lands
 
 ### Key Decisions Log
 | Date | Decision | Context |
@@ -178,6 +179,10 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 | Apr 10, 2026 | Dashboard always shows 2-column layout (never hides behind ternary) | Empty state card shown inside Active Projects section; KPI cards always visible with $0.00 |
 | Apr 11, 2026 | Infrastructure sprint: Sentry + rate limiting + feature flags + pino + AI testing team | server/features/flags.js (8 flags, all OFF by default), server/middleware/rateLimiter.js (auth 20/15min, pay 10/1min, api 200/1min), server/utils/logger.js (pino structured logging), CHANGELOG.md, Sam/Mike/Paul Playwright agents, VITE_SENTRY_DSN + SENTRY_DSN env vars needed on Railway |
 | Apr 11, 2026 | v2.1.0 full product sprint — 8 agents in parallel | (1) 11 bugs fixed: settings persistence, Stripe status display, PO carryover, formatMoney.ts, ARIA avatar Step 2, contract decimal input, PayAppEditor CO inputs, hub rejection chips. (2) Trust Score /763: 5 tiers (platinum/gold/silver/bronze/review), SCORE_EVENTS (11 types), TrustScoreBadge always shows "X/763". (3) CA Lien Module: PRELIM_NOTICE_DAYS=20, §8202 PDF generation, checkAndAlert, non-blocking trigger on project creation, LienAlert.tsx + ARIAInsights.tsx. (4) DB: 11 new tables (project_join_codes, vendor_address_book, vendor_trust_scores, vendor_trust_events, payer_trust_scores, aria_lien_alerts, aria_follow_up_log, cash_flow_forecasts, early_payment_requests, hub_close_out_events, aria_knowledge_events). (5) Join code: {ADDR}-{YEAR}-{RAND} format, vendor self-registration, Stripe Express account creation on join, mobile-first join.html. (6) Vendor book: CSV/Excel import, trade matching, suggest by SOV. (7) Early pay: 1.5% fee CONFIRMED (0.015), quiet EarlyPayButton, EarlyPayModal with exact math breakdown. (8) Repository: archiver ZIP, checkProjectCompletion. (9) Vendor Dashboard /vendor route (orange theme), role switcher in TopBar. (10) SOV auto-detection: keyword matching → detected_trades JSONB on projects. (11) QA: 206/206 checks, TypeScript clean, Vite build green. Committed to staging. |
+| Apr 12, 2026 | Hub visual bugs fixed: badge rendering, stats refresh, OrbitalCanvas trust scores | Root causes: (1) React renders `0` as text — `{tab.badge && tab.badge > 0}` changed to `{tab.badge != null && tab.badge > 0}`. (2) handleTradeAdded called only getTrades, not getHubStats — badge count stale after add. Fixed with Promise.all. (3) OrbitalCanvas used Math.random() for trust score on every render — flickering. Fixed to use trade.trust_score ?? 0. |
+| Apr 12, 2026 | Module 8 Phase C shipped to staging — 4 new features built | (1) Stale alerts cron: setInterval/setTimeout at 3AM UTC daily, 2/5/7-day severity thresholds, double-send prevention via timestamp columns. (2) ZIP export: GET /api/projects/:id/hub/export-zip, archiver npm, organizes by doc_type directory, fetch+blob in frontend. (3) Email ingestion: POST /api/hub/inbound-email, no JWT — X-Hub-Secret header auth, parses alias {trade-slug}-{id}@hub.constructinv.com. (4) AI Collection tracking: CollectionAlerts.tsx on Cash Flow page, Claude Haiku draft follow-up emails, recordFollowUp() to payment_followups table. |
+| Apr 12, 2026 | Email ingestion endpoint uses X-Hub-Secret (HUB_INBOUND_SECRET) for auth — NOT JWT | Cloudflare Email Workers can't carry JWTs; shared secret is correct pattern for server-to-server webhook auth. Must set HUB_INBOUND_SECRET env var on Railway staging + production before Cloudflare Workers can push emails. |
+| Apr 12, 2026 | OrbitalCanvas trust scores use trade.trust_score field, not Math.random() | Math.random() in a canvas animation loop causes flicker on every render cycle. Backend already seeds trust_score in vendor_trust_scores table; HubTab now passes it through as `(trade as any).trust_score ?? 0`. |
 
 ### What We're NOT Doing (and why)
 - NOT building a full accounting system — QB handles that, we sync to it
