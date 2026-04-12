@@ -113,8 +113,12 @@ export function HubTab({ projectId }: HubTabProps) {
   const handleTradeAdded = async () => {
     setAddTradeOpen(false);
     try {
-      const res = await getTrades(projectId);
-      if (res.data) setTrades(res.data);
+      const [tradesRes, statsRes] = await Promise.all([
+        getTrades(projectId),
+        getHubStats(projectId),
+      ]);
+      if (tradesRes.data) setTrades(tradesRes.data);
+      if (statsRes.data) setStats(statsRes.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reload trades');
     }
@@ -196,7 +200,7 @@ export function HubTab({ projectId }: HubTabProps) {
               >
                 <TabIcon className="w-4 h-4" />
                 {tab.label}
-                {tab.badge && tab.badge > 0 && (
+                {tab.badge != null && tab.badge > 0 && (
                   <Badge className="ml-1 bg-[#E8622A] text-white">
                     {tab.badge}
                   </Badge>
@@ -373,7 +377,7 @@ export function HubTab({ projectId }: HubTabProps) {
                     orbitRadius: 80 + idx * 20,
                     speed: 0.5 + (idx * 0.15),
                     size: 24 + (idx % 3) * 4,
-                    trustScore: Math.floor(Math.random() * 763),
+                    trustScore: (trade as any).trust_score ?? 0,
                   }))}
                 />
               </div>
