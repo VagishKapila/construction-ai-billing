@@ -221,6 +221,7 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+// ── Video Campaign Generation (Eat Me First / Kanji — no auth required) ──
 // ── Health check (must come before catch-all publicPages) ─────────────────
 app.get('/api/health', async (req, res) => {
   const { pool } = require('../db');

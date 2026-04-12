@@ -1,5 +1,5 @@
 # Company Brain
-> Last synced: April 12, 2026 (Module 8 Phase C shipped — stale alerts, ZIP export, email ingestion, AI collection tracking; Hub visual bugs fixed; Key Decisions Log updated)
+> Last synced: April 12, 2026 (Cloudflare DNS setup for varshyl.com completed — GoDaddy nameservers updated; Email Worker code written; white-label email branding architecture decided; Infrastructure Decisions section fully updated)
 > Owner: Vagish Kapila
 > Tagline: AI-powered construction billing that keeps contractors cash-flow positive
 
@@ -149,15 +149,17 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 ## Strategy & Direction
 
 ### Current Priorities
-1. **Set Railway env vars for Hub** — `HUB_INBOUND_SECRET` (email ingestion auth), confirm `ANTHROPIC_API_KEY` set (AI collection tracking needs it)
-2. **Verify staging Hub deploy** — confirm Phase C routes live: `/api/projects/:id/hub/export-zip`, `/api/hub/inbound-email`, `/api/collection/overdue`, stale alerts cron firing at 3AM UTC
-3. **Run Layer 7 E2E tests** — Sam/Mike/Paul agents against staging after Phase C lands
-4. **Merge staging → main** — after all tests green, deploy Phase C to production
-5. **Set Railway env vars (existing)** — SENTRY_DSN, VITE_SENTRY_DSN, FF_* feature flags
-6. **Set QuickBooks env vars** — QB integration built, needs Client ID/Secret on Railway
-7. **Go live with Stripe** — Switch from test mode to live mode
-8. **Configure Cloudflare Email Workers** — Route `*@hub.constructinv.com` → POST /api/hub/inbound-email with X-Hub-Secret header
-9. **Cash flow forecasting** — AI cash flow P1 (30-day projections, gap warnings) — next Hub feature after Phase C lands
+1. ⏳ **Wait for Cloudflare activation on varshyl.com** — GoDaddy nameservers updated (elias + laylah.ns.cloudflare.com), propagating. Cloudflare will email when active (1-24h).
+2. ⬜ **Activate Cloudflare Email Routing** — once varshyl.com is Active: Cloudflare → Email → Email Routing → Enable → add catch-all `*@hub.constructinv.varshyl.com` → Worker
+3. ⬜ **Deploy Email Worker** — `cd construction-ai-billing && npx wrangler deploy` (cloudflare-hub-email-worker.js is ready)
+4. ⬜ **Set Railway env vars for Hub** — `HUB_INBOUND_SECRET=3f3af11ac59ef4f0d4fca14a5234feede4eac36e22f6d4d448a7d876189733e2`, confirm `ANTHROPIC_API_KEY` set
+5. **Verify staging Hub deploy** — confirm Phase C routes live: `/api/projects/:id/hub/export-zip`, `/api/hub/inbound-email`, `/api/collection/overdue`, stale alerts cron firing at 3AM UTC
+6. **Run Layer 7 E2E tests** — Sam/Mike/Paul agents against staging after Phase C lands
+7. **Merge staging → main** — after all tests green, deploy Phase C to production
+8. **Set Railway env vars (existing)** — SENTRY_DSN, VITE_SENTRY_DSN, FF_* feature flags
+9. **Set QuickBooks env vars** — QB integration built, needs Client ID/Secret on Railway
+10. **Go live with Stripe** — Switch from test mode to live mode
+11. **Cash flow forecasting** — AI cash flow P1 (30-day projections, gap warnings) — next Hub feature after Phase C lands
 
 ### Key Decisions Log
 | Date | Decision | Context |
@@ -183,6 +185,11 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 | Apr 12, 2026 | Module 8 Phase C shipped to staging — 4 new features built | (1) Stale alerts cron: setInterval/setTimeout at 3AM UTC daily, 2/5/7-day severity thresholds, double-send prevention via timestamp columns. (2) ZIP export: GET /api/projects/:id/hub/export-zip, archiver npm, organizes by doc_type directory, fetch+blob in frontend. (3) Email ingestion: POST /api/hub/inbound-email, no JWT — X-Hub-Secret header auth, parses alias {trade-slug}-{id}@hub.constructinv.com. (4) AI Collection tracking: CollectionAlerts.tsx on Cash Flow page, Claude Haiku draft follow-up emails, recordFollowUp() to payment_followups table. |
 | Apr 12, 2026 | Email ingestion endpoint uses X-Hub-Secret (HUB_INBOUND_SECRET) for auth — NOT JWT | Cloudflare Email Workers can't carry JWTs; shared secret is correct pattern for server-to-server webhook auth. Must set HUB_INBOUND_SECRET env var on Railway staging + production before Cloudflare Workers can push emails. |
 | Apr 12, 2026 | OrbitalCanvas trust scores use trade.trust_score field, not Math.random() | Math.random() in a canvas animation loop causes flicker on every render cycle. Backend already seeds trust_score in vendor_trust_scores table; HubTab now passes it through as `(trade as any).trust_score ?? 0`. |
+| Apr 12, 2026 | varshyl.com domain moved to Cloudflare DNS — nameservers updated at GoDaddy | varshyl.com is REGISTERED at GoDaddy (not IONOS — IONOS was just the old DNS host). Cloudflare assigned nameservers: `elias.ns.cloudflare.com` + `laylah.ns.cloudflare.com`. GoDaddy nameserver change completed; propagation in progress (1-24h). Cloudflare will send email when domain goes active. |
+| Apr 12, 2026 | Email alias domain updated to hub.constructinv.varshyl.com (not hub.constructinv.com) | Confirmed: the actual inbound email domain is `hub.constructinv.varshyl.com` — a subdomain of `varshyl.com` which is now on Cloudflare. Alias format: `{trade-slug}-{project-id}@hub.constructinv.varshyl.com`. Example: `plumbing-42@hub.constructinv.varshyl.com`. All previous references to `hub.constructinv.com` should be understood as this domain. |
+| Apr 12, 2026 | Cloudflare Email Worker code saved — cloudflare-hub-email-worker.js + wrangler.toml | Worker handles `*@hub.constructinv.varshyl.com` → POSTs to `https://constructinv.varshyl.com/api/hub/inbound-email` with X-Hub-Secret header. Parses alias: strips `@` domain → reads localPart → finds lastIndexOf('-') → checks if suffix is all digits → extracts tradeSlug + projectRef. Reads raw email up to 512KB. HUB_INBOUND_SECRET = `3f3af11ac59ef4f0d4fca14a5234feede4eac36e22f6d4d448a7d876189733e2`. Deploy with `npx wrangler deploy`. |
+| Apr 12, 2026 | White-label email branding: centralized infrastructure + per-company FROM display name | DECISION: Do NOT set up separate email accounts per customer company. Use one centralized `@hub.constructinv.varshyl.com` infrastructure for ALL contractors. Brand it per company using the FROM display name: `Glass Co Hub <noreply@hub.constructinv.varshyl.com>`. The sub/vendor sees the contractor's company name — the underlying email address is always ours. Reasons: (1) No per-customer DNS setup needed, (2) Zero extra cost per company, (3) SPF/DKIM managed once centrally = better deliverability, (4) Support is one codebase not 100 separate email accounts, (5) Customers never think to look at the actual address — they see the display name. |
+| Apr 12, 2026 | Enterprise tier email white-label path: one CNAME per customer domain | For future $199+/mo tier, offer contractors their own Hub subdomain: e.g., `hub.glassconstruction.com` → CNAME to `hub.constructinv.varshyl.com`. This gives them full white-label branding on their own domain with zero SPF/DKIM complexity (inherited from our domain). Cloudflare handles SSL via proxy. Premium upsell, not included in base Pro plan. |
 
 ### What We're NOT Doing (and why)
 - NOT building a full accounting system — QB handles that, we sync to it
@@ -250,30 +257,118 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 ## Partnerships & Integrations
 - **Stripe Connect**: Live (test mode) — ACH + card payments between owners and contractors
 - **QuickBooks Online**: Built, pending activation (needs env vars on Railway)
-- **Cloudflare Email Workers**: Planned for Project Hub email ingestion Phase 3 (replaces Mailgun until scale justifies it)
+- **Cloudflare Email Workers**: Worker code written (`cloudflare-hub-email-worker.js`). varshyl.com DNS moved to Cloudflare (GoDaddy nameservers updated Apr 12). Catch-all `*@hub.constructinv.varshyl.com` → Railway backend. Pending: Cloudflare activation + Email Routing enable + wrangler deploy.
 - **Fora/InteleTravel**: Planned for SnapClaps travel advisor revenue
 - **Affiliate networks**: CJ (active), Villiers Jets (active), Travelpayouts (25 programs declined, reapplying after blog content)
 
 ## Infrastructure Decisions
 
-### Project Hub Email Ingestion — Hostinger → Mailgun Migration Path
+### Project Hub Email Ingestion — Cloudflare Email Workers Architecture (FINALIZED Apr 12, 2026)
 
-**Decision date:** April 6, 2026
-**Status:** Phase 3 (not yet built) — current implementation uses magic links only
+**Decision date:** April 6, 2026 (initial plan); **Updated:** April 12, 2026 (domain confirmed, Worker code written, Cloudflare DNS set up)
+**Status:** Worker code written. Cloudflare DNS propagating (varshyl.com nameservers updated at GoDaddy). Next: activate Email Routing + deploy Worker.
 
 ---
 
+#### Domain Architecture (CONFIRMED Apr 12, 2026)
+
+- **Inbound email domain:** `hub.constructinv.varshyl.com` (subdomain of varshyl.com)
+- **varshyl.com DNS:** Now managed by Cloudflare (nameservers: `elias.ns.cloudflare.com` + `laylah.ns.cloudflare.com`)
+- **Registrar:** GoDaddy (registered there — nameserver change was made in GoDaddy → Advanced DNS → Nameservers)
+- **Old DNS host was:** IONOS (ns27/ns28.1and1.com — now replaced by Cloudflare)
+- **Cloudflare Email Routing:** Free tier — catch-all `*@hub.constructinv.varshyl.com` → Email Worker
+
 #### What we decided and why
 
-The original PRD called for Mailgun Routes on `hub.constructinv.com` at ~$35/month. After reviewing Vagish's existing Hostinger Business plan (which includes email hosting for `@varshylinc.com`), we chose a **free alternative** for the early-stage launch:
+The original PRD called for Mailgun Routes at ~$35/month. We chose **Cloudflare Email Workers = $0/month** for early-stage:
 
-**Current plan (0 → ~100-200 users): Hostinger + Cloudflare Email Workers = $0/month**
-- Add `hub.constructinv.com` as a domain on the existing Hostinger Business email plan
-- Set a catch-all rule: `*@hub.constructinv.com` → Cloudflare Email Worker (free tier, unlimited routing)
-- Cloudflare Worker forwards the parsed email + attachments to `POST /api/hub/inbound-email` on Railway
-- Our inbound handler parses the trade + project from the alias (`plumbing-123elm@hub.constructinv.com`), extracts attachments, creates a `hub_upload` record with `source: 'email_ingest'`
+**Current plan (0 → ~100-200 users): Cloudflare Email Workers (FREE)**
+- Catch-all `*@hub.constructinv.varshyl.com` → routes to Cloudflare Email Worker
+- Worker parses trade slug + project ID from alias, POSTs to Railway backend with X-Hub-Secret auth
+- Railway inbound handler creates `hub_upload` record with `source: 'email_ingest'`
 
-**Why it works at small scale:** Cloudflare Email Workers free tier handles up to 100 messages/day — more than enough for early users. Hostinger Business plan already paid for.
+**Why it works at small scale:** Cloudflare Email Workers free tier handles up to 100 messages/day — more than enough for early users.
+
+---
+
+#### Cloudflare Email Worker — Saved File
+
+**Location:** `construction-ai-billing/cloudflare-hub-email-worker.js` + `wrangler.toml`
+**Deploy command:** `npx wrangler deploy` (from project root, requires Cloudflare account login)
+
+**Worker logic:**
+1. Receives inbound email to `*@hub.constructinv.varshyl.com`
+2. Parses localPart: `plumbing-42` → reads from right, finds last `-`, checks if suffix is all digits
+3. Extracts: `tradeSlug = "plumbing"`, `projectRef = "42"`
+4. Reads raw email stream up to 512KB, base64-encodes it
+5. POSTs JSON payload to `https://constructinv.varshyl.com/api/hub/inbound-email`
+6. Auth: `X-Hub-Secret: {HUB_INBOUND_SECRET}` header (NOT JWT — Cloudflare Workers can't carry JWTs)
+
+**Key constant:**
+- `BACKEND_URL = "https://constructinv.varshyl.com/api/hub/inbound-email"`
+- `HUB_INBOUND_SECRET = "3f3af11ac59ef4f0d4fca14a5234feede4eac36e22f6d4d448a7d876189733e2"`
+
+**Railway env var needed:** `HUB_INBOUND_SECRET=3f3af11ac59ef4f0d4fca14a5234feede4eac36e22f6d4d448a7d876189733e2`
+
+---
+
+#### Email Alias Format (CONFIRMED)
+`{trade-slug}-{project-id}@hub.constructinv.varshyl.com`
+Example: `plumbing-42@hub.constructinv.varshyl.com`
+Example: `electrical-107@hub.constructinv.varshyl.com`
+
+Note: The alias parsing is smart — it reads from the RIGHT side, so trade names with hyphens (e.g., `fire-sprinkler`) are handled correctly: `fire-sprinkler-42` → tradeSlug=`fire-sprinkler`, projectRef=`42`.
+
+---
+
+#### White-Label Email Branding Decision (FINALIZED Apr 12, 2026)
+
+**Question posed:** Should we set up separate email accounts per contractor company (e.g., `@glassconstruction.com` for Glass Co, `@acme.com` for Acme), or use centralized infrastructure with per-company branding?
+
+**Decision: Centralized infrastructure + per-company FROM display name.**
+
+**How it works:**
+- All email routes through `hub.constructinv.varshyl.com` infrastructure (ours)
+- FROM field: `Glass Co Hub <noreply@hub.constructinv.varshyl.com>`
+- Sub/vendor sees the contractor's company name in their inbox — they never notice the underlying address
+- We dynamically set the display name from `company_settings.company_name` when sending
+
+**Why NOT separate email per company:**
+1. **Cost:** $35+/month per customer domain on Mailgun (non-starter for $64/mo product)
+2. **DNS complexity:** Each customer would need to add MX records, SPF, DKIM to their own domain — most contractors have no idea how to do this
+3. **Support hell:** Every DNS misconfiguration becomes a support ticket
+4. **Deliverability:** Centralized domain with good reputation >> 100 cold customer domains with no history
+5. **Operations:** One integration to maintain, not N per customer
+
+**Why display name branding works:**
+- People look at the name in their inbox, not the email address
+- "Glass Co Hub" vs. "noreply@hub.constructinv.varshyl.com" — they see the first
+- This is standard practice for SaaS tools (Stripe does it, Notion does it, everyone does it)
+
+---
+
+#### Enterprise Tier Path (Future — $199+/mo)
+
+For customers who want full white-label on their own domain:
+- Customer adds one CNAME: `hub.glassconstruction.com` → CNAME → `hub.constructinv.varshyl.com`
+- Cloudflare proxies the connection (SSL handled automatically)
+- FROM field can be: `Glass Co Hub <noreply@hub.glassconstruction.com>`
+- No extra SPF/DKIM setup needed — inherited from our Cloudflare config
+- Zero infrastructure complexity on our end (one Cloudflare proxy rule per enterprise customer)
+- Upsell: premium tier, not included in base $64/mo Pro
+
+---
+
+#### Remaining Steps to Activate Email Ingestion
+
+1. ✅ varshyl.com DNS moved to Cloudflare (nameservers updated at GoDaddy, propagating)
+2. ⏳ Wait for Cloudflare "Active" status on varshyl.com (email from Cloudflare when done)
+3. ⬜ In Cloudflare: Email → Email Routing → Enable
+4. ⬜ Create catch-all rule: `*@hub.constructinv.varshyl.com` → Send to Worker
+5. ⬜ Deploy Cloudflare Email Worker: `cd construction-ai-billing && npx wrangler deploy`
+6. ⬜ Wire Worker to the catch-all routing rule in Cloudflare dashboard
+7. ⬜ Set `HUB_INBOUND_SECRET` env var on Railway (staging + production)
+8. ⬜ Test: send email to `test-999@hub.constructinv.varshyl.com` → confirm Railway logs it
 
 ---
 
@@ -283,34 +378,26 @@ Switch when ANY of these are true:
 - **100+ active users** regularly using email ingestion
 - Hitting Cloudflare's 100 messages/day free tier limit
 - Need webhook retry logic, bounce handling, or spam filtering at scale
-- Deliverability issues (Mailgun has enterprise-grade IP reputation)
+- Deliverability issues
 
-**Migration is a 1-day job — no code changes needed, just infrastructure:**
+**Migration is a 1-day job — no code changes:**
+1. Create Mailgun account → add `hub.constructinv.varshyl.com` → verify DNS
+2. Update Cloudflare DNS: swap MX records → Mailgun mail servers
+3. Create Mailgun catch-all route → `POST /api/hub/inbound-email`
+4. Add `MAILGUN_SIGNING_KEY` Railway env var
+5. Update `server/routes/hub.js`: swap X-Hub-Secret check → Mailgun HMAC verification (~15 min)
 
-1. **Create Mailgun account** → add `hub.constructinv.com` domain → verify DNS
-2. **Update DNS on IONOS**: swap the MX records from Hostinger → Mailgun mail servers
-3. **Create Mailgun catch-all route**: `match_recipient(".*@hub.constructinv.com")` → forward to `POST /api/hub/inbound-email`
-4. **Add Railway env var**: `MAILGUN_SIGNING_KEY` for webhook signature verification
-5. **Update inbound handler** in `server/routes/hub.js`: change signature verification from Cloudflare to Mailgun format (15 min of code)
-6. **Test**: Send a test email to any alias → confirm it hits the inbox
-
-That's it. The rest of the system (DB, API, frontend) doesn't change at all. The `source: 'email_ingest'` flag in `hub_uploads` already tracks where docs came from.
+The rest of the system (DB, API, frontend) doesn't change at all.
 
 ---
 
-#### Inbound email handler location
-`server/routes/hub.js` → `POST /api/hub/inbound-email` (to be built in Phase 3)
-
-#### Email alias format (unchanged regardless of provider)
-`{trade-slug}-{project-id}@hub.constructinv.com`
-Example: `plumbing-123@hub.constructinv.com`
-
-#### Hostinger account details
+#### Hostinger account details (still used for varshylinc.com email)
 - Plan: Business
 - Email plan: Starter Business Email Free Trial (expires 2027-03-09, auto-renewal ON)
 - Current domain: `@varshylinc.com`, 1/5 mailboxes used
 - `varshylinc.com` domain is registered at another provider (not Hostinger)
 - hPanel: hpanel.hostinger.com
+- Note: Hostinger is NOT used for Hub email ingestion — Cloudflare Email Workers handle that
 
 ---
 
