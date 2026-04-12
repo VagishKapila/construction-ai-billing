@@ -56,7 +56,7 @@ router.post('/api/projects', auth, trialGate, async (req, res) => {
     project_id: r.rows[0].id,
     contract_value: original_contract
   });
-  res.json(r.rows[0]);
+  res.status(201).json(r.rows[0]);
 });
 
 // PUT /api/projects/:id — Update project

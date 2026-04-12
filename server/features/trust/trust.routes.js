@@ -5,15 +5,28 @@ const { auth } = require('../../../server/middleware/auth');
 const { pool: db } = require('../../../db');
 const trustService = require('./trust.service');
 
-// GET /api/trust/:vendorEmail
+// GET /api/trust/:vendorEmail — look up trust score by vendor email
+// Note: vendor_email column was dropped in Hub v2 migration — lookup via users table join
 router.get('/api/trust/:vendorEmail', auth, async (req, res) => {
   try {
-    const result = await db.query(
-      'SELECT * FROM vendor_trust_scores WHERE vendor_email = $1 ORDER BY id DESC LIMIT 1',
-      [req.params.vendorEmail]
-    );
-    const score = result.rows[0];
-    if (!score) return res.json({ data: { score: 500, tier: 'silver', max_score: trustService.MAX_SCORE }, error: null });
+    const vendorEmail = req.params.vendorEmail;
+    // Find vendor user by email first, then look up trust score by vendor_user_id
+    const userResult = await db.query('SELECT id FROM users WHERE email = $1', [vendorEmail]);
+    const vendorUserId = userResult.rows[0]?.id;
+
+    let score = null;
+    if (vendorUserId) {
+      const result = await db.query(
+        'SELECT * FROM vendor_trust_scores WHERE vendor_user_id = $1 ORDER BY id DESC LIMIT 1',
+        [vendorUserId]
+      );
+      score = result.rows[0];
+    }
+
+    if (!score) {
+      // No score on file — return default silver/500
+      return res.json({ data: { score: 500, tier: 'silver', max_score: trustService.MAX_SCORE }, error: null });
+    }
     const tier = trustService.getTier(score.score);
     res.json({ data: { ...score, max_score: trustService.MAX_SCORE, tier_info: tier }, error: null });
   } catch (err) {
