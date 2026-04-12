@@ -5,6 +5,57 @@ const { pool } = require('../../db');
 const { stripe } = require('../services/stripe');
 const { logEvent } = require('../lib/logEvent');
 
+// ── Email helper for payment notifications ────────────────────────────────────
+async function sendPaymentReceivedEmail({ contractorEmail, contractorName, projectName, appNumber, amount, payerEmail, method }) {
+  const fromEmail = process.env.FROM_EMAIL || 'billing@varshyl.com';
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey || !contractorEmail) return; // Gracefully skip if not configured
+
+  const methodLabel = method === 'ach' ? 'ACH bank transfer' : 'credit/debit card';
+  const fmtAmount = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="background: #1A2230; padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
+        <h1 style="color: #E8622A; margin: 0; font-size: 24px;">💰 Payment Received</h1>
+      </div>
+      <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; border: 1px solid #e0e0e0;">
+        <p style="color: #333; font-size: 16px;">Hi ${contractorName || 'there'},</p>
+        <p style="color: #333; font-size: 16px;">Great news! A payment has been received for your invoice:</p>
+        <div style="background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr><td style="padding: 8px 0; color: #666; font-size: 14px;">Project</td><td style="padding: 8px 0; font-weight: bold; color: #333;">${projectName}</td></tr>
+            <tr><td style="padding: 8px 0; color: #666; font-size: 14px;">Pay App #</td><td style="padding: 8px 0; font-weight: bold; color: #333;">${appNumber}</td></tr>
+            <tr><td style="padding: 8px 0; color: #666; font-size: 14px;">Amount Paid</td><td style="padding: 8px 0; font-weight: bold; color: #1a7c42; font-size: 18px;">${fmtAmount}</td></tr>
+            <tr><td style="padding: 8px 0; color: #666; font-size: 14px;">Payment Method</td><td style="padding: 8px 0; color: #333;">${methodLabel}</td></tr>
+            ${payerEmail ? `<tr><td style="padding: 8px 0; color: #666; font-size: 14px;">Paid by</td><td style="padding: 8px 0; color: #333;">${payerEmail}</td></tr>` : ''}
+          </table>
+        </div>
+        ${method === 'ach' ? '<p style="color: #666; font-size: 13px; background: #fff3cd; padding: 12px; border-radius: 6px;">⏱ <strong>ACH Transfer:</strong> Funds typically arrive in your Stripe account within 1–2 business days after the bank clears the transfer.</p>' : ''}
+        <p style="color: #333; font-size: 14px;">You can view your payment dashboard at <a href="https://constructinv.varshyl.com/payments" style="color: #E8622A;">constructinv.varshyl.com</a></p>
+        <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
+        <p style="color: #999; font-size: 12px; text-align: center;">ConstructInvoice AI — Powered by Varshyl Inc.</p>
+      </div>
+    </div>
+  `;
+
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [contractorEmail],
+        subject: `💰 Payment received: ${fmtAmount} for ${projectName} Pay App #${appNumber}`,
+        html,
+      }),
+    });
+    console.log(`[Payment Email] Sent to ${contractorEmail} for PA#${appNumber}`);
+  } catch (e) {
+    console.error('[Payment Email] Failed to send:', e.message);
+  }
+}
+
 // ── Stripe Webhook (handles payment success/failure) ────────────────────────
 router.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
@@ -89,6 +140,38 @@ router.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), as
       const userId = (await pool.query('SELECT user_id FROM payments WHERE stripe_checkout_session_id=$1', [session.id])).rows[0]?.user_id;
       if (userId) await logEvent(userId, 'payment_received', { pay_app_id: payAppId, amount: actualAmount, method, total_paid: paidNum });
       console.log(`[Payment] ${event.type}: ${method} $${actualAmount} for PA#${payAppId} (total paid: $${paidNum}, status: ${newStatus})`);
+
+      // Send email notification to contractor when payment actually succeeds
+      const isPaymentSucceeded = !isACH || isAsyncSuccess || sessionPaid;
+      if (isPaymentSucceeded && userId) {
+        try {
+          // Get contractor email + project/pay app details
+          const notifData = await pool.query(
+            `SELECT u.email as contractor_email, cs.contact_name, p.name as project_name, pa.app_number
+             FROM users u
+             JOIN projects p ON p.user_id=u.id
+             JOIN pay_apps pa ON pa.id=$1
+             LEFT JOIN company_settings cs ON cs.user_id=u.id
+             WHERE pa.project_id=p.id AND u.id=$2`,
+            [payAppId, userId]
+          );
+          if (notifData.rows[0]) {
+            const { contractor_email, contact_name, project_name, app_number } = notifData.rows[0];
+            await sendPaymentReceivedEmail({
+              contractorEmail: contractor_email,
+              contractorName: contact_name || '',
+              projectName: project_name,
+              appNumber: app_number,
+              amount: actualAmount,
+              payerEmail: session.customer_details?.email || '',
+              method,
+            });
+          }
+        } catch (emailErr) {
+          // Never let email failure break the webhook
+          console.error('[Payment Email] Error:', emailErr.message);
+        }
+      }
     }
     // Handle async ACH payment failure
     if (event.type === 'checkout.session.async_payment_failed') {

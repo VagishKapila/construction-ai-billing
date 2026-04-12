@@ -17,6 +17,12 @@ export interface UpdateSettingsRequest {
   contact_phone?: string;
   contact_email?: string;
   credit_card_enabled?: boolean;
+  // Address + license
+  company_address?: string;
+  company_city?: string;
+  company_state?: string;
+  company_zip?: string;
+  license_number?: string;
 }
 
 export interface FileUploadResponse {

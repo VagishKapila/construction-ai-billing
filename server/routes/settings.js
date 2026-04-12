@@ -20,15 +20,18 @@ router.post('/api/settings', auth, async (req, res) => {
   const {
     company_name, default_payment_terms, default_retainage, contact_name, contact_phone,
     contact_email, job_number_format, reminder_7before, reminder_due, reminder_7after,
-    reminder_retention, reminder_email, reminder_phone, credit_card_enabled
+    reminder_retention, reminder_email, reminder_phone, credit_card_enabled,
+    // Address + license fields
+    company_address, company_city, company_state, company_zip, license_number
   } = req.body;
   const r = await pool.query(
     `INSERT INTO company_settings(
       user_id, company_name, default_payment_terms, default_retainage, contact_name,
       contact_phone, contact_email, job_number_format, reminder_7before, reminder_due,
-      reminder_7after, reminder_retention, reminder_email, reminder_phone, credit_card_enabled
+      reminder_7after, reminder_retention, reminder_email, reminder_phone, credit_card_enabled,
+      company_address, company_city, company_state, company_zip, license_number
      )
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
      ON CONFLICT(user_id) DO UPDATE SET
        company_name=COALESCE(EXCLUDED.company_name, company_settings.company_name),
        default_payment_terms=COALESCE(EXCLUDED.default_payment_terms, company_settings.default_payment_terms),
@@ -44,13 +47,19 @@ router.post('/api/settings', auth, async (req, res) => {
        reminder_email=COALESCE(EXCLUDED.reminder_email, company_settings.reminder_email),
        reminder_phone=COALESCE(EXCLUDED.reminder_phone, company_settings.reminder_phone),
        credit_card_enabled=COALESCE(EXCLUDED.credit_card_enabled, company_settings.credit_card_enabled, FALSE),
+       company_address=EXCLUDED.company_address,
+       company_city=EXCLUDED.company_city,
+       company_state=EXCLUDED.company_state,
+       company_zip=EXCLUDED.company_zip,
+       license_number=EXCLUDED.license_number,
        updated_at=NOW()
      RETURNING *`,
     [
       req.user.id, company_name, default_payment_terms || 'Due on receipt', default_retainage || 10,
       contact_name || null, contact_phone || null, contact_email || null, job_number_format || null,
       reminder_7before ?? null, reminder_due ?? null, reminder_7after ?? null, reminder_retention ?? null,
-      reminder_email || null, reminder_phone || null, credit_card_enabled ?? null
+      reminder_email || null, reminder_phone || null, credit_card_enabled ?? null,
+      company_address || null, company_city || null, company_state || null, company_zip || null, license_number || null
     ]
   );
   res.json(r.rows[0]);

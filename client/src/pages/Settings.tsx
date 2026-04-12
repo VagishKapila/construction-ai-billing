@@ -234,32 +234,44 @@ export function Settings() {
     setProfileForm((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleProfileSave = async () => {
+  // Build profile payload — used by both manual save and auto-save on blur
+  const buildProfilePayload = (form: ProfileFormState) => ({
+    company_name: form.companyName,
+    company_address: form.companyAddress || undefined,
+    company_city: form.companyCity || undefined,
+    company_state: form.companyState || undefined,
+    company_zip: form.companyZip || undefined,
+    license_number: form.licenseNumber || undefined,
+    default_payment_terms: form.defaultPaymentTerms,
+    default_retainage: parseFloat(form.defaultRetainage) || 0,
+    // Always include contact fields to prevent them being cleared on partial saves
+    contact_name: settings?.contact_name || contactForm.contactName || undefined,
+    contact_phone: settings?.contact_phone || contactForm.contactPhone || undefined,
+    contact_email: settings?.contact_email || contactForm.contactEmail || undefined,
+  })
+
+  const handleProfileSave = async (silent = false) => {
     setProfileSaving(true)
     try {
-      const result = await saveSettings({
-        company_name: profileForm.companyName,
-        company_address: profileForm.companyAddress || null,
-        company_city: profileForm.companyCity || null,
-        company_state: profileForm.companyState || null,
-        company_zip: profileForm.companyZip || null,
-        license_number: profileForm.licenseNumber || null,
-        default_payment_terms: profileForm.defaultPaymentTerms,
-        default_retainage: parseFloat(profileForm.defaultRetainage) || 0,
-        // Always include contact fields to prevent them being cleared
-        contact_name: settings?.contact_name || contactForm.contactName,
-        contact_phone: settings?.contact_phone || contactForm.contactPhone,
-        contact_email: settings?.contact_email || contactForm.contactEmail,
-      } as any)
-      if (result) {
-        showToast('success', 'Company profile updated')
-      } else {
-        showToast('error', 'Failed to save company profile')
+      const result = await saveSettings(buildProfilePayload(profileForm))
+      if (!silent) {
+        if (result) {
+          showToast('success', 'Company profile updated')
+        } else {
+          showToast('error', 'Failed to save company profile')
+        }
       }
     } catch (err) {
-      showToast('error', 'Failed to save company profile')
+      if (!silent) showToast('error', 'Failed to save company profile')
     } finally {
       setProfileSaving(false)
+    }
+  }
+
+  // Auto-save profile on blur (silent — no toast, just saves in background)
+  const handleProfileBlur = () => {
+    if (profileForm.companyName.trim()) {
+      handleProfileSave(true)
     }
   }
 
@@ -268,28 +280,43 @@ export function Settings() {
     setContactForm((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleContactSave = async () => {
+  // Build contact payload — used by both manual save and auto-save on blur
+  const buildContactPayload = (form: ContactFormState) => ({
+    contact_name: form.contactName || undefined,
+    contact_phone: form.contactPhone || undefined,
+    contact_email: form.contactEmail || undefined,
+    // Always include company profile fields to prevent them being cleared
+    company_name: settings?.company_name || profileForm.companyName,
+    default_payment_terms: settings?.default_payment_terms || profileForm.defaultPaymentTerms,
+    default_retainage: (settings?.default_retainage ?? parseFloat(profileForm.defaultRetainage)) || 0,
+    company_address: (settings as any)?.company_address || profileForm.companyAddress || undefined,
+    company_city: (settings as any)?.company_city || profileForm.companyCity || undefined,
+    company_state: (settings as any)?.company_state || profileForm.companyState || undefined,
+    company_zip: (settings as any)?.company_zip || profileForm.companyZip || undefined,
+    license_number: (settings as any)?.license_number || profileForm.licenseNumber || undefined,
+  })
+
+  const handleContactSave = async (silent = false) => {
     setContactSaving(true)
     try {
-      const result = await saveSettings({
-        contact_name: contactForm.contactName,
-        contact_phone: contactForm.contactPhone,
-        contact_email: contactForm.contactEmail,
-        // Always include company profile fields to prevent them being cleared
-        company_name: settings?.company_name || profileForm.companyName,
-        default_payment_terms: settings?.default_payment_terms || profileForm.defaultPaymentTerms,
-        default_retainage: (settings?.default_retainage ?? null) ?? (parseFloat(profileForm.defaultRetainage) || 0),
-      })
-      if (result) {
-        showToast('success', 'Contact information updated')
-      } else {
-        showToast('error', 'Failed to save contact information')
+      const result = await saveSettings(buildContactPayload(contactForm))
+      if (!silent) {
+        if (result) {
+          showToast('success', 'Contact information updated')
+        } else {
+          showToast('error', 'Failed to save contact information')
+        }
       }
     } catch (err) {
-      showToast('error', 'Failed to save contact information')
+      if (!silent) showToast('error', 'Failed to save contact information')
     } finally {
       setContactSaving(false)
     }
+  }
+
+  // Auto-save contact on blur (silent)
+  const handleContactBlur = () => {
+    handleContactSave(true)
   }
 
   // Credit card toggle save handler
@@ -497,6 +524,7 @@ export function Settings() {
                   onChange={(e) =>
                     handleProfileChange('companyName', e.target.value)
                   }
+                  onBlur={handleProfileBlur}
                   placeholder="ABC General Contractors LLC"
                 />
               </div>
@@ -511,6 +539,7 @@ export function Settings() {
                   autoComplete="street-address"
                   value={profileForm.companyAddress}
                   onChange={(e) => handleProfileChange('companyAddress', e.target.value)}
+                  onBlur={handleProfileBlur}
                   placeholder="123 Main Street"
                 />
               </div>
@@ -524,6 +553,7 @@ export function Settings() {
                     autoComplete="address-level2"
                     value={profileForm.companyCity}
                     onChange={(e) => handleProfileChange('companyCity', e.target.value)}
+                    onBlur={handleProfileBlur}
                     placeholder="Los Angeles"
                   />
                 </div>
@@ -535,6 +565,7 @@ export function Settings() {
                     maxLength={2}
                     value={profileForm.companyState}
                     onChange={(e) => handleProfileChange('companyState', e.target.value.toUpperCase())}
+                    onBlur={handleProfileBlur}
                     placeholder="CA"
                   />
                 </div>
@@ -545,6 +576,7 @@ export function Settings() {
                     autoComplete="postal-code"
                     value={profileForm.companyZip}
                     onChange={(e) => handleProfileChange('companyZip', e.target.value)}
+                    onBlur={handleProfileBlur}
                     placeholder="90210"
                   />
                 </div>
@@ -559,6 +591,7 @@ export function Settings() {
                   type="text"
                   value={profileForm.licenseNumber}
                   onChange={(e) => handleProfileChange('licenseNumber', e.target.value)}
+                  onBlur={handleProfileBlur}
                   placeholder="CSLB #123456"
                 />
               </div>
@@ -598,7 +631,7 @@ export function Settings() {
                 />
               </div>
               <Button
-                onClick={handleProfileSave}
+                onClick={() => handleProfileSave(false)}
                 disabled={profileSaving}
                 className="bg-primary-600 hover:bg-primary-700 text-white"
               >
@@ -632,6 +665,7 @@ export function Settings() {
                   onChange={(e) =>
                     handleContactChange('contactName', e.target.value)
                   }
+                  onBlur={handleContactBlur}
                   placeholder="Your name"
                 />
               </div>
@@ -646,6 +680,7 @@ export function Settings() {
                   onChange={(e) =>
                     handleContactChange('contactPhone', e.target.value)
                   }
+                  onBlur={handleContactBlur}
                   placeholder="(555) 123-4567"
                 />
               </div>
@@ -659,11 +694,12 @@ export function Settings() {
                   onChange={(e) =>
                     handleContactChange('contactEmail', e.target.value)
                   }
+                  onBlur={handleContactBlur}
                   placeholder="your@email.com"
                 />
               </div>
               <Button
-                onClick={handleContactSave}
+                onClick={() => handleContactSave(false)}
                 disabled={contactSaving}
                 className="bg-primary-600 hover:bg-primary-700 text-white"
               >
