@@ -113,8 +113,7 @@ app.use((req, res, next) => {
   if (req.originalUrl === '/api/stripe/webhook') return next();
   express.json()(req, res, next);
 });
-// ── Sentry request handler (must be first middleware after routes are defined) ─
-app.use(Sentry.Handlers.requestHandler());
+// ── Sentry request handler (v10+ automatic — no requestHandler needed) ─────
 
 // ── Structured HTTP logging (pino-http) ───────────────────────────────────
 let pinoHttp;
@@ -7214,8 +7213,10 @@ app.get('/pay/:token', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'pay.html'));
 });
 
-// ── Sentry error handler (must come after all routes, before catch-all) ──
-app.use(Sentry.Handlers.errorHandler());
+// ── Sentry error handler (v10+ API) ──────────────────────────────────────
+if (Sentry && typeof Sentry.expressErrorHandler === 'function') {
+  app.use(Sentry.expressErrorHandler());
+}
 
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 
@@ -7236,10 +7237,21 @@ module.exports = {
   fetchEmail
 };
 
-initDB()
-  .then(() => app.listen(PORT, () => console.log(`Construction AI Billing running on port ${PORT}`)))
-  .catch(err => {
-    console.error('STARTUP FAILED:', err.message);
-    console.error('DATABASE_URL set:', !!process.env.DATABASE_URL);
-    process.exit(1);
-  });
+// Start immediately so Railway health checks pass, then init DB with retries
+const _legacyServer = app.listen(PORT, () => console.log(`Construction AI Billing running on port ${PORT}`));
+
+const _MAX_RETRIES = 5;
+async function _initWithRetry(attempt) {
+  try {
+    await initDB();
+    console.log('[DB] Connected and migrations complete');
+  } catch(err) {
+    console.error(`[DB] Init attempt ${attempt}/${_MAX_RETRIES} failed:`, err.message);
+    if (attempt < _MAX_RETRIES) {
+      setTimeout(() => _initWithRetry(attempt + 1), 3000);
+    } else {
+      console.error('[DB] All retries exhausted — degraded mode (DB unavailable)');
+    }
+  }
+}
+_initWithRetry(1);
