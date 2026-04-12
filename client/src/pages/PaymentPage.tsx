@@ -136,12 +136,18 @@ export function PaymentPage() {
   const handlePayment = async () => {
     if (!token || !payAppData) return
 
+    // Determine the amount to pay (always the amount_due for full payment)
+    const payAmount = payAppData.amount_due
+
     setIsProcessing(true)
     try {
       const checkoutResponse = await fetch(`/api/pay/${token}/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payment_method: paymentMethod }),
+        body: JSON.stringify({
+          method: paymentMethod,   // server expects 'method', not 'payment_method'
+          amount: payAmount,       // server requires amount
+        }),
       })
 
       if (!checkoutResponse.ok) {
@@ -151,8 +157,14 @@ export function PaymentPage() {
         return
       }
 
-      const { url } = (await checkoutResponse.json()) as { url: string }
-      window.location.href = url
+      // Server returns checkout_url (not url)
+      const { checkout_url } = (await checkoutResponse.json()) as { checkout_url: string }
+      if (!checkout_url) {
+        setErrorMessage('No checkout URL returned. Please try again.')
+        setPageState('error')
+        return
+      }
+      window.location.href = checkout_url
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : 'Payment failed')
       setPageState('error')
