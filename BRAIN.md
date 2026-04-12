@@ -1,5 +1,5 @@
 # Company Brain
-> Last synced: April 11, 2026 (Infrastructure sprint — Sentry + rate limiting + feature flags + pino + AI testing team)
+> Last synced: April 11, 2026 (v2.1.0 full product sprint — 11 bugs, Trust /763, CA lien, join code, vendor book, early pay, UI redesign, infra, AI testing team)
 > Owner: Vagish Kapila
 > Tagline: AI-powered construction billing that keeps contractors cash-flow positive
 
@@ -106,7 +106,7 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 ### ConstructInvoice AI (Primary Product)
 - **Status**: Launched — live at constructinv.varshyl.com
 - **Description**: G702/G703 construction billing platform for GCs and subs. Upload SOV, generate pay apps, download PDFs, send invoices, accept payments.
-- **Key Features**: SOV parsing (Excel/CSV/PDF/DOCX), G702/G703 PDF generation, Stripe Connect payments (ACH + card), lien waivers, email send, admin dashboard, AI assistant, QuickBooks integration (built, pending env vars), reconciliation, job completed tracking, 2-step onboarding flow (Company Setup + Meet ARIA), 90-day trial system, Project Hub (Phase 1 live on staging)
+- **Key Features**: SOV parsing (Excel/CSV/PDF/DOCX), G702/G703 PDF generation, Stripe Connect payments (ACH + card), lien waivers, email send, admin dashboard, AI assistant, QuickBooks integration (built, pending env vars), reconciliation, job completed tracking, 2-step onboarding (Company Setup + Meet ARIA), 90-day trial, Trust Score /763 (5 tiers), CA Lien Module §8202, join codes, vendor book, early pay 1.5%, ZIP repository, vendor dashboard, role switcher (Contractor/Vendor), SOV trade auto-detection
 - **Stack**: React 19 + TypeScript + Vite 6, Node.js + Express, PostgreSQL on Railway, PDFKit, Stripe Connect, Resend email
 - **Users**: Live with real users (contractors, PMs, accountants)
 - **Hosting**: Railway (auto-deploy from GitHub), constructinv.varshyl.com via IONOS DNS
@@ -149,10 +149,14 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 ## Strategy & Direction
 
 ### Current Priorities
-1. **Build Project Hub (Exp1_ConstructInv3)** — the integrated ecosystem that makes ConstructInvoice AI a complete platform
-2. **Set QuickBooks env vars** — QB integration is fully built, just needs Client ID/Secret on Railway
-3. **Go live with Stripe** — Switch from test mode to live mode for real payments
-4. **SnapClaps content engine** — daily deal posts, blog SEO, affiliate program approvals
+1. **Verify staging deploy** — confirm all new routes live at construction-ai-billing-staging.up.railway.app/api/health
+2. **Run Layer 7 E2E tests** — Sam/Mike/Paul agents against staging: `TEST_BASE_URL=https://... npx playwright test tests/e2e/agents/`
+3. **Merge staging → main** — after Layer 7 green, deploy to production
+4. **Set Railway env vars** — SENTRY_DSN, VITE_SENTRY_DSN, FF_* feature flags (all false)
+5. **Set QuickBooks env vars** — QB integration built, needs Client ID/Secret on Railway
+6. **Go live with Stripe** — Switch from test mode to live mode
+7. **Dashboard sidebar** — ProjectSidebar.tsx left-rail with search + status sections (Agent 7 partial — needs completion)
+8. **ProjectDetail split-screen** — FinancialPanel + EcosystemPanel refactor (Agent 7 partial — needs completion)
 
 ### Key Decisions Log
 | Date | Decision | Context |
@@ -173,6 +177,7 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 | Apr 10, 2026 | /onboarding is now a dedicated route (no Shell, AuthGuard only) | Register navigates to /onboarding; already-onboarded users auto-redirected to /dashboard |
 | Apr 10, 2026 | Dashboard always shows 2-column layout (never hides behind ternary) | Empty state card shown inside Active Projects section; KPI cards always visible with $0.00 |
 | Apr 11, 2026 | Infrastructure sprint: Sentry + rate limiting + feature flags + pino + AI testing team | server/features/flags.js (8 flags, all OFF by default), server/middleware/rateLimiter.js (auth 20/15min, pay 10/1min, api 200/1min), server/utils/logger.js (pino structured logging), CHANGELOG.md, Sam/Mike/Paul Playwright agents, VITE_SENTRY_DSN + SENTRY_DSN env vars needed on Railway |
+| Apr 11, 2026 | v2.1.0 full product sprint — 8 agents in parallel | (1) 11 bugs fixed: settings persistence, Stripe status display, PO carryover, formatMoney.ts, ARIA avatar Step 2, contract decimal input, PayAppEditor CO inputs, hub rejection chips. (2) Trust Score /763: 5 tiers (platinum/gold/silver/bronze/review), SCORE_EVENTS (11 types), TrustScoreBadge always shows "X/763". (3) CA Lien Module: PRELIM_NOTICE_DAYS=20, §8202 PDF generation, checkAndAlert, non-blocking trigger on project creation, LienAlert.tsx + ARIAInsights.tsx. (4) DB: 11 new tables (project_join_codes, vendor_address_book, vendor_trust_scores, vendor_trust_events, payer_trust_scores, aria_lien_alerts, aria_follow_up_log, cash_flow_forecasts, early_payment_requests, hub_close_out_events, aria_knowledge_events). (5) Join code: {ADDR}-{YEAR}-{RAND} format, vendor self-registration, Stripe Express account creation on join, mobile-first join.html. (6) Vendor book: CSV/Excel import, trade matching, suggest by SOV. (7) Early pay: 1.5% fee CONFIRMED (0.015), quiet EarlyPayButton, EarlyPayModal with exact math breakdown. (8) Repository: archiver ZIP, checkProjectCompletion. (9) Vendor Dashboard /vendor route (orange theme), role switcher in TopBar. (10) SOV auto-detection: keyword matching → detected_trades JSONB on projects. (11) QA: 206/206 checks, TypeScript clean, Vite build green. Committed to staging. |
 
 ### What We're NOT Doing (and why)
 - NOT building a full accounting system — QB handles that, we sync to it
@@ -213,6 +218,7 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 - HeyGen (AI avatar videos)
 - ElevenLabs (AI voiceover)
 - Buffer / TikTok Studio (social media posting)
+- BetterStack Uptime (free) — monitor ID 4269747, constructinv.varshyl.com/api/health, 3-min checks
 
 ## Processes & Workflows
 
@@ -419,11 +425,14 @@ TOTAL: 207 checks
 ## Notes & Ideas (parking lot)
 - Switch Stripe to live mode (needs Vagish approval)
 - Create $64/month Stripe Price on prod_UHoK09nnd940UV
+- Dashboard sidebar (ProjectSidebar.tsx) — left-rail with search, Needs Attention / Active / Billing Soon / Archived sections (Agent 7 partial)
+- ProjectDetail split-screen (FinancialPanel + EcosystemPanel) — left 55% financial, right 45% orbital+inbox (Agent 7 partial)
+- HubInbox redesign — table view with Trust Score column, filter tabs, ARIA batch approve suggestion (spec written, not yet implemented)
 - Subcontractor recursive ecosystem (subs can create branches for THEIR vendors) — V2
 - SignNow integration for e-signatures on lien releases — future
-- Playwright E2E browser tests — Module 7 Phase B
 - Payment follow-up emails + "Mark as Paid" cron job — approved, not yet built
 - Net 30 as default payment terms — approved, not yet built
+- Enable feature flags one by one as features stabilize (FF_TRUST_SCORE first, then FF_LIEN, then FF_EARLY_PAY)
 
 ## Version History
 | Date | Changes | Summary |
@@ -434,3 +443,4 @@ TOTAL: 207 checks
 | Apr 7, 2026 | 7-Layer QA test suite built + installed | Architecture sanity (32 checks), mutation watchdog (4 mutations), API contract tests (9 tests), CO cross-layer tests rewritten (7 tests). qa_test.js expanded to 121 checks (MODULE 7C). GitHub Actions CI wired. Discovered + fixed "fixed the wrong file" bug: CO math was in server.js only, not live payApps.js. All 207 checks passing. e2e-qa skill updated to trigger on all test/QA phrases. |
 | Apr 10, 2026 | Fixed 4 production-blocking bugs (new user onboarding + dashboard) | Bug 1/4: GuidedTour removed from Shell.tsx — it was blocking Stripe banner with z-50 overlay. Bug 2: Dashboard always renders 2-column layout; Active Projects shows rich 🏗️ empty card + KPI cards always visible; floating ARIA CTA post-onboarding. Bug 3: New 2-step OnboardingFlow (Company Setup → Meet ARIA) with animated ARIA features stagger at 600ms, "Stop chasing. Start collecting." tagline, teal CTA, no skip on Step 2. Register.tsx now routes to /onboarding. App.tsx has /onboarding route (AuthGuard, no Shell). All 7 QA layers green. Pushed staging + main. |
 | Apr 11, 2026 | Infrastructure sprint deployed to staging | Sentry error monitoring (backend + frontend), rate limiting (3 tiers), feature flags (8 flags, all OFF), pino structured logging in payApps.js, Sam/Mike/Paul AI testing agents, CHANGELOG.md, MONITORING_SETUP.md. Vagish must add SENTRY_DSN and VITE_SENTRY_DSN to Railway to activate Sentry. BetterStack setup instructions in MONITORING_SETUP.md. |
+| Apr 11, 2026 (v2.1.0) | Full product sprint — 8 parallel agents, 206/206 QA, pushed to staging | Trust /763, CA lien module, 11 DB tables, join code system, vendor book, early pay 1.5%, ZIP repository, vendor dashboard, role switcher, SOV trade detection, ARIA insights panel, 11 bugs fixed, formatMoney.ts. See Key Decisions entry for full detail. |
