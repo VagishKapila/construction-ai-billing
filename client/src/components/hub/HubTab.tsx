@@ -8,6 +8,7 @@ import {
   Clock,
   AlertCircle,
   Eye,
+  Download,
 } from 'lucide-react';
 import type { HubUpload, Trade, HubStats } from '@/types/hub';
 import {
@@ -69,6 +70,7 @@ export function HubTab({ projectId }: HubTabProps) {
   const [addTradeOpen, setAddTradeOpen] = useState(false);
   const [uploadDocOpen, setUploadDocOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [exportLoading, setExportLoading] = useState(false);
 
   // Load initial data
   useEffect(() => {
@@ -144,6 +146,39 @@ export function HubTab({ projectId }: HubTabProps) {
       if (res.data) setStats(res.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reload stats');
+    }
+  };
+
+  const handleExportZip = async () => {
+    try {
+      setExportLoading(true);
+      const token = localStorage.getItem('token');
+      const response = await fetch(
+        `/api/projects/${projectId}/hub/export-zip`,
+        {
+          headers: { 'Authorization': `Bearer ${token}` },
+        }
+      );
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || `Export failed: ${response.status}`);
+      }
+
+      // Trigger download
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `hub-export-project-${projectId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to export documents');
+    } finally {
+      setExportLoading(false);
     }
   };
 
@@ -231,14 +266,28 @@ export function HubTab({ projectId }: HubTabProps) {
               ))}
             </div>
 
-            <Button
-              onClick={() => setUploadDocOpen(true)}
-              size="sm"
-              className="bg-[#E8622A] hover:bg-[#d4501f]"
-            >
-              <Plus className="w-4 h-4 mr-1.5" />
-              Upload Document
-            </Button>
+            <div className="flex gap-2">
+              {(stats?.approved_count ?? 0) > 0 && (
+                <Button
+                  onClick={handleExportZip}
+                  disabled={exportLoading}
+                  size="sm"
+                  variant="outline"
+                  className="border-gray-300 hover:bg-gray-50"
+                >
+                  <Download className="w-4 h-4 mr-1.5" />
+                  {exportLoading ? 'Exporting...' : 'Export ZIP'}
+                </Button>
+              )}
+              <Button
+                onClick={() => setUploadDocOpen(true)}
+                size="sm"
+                className="bg-[#E8622A] hover:bg-[#d4501f]"
+              >
+                <Plus className="w-4 h-4 mr-1.5" />
+                Upload Document
+              </Button>
+            </div>
           </div>
 
           {filteredUploads.length === 0 ? (

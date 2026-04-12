@@ -103,6 +103,10 @@ app.use(express.static(publicPath, {
 const { requestTimerMiddleware } = require('./middleware/requestTimer');
 app.use('/api', requestTimerMiddleware);
 
+// ── Mount Hub Email Ingestion BEFORE auth middleware ─────────────────────
+// This route validates via X-Hub-Secret header, not JWT
+app.use('/api/hub', require('./routes/hub-inbound-email'));
+
 // ── Mount all route modules ───────────────────────────────────────────────
 // Routes use full paths (/api/...) so all mount at root
 // Exceptions: auth.js and oauth.js use relative paths, mounted with prefix
@@ -152,6 +156,9 @@ app.use(require('./routes/ai'));
 
 // Hub routes — Project document intake (Phase 1)
 app.use(require('./routes/hub'));
+
+// Hub Export — ZIP archive download
+app.use(require('./routes/hub-export'));
 
 // Hub Phase 2 — enhanced routes (join codes, bulk operations, vendor management)
 const { router: hubPhase2Router } = require('./features/hub');
