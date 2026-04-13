@@ -60,8 +60,8 @@ export async function deleteTrade(projectId: number, tradeId: number): Promise<A
 /**
  * Send (or resend) invite to a trade
  */
-export async function inviteTrade(projectId: number, tradeId: number): Promise<ApiResponse<Trade>> {
-  return api.post<Trade>(`/api/projects/${projectId}/hub/trades/${tradeId}/invite`, {});
+export async function inviteTrade(projectId: number, tradeId: number): Promise<ApiResponse<{ ok: boolean; message: string }>> {
+  return api.post(`/api/projects/${projectId}/hub/trades/${tradeId}/resend-invite`, {});
 }
 
 // ============================================================================

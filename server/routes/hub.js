@@ -35,6 +35,77 @@ function slugify(text) {
     .replace(/-+/g, '-');
 }
 
+// ── Email helper — sends magic link invite to sub/vendor via Resend ─────────
+async function sendTradeInviteEmail({ toEmail, contactName, tradeName, projectName, projectAddress, magicLinkToken }) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.FROM_EMAIL || 'billing@varshyl.com';
+  const baseUrl = process.env.BASE_URL || 'https://constructinv.varshyl.com';
+
+  const uploadUrl = `${baseUrl}/hub/${magicLinkToken}`;
+  const greeting = contactName ? `Hi ${contactName},` : `Hi there,`;
+
+  if (!apiKey) {
+    // In dev/test — just log the magic link so it can be copy-pasted
+    console.log(`[Hub] [DEV] Trade invite for ${toEmail} — magic link: ${uploadUrl}`);
+    return;
+  }
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#fff">
+      <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:16px 20px;margin-bottom:24px">
+        <p style="margin:0;font-size:13px;font-weight:700;color:#EA580C;text-transform:uppercase;letter-spacing:0.05em">
+          Document Submission — ${tradeName}
+        </p>
+      </div>
+      <h2 style="margin:0 0 8px;font-size:18px;color:#1a1a2e">
+        Submit your documents for ${projectName || projectAddress || 'this project'}
+      </h2>
+      <p style="color:#555;font-size:14px;line-height:1.6;margin-bottom:20px">
+        ${greeting}<br><br>
+        You've been added as the <strong>${tradeName}</strong> trade on this project.
+        Use the link below to submit invoices, lien waivers, and other documents directly to the GC.
+        No account or password needed.
+      </p>
+      <a href="${uploadUrl}"
+         style="display:inline-block;background:#E8622A;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px">
+        Submit Documents →
+      </a>
+      <p style="color:#888;font-size:12px;margin-top:24px;line-height:1.5">
+        This is a one-time link unique to your trade on this project.
+        Keep this email for future submissions.<br>
+        Questions? Reply to this email or contact your GC directly.
+      </p>
+      <p style="color:#aaa;font-size:11px;margin-top:16px;border-top:1px solid #eee;padding-top:12px">
+        Powered by ConstructInvoice AI · constructinv.varshyl.com
+      </p>
+    </div>
+  `;
+
+  try {
+    const resp = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [toEmail],
+        subject: `You've been added to ${projectName || 'a project'} — submit your documents here`,
+        html,
+      }),
+    });
+    if (!resp.ok) {
+      const errBody = await resp.text().catch(() => '');
+      console.error(`[Hub] Trade invite email failed ${resp.status}: ${errBody}`);
+    } else {
+      console.log(`[Hub] Trade invite sent to ${toEmail} for trade "${tradeName}"`);
+    }
+  } catch (e) {
+    console.error('[Hub] sendTradeInviteEmail error:', e.message);
+  }
+}
+
 // ── Email helper — sends rejection notice to sub via Resend ─────────────────
 async function sendRejectionEmail({ toEmail, tradeName, projectAddress, rejectionReason, magicLinkToken }) {
   const apiKey = process.env.RESEND_API_KEY;
@@ -174,13 +245,41 @@ router.post('/api/projects/:id/hub/trades', auth, async (req, res) => {
       [projectId, name, company_name || null, contact_name || null, contact_email || null, magicToken, emailAlias]
     );
 
+    const trade = result.rows[0];
+
+    // If a contact email was provided, send the magic link invite (non-blocking)
+    if (contact_email) {
+      // Fetch project name for a personalised email subject
+      const projResult = await pool.query(
+        'SELECT name, address FROM projects WHERE id = $1',
+        [projectId]
+      );
+      const projectInfo = projResult.rows[0] || {};
+
+      sendTradeInviteEmail({
+        toEmail: contact_email,
+        contactName: contact_name || null,
+        tradeName: name,
+        projectName: projectInfo.name || null,
+        projectAddress: projectInfo.address || null,
+        magicLinkToken: magicToken,
+      }).then(() => {
+        // Mark invite_sent_at after successful send (best-effort)
+        pool.query(
+          'UPDATE project_trades SET invite_sent_at = NOW() WHERE id = $1',
+          [trade.id]
+        ).catch(err => console.error('[Hub] invite_sent_at update failed:', err.message));
+      }).catch(() => {/* swallow — email failure should not block the API response */});
+    }
+
     await logEvent(req.user.id, 'hub_trade_added', {
       project_id: projectId,
-      trade_id: result.rows[0].id,
-      trade_name: name
+      trade_id: trade.id,
+      trade_name: name,
+      invite_sent: !!contact_email,
     });
 
-    res.status(201).json({ data: result.rows[0] });
+    res.status(201).json({ data: trade });
   } catch (e) {
     console.error('[HUB POST trades]', e.message);
     res.status(500).json({ error: e.message });
@@ -233,6 +332,68 @@ router.put('/api/projects/:id/hub/trades/:tradeId', auth, async (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
+// POST /api/projects/:id/hub/trades/:tradeId/resend-invite
+// Resend the magic link invite email to a trade's contact email
+router.post('/api/projects/:id/hub/trades/:tradeId/resend-invite', auth, async (req, res) => {
+  try {
+    const projectId = req.params.id;
+    const tradeId = req.params.tradeId;
+
+    // Verify ownership
+    const isOwner = await verifyProjectOwnership(projectId, req.user.id);
+    if (!isOwner) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Get trade + project info
+    const tradeResult = await pool.query(
+      `SELECT pt.id, pt.name, pt.contact_name, pt.contact_email, pt.magic_link_token,
+              p.name as project_name, p.address as project_address
+       FROM project_trades pt
+       JOIN projects p ON pt.project_id = p.id
+       WHERE pt.id = $1 AND pt.project_id = $2 AND pt.status = 'active'`,
+      [tradeId, projectId]
+    );
+
+    if (tradeResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Trade not found' });
+    }
+
+    const trade = tradeResult.rows[0];
+
+    if (!trade.contact_email) {
+      return res.status(400).json({ error: 'Trade has no contact email — add one to send an invite' });
+    }
+
+    // Send invite
+    await sendTradeInviteEmail({
+      toEmail: trade.contact_email,
+      contactName: trade.contact_name,
+      tradeName: trade.name,
+      projectName: trade.project_name,
+      projectAddress: trade.project_address,
+      magicLinkToken: trade.magic_link_token,
+    });
+
+    // Update invite_sent_at
+    await pool.query(
+      'UPDATE project_trades SET invite_sent_at = NOW() WHERE id = $1',
+      [tradeId]
+    );
+
+    await logEvent(req.user.id, 'hub_trade_invite_resent', {
+      project_id: projectId,
+      trade_id: tradeId,
+      to_email: trade.contact_email,
+    });
+
+    res.json({ ok: true, message: `Invite sent to ${trade.contact_email}` });
+  } catch (e) {
+    console.error('[HUB POST resend-invite]', e.message);
+    res.status(500).json({ error: e.message || 'Failed to resend invite' });
+  }
+});
+
 // DOCUMENT INBOX & UPLOADS
 // ════════════════════════════════════════════════════════════════════════════
 
