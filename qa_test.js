@@ -617,6 +617,22 @@ checkFileContains('server/features/early-pay/early-pay.routes.js', '0.015');
 checkFileContains('client/src/features/trust/TrustScoreBadge.tsx', '763');
 checkFileContains('public/join.html', 'f8fafc');
 
+// ── Payment follow-up feature checks (Apr 13 2026) ───────────────────────────
+check('followup service exists',
+  fs.existsSync('server/features/followup/service.js'));
+check('followup templates exists',
+  fs.existsSync('server/features/followup/templates.js'));
+check('followup scheduler exists',
+  fs.existsSync('server/features/followup/scheduler.js'));
+check('followup router exists',
+  fs.existsSync('server/routes/followup.js'));
+check('followup router mounted in app.js',
+  fs.readFileSync('server/app.js', 'utf8').includes("require('./routes/followup')"));
+check('followup scheduler started in server/index.js',
+  fs.readFileSync('server/index.js', 'utf8').includes('startFollowupScheduler'));
+check('node-cron in package.json',
+  JSON.parse(fs.readFileSync('package.json', 'utf8')).dependencies['node-cron'] !== undefined);
+
 // ─────────────────────────────────────────────────────────────────────────────
 console.log('\n══════════════════════════════════════════════════');
 console.log('  RESULTS');

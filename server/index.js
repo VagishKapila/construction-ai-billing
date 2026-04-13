@@ -79,6 +79,10 @@ async function scheduleStaleAlerts() {
 
 scheduleStaleAlerts();
 
+// ── Payment follow-up email scheduler (daily 12:00 UTC ~ 8am ET) ─────────
+const { startFollowupScheduler } = require('./features/followup/scheduler');
+startFollowupScheduler();
+
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('[Server] SIGTERM received — shutting down gracefully');

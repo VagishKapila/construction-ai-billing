@@ -234,6 +234,9 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
+// ── Payment follow-up magic links (public — no auth, token is the secret) ──
+app.use(require('./routes/followup'));
+
 // ── Public pages (catch-all MUST be LAST) ─────────────────────────────────
 app.use(require('./routes/publicPages'));
 
