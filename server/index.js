@@ -45,40 +45,6 @@ async function initWithRetry(attempt = 1) {
 
 initWithRetry();
 
-// ── Hub Stale Document Alerts (runs daily at 3:00 AM UTC) ────────────────
-const { runStaleAlerts } = require('./features/hub/stale-alerts');
-const { pool } = require('../db');
-
-async function scheduleStaleAlerts() {
-  // Calculate delay until next 03:00 UTC
-  const now = new Date();
-  const next3am = new Date(now.getTime());
-  next3am.setUTCHours(3, 0, 0, 0);
-  if (next3am <= now) {
-    next3am.setUTCDate(next3am.getUTCDate() + 1);
-  }
-  const delayMs = next3am.getTime() - now.getTime();
-  console.log(
-    `[StaleAlerts] Scheduled for ${next3am.toISOString()} (in ${Math.round(delayMs / 1000 / 60)} minutes)`
-  );
-
-  // Run once at the scheduled time, then every 24 hours
-  setTimeout(() => {
-    const fromEmail = process.env.FROM_EMAIL || 'billing@varshyl.com';
-    runStaleAlerts(pool, fromEmail).catch((err) => {
-      console.error('[StaleAlerts] Cron execution failed:', err);
-    });
-    // Then run every 24 hours
-    setInterval(() => {
-      runStaleAlerts(pool, fromEmail).catch((err) => {
-        console.error('[StaleAlerts] Cron execution failed:', err);
-      });
-    }, 24 * 60 * 60 * 1000);
-  }, delayMs);
-}
-
-scheduleStaleAlerts();
-
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('[Server] SIGTERM received — shutting down gracefully');

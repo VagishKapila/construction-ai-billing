@@ -1,14 +1,6 @@
 /**
  * Trial & Subscription API
  * Handles trial status, upgrades, and subscription management
- *
- * NOTE: Zod validation schemas available in @/lib/schemas.ts:
- * - TrialStatusSchema — validates trial status response shape
- *
- * To add validation to any function:
- *   import { safeValidate, TrialStatusSchema } from '@/lib/schemas'
- *   const validated = safeValidate(TrialStatusSchema, res.data, 'getTrialStatus')
- *   // Use validated object safely
  */
 
 import type { ApiResponse } from '@/types'

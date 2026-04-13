@@ -1,5 +1,5 @@
 # Company Brain
-> Last synced: April 12, 2026 (Cloudflare DNS setup for varshyl.com completed — GoDaddy nameservers updated; Email Worker code written; white-label email branding architecture decided; Infrastructure Decisions section fully updated)
+> Last synced: April 11, 2026 (Infrastructure sprint v2.1.0 — fully deployed to staging + main)
 > Owner: Vagish Kapila
 > Tagline: AI-powered construction billing that keeps contractors cash-flow positive
 
@@ -106,7 +106,7 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 ### ConstructInvoice AI (Primary Product)
 - **Status**: Launched — live at constructinv.varshyl.com
 - **Description**: G702/G703 construction billing platform for GCs and subs. Upload SOV, generate pay apps, download PDFs, send invoices, accept payments.
-- **Key Features**: SOV parsing (Excel/CSV/PDF/DOCX), G702/G703 PDF generation, Stripe Connect payments (ACH + card), lien waivers, email send, admin dashboard, AI assistant, QuickBooks integration (built, pending env vars), reconciliation, job completed tracking, 2-step onboarding (Company Setup + Meet ARIA), 90-day trial, Trust Score /763 (5 tiers), CA Lien Module §8202, join codes, vendor book, early pay 1.5%, ZIP repository, vendor dashboard, role switcher (Contractor/Vendor), SOV trade auto-detection
+- **Key Features**: SOV parsing (Excel/CSV/PDF/DOCX), G702/G703 PDF generation, Stripe Connect payments (ACH + card), lien waivers, email send, admin dashboard, AI assistant, QuickBooks integration (built, pending env vars), reconciliation, job completed tracking, 2-step onboarding flow (Company Setup + Meet ARIA), 90-day trial system, Project Hub v2 (orbital canvas, trust /763, CA lien, join codes, vendor book, early pay 1.5%, ZIP repository, reporting)
 - **Stack**: React 19 + TypeScript + Vite 6, Node.js + Express, PostgreSQL on Railway, PDFKit, Stripe Connect, Resend email
 - **Users**: Live with real users (contractors, PMs, accountants)
 - **Hosting**: Railway (auto-deploy from GitHub), constructinv.varshyl.com via IONOS DNS
@@ -114,12 +114,12 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 - **Stripe**: Product `prod_UHoK09nnd940UV`, test mode active
 
 ### ConstructInvoice AI — Project Hub (Exp1_ConstructInv3)
-- **Status**: ✅ Phase C SHIPPED to staging (Apr 12, 2026). Hub Phase 1 was live since Apr 6; Phase C adds stale alerts, ZIP export, email ingestion endpoint, and AI collection tracking. Pending Railway env vars + merge to main.
+- **Status**: PRD Complete (v2.1), ready for implementation
 - **Description**: Project Hub eliminates the "email black hole" in construction. Per-project document intake from subs/vendors with magic links, email aliases, approval workflows, and AI cash flow intelligence. Fully integrated with existing billing engine.
-- **Key Features BUILT**: Trade management + OrbitalCanvas visualization, magic link invites, document upload/categorize/approve/reject, unified inbox (table view with filters), 3 fixed roles (Office/Accountant, PM/PMCM, Superintendent), stale alerts cron (2/5/7 day, runs daily 3AM UTC), ZIP export (`GET /api/projects/:id/hub/export-zip`, archiver package), email ingestion (`POST /api/hub/inbound-email`, X-Hub-Secret auth, Cloudflare Workers), AI collection tracking (Claude Haiku follow-up drafts, `CollectionAlerts.tsx` on Cash Flow page)
-- **AI Layer**: Collection tracking + follow-up (P0 — BUILT), cash flow forecasting (P1 — pending), SOV budget guardian (P2 — pending)
-- **Email Ingestion**: Cloudflare Email Workers → `POST /api/hub/inbound-email` (env var: `HUB_INBOUND_SECRET` needed on Railway)
-- **Hub UI bugs fixed Apr 12**: "Inbox0"/"Trades0" badge concatenation (React 0 falsy short-circuit), trade count badge stale after add (stats now refreshed in handleTradeAdded), OrbitalCanvas trust score flickering (was Math.random(), now uses trade.trust_score)
+- **Key Features (V1)**: Trade management, magic link invites, email aliases (hub.constructinv.com), document upload/categorize, unified inbox, 3 fixed roles, approve/reject/comment, RFI reply, stale alerts (2/5/7 day), AI SOV guardrails, ZIP export, notifications
+- **AI Layer**: Collection tracking + follow-up (P0), cash flow forecasting (P1), SOV budget guardian (P2)
+- **Email Ingestion**: Mailgun Routes on hub.constructinv.com (~$35/month)
+- **Timeline**: 7 phases, ~10 weeks
 - **PRD**: `Exp1_ConstructInv3_Project_Hub_PRD.docx`
 - **Competitive gap**: Procore/Autodesk/GCPay all focus on outgoing billing — NONE solve incoming document intake
 
@@ -149,17 +149,11 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 ## Strategy & Direction
 
 ### Current Priorities
-1. ⏳ **Wait for Cloudflare activation on varshyl.com** — GoDaddy nameservers updated (elias + laylah.ns.cloudflare.com), propagating. Cloudflare will email when active (1-24h).
-2. ⬜ **Activate Cloudflare Email Routing** — once varshyl.com is Active: Cloudflare → Email → Email Routing → Enable → add catch-all `*@hub.constructinv.varshyl.com` → Worker
-3. ⬜ **Deploy Email Worker** — `cd construction-ai-billing && npx wrangler deploy` (cloudflare-hub-email-worker.js is ready)
-4. ⬜ **Set Railway env vars for Hub** — `HUB_INBOUND_SECRET=3f3af11ac59ef4f0d4fca14a5234feede4eac36e22f6d4d448a7d876189733e2`, confirm `ANTHROPIC_API_KEY` set
-5. **Verify staging Hub deploy** — confirm Phase C routes live: `/api/projects/:id/hub/export-zip`, `/api/hub/inbound-email`, `/api/collection/overdue`, stale alerts cron firing at 3AM UTC
-6. **Run Layer 7 E2E tests** — Sam/Mike/Paul agents against staging after Phase C lands
-7. **Merge staging → main** — after all tests green, deploy Phase C to production
-8. **Set Railway env vars (existing)** — SENTRY_DSN, VITE_SENTRY_DSN, FF_* feature flags
-9. **Set QuickBooks env vars** — QB integration built, needs Client ID/Secret on Railway
-10. **Go live with Stripe** — Switch from test mode to live mode
-11. **Cash flow forecasting** — AI cash flow P1 (30-day projections, gap warnings) — next Hub feature after Phase C lands
+1. **Demo-ready verification** — test Hub v2 on constructinv.varshyl.com: orbital canvas, hover-freeze, VendorDetailPanel, lien alert, trust /763
+2. **Set QuickBooks env vars** — QB integration is fully built, just needs Client ID/Secret on Railway
+3. **Go live with Stripe** — Switch from test mode to live mode for real payments
+4. **SnapClaps content engine** — daily deal posts, blog SEO, affiliate program approvals
+5. **Hub v2 polish** — wire OrbitalCanvas into ProjectDetail orbital view (currently shows placeholder), connect VendorDetailPanel to real trade data
 
 ### Key Decisions Log
 | Date | Decision | Context |
@@ -179,20 +173,9 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 | Apr 10, 2026 | GuidedTour removed from Shell.tsx — replaced by OnboardingFlow route | GuidedTour was rendering fixed inset-0 z-50 black overlay for all new users, blocking the Stripe banner and entire dashboard. Superseded by new /onboarding route. |
 | Apr 10, 2026 | /onboarding is now a dedicated route (no Shell, AuthGuard only) | Register navigates to /onboarding; already-onboarded users auto-redirected to /dashboard |
 | Apr 10, 2026 | Dashboard always shows 2-column layout (never hides behind ternary) | Empty state card shown inside Active Projects section; KPI cards always visible with $0.00 |
+| Apr 10, 2026 | Hub v2 shipped to production — 7 parallel agents | Orbital canvas (hover-freeze via hoveredRef), VendorDetailPanel (white 270px slide-in), Trust Score /763 (5 tiers: platinum/gold/silver/bronze/review), CA lien module (§8200-8216, PDF gen), early pay fee fixed 2.5%→1.5%, vendor book service (AI column mapping), repo.service.js (ZIP export), 11 DB tables aligned, 157 QA checks |
+| Apr 10, 2026 | Early pay fee corrected: 1.5% (was wrongly coded as 2.5%) | fee = invoice_amount * 0.015, ACH fee $25 flat |
 | Apr 11, 2026 | Infrastructure sprint: Sentry + rate limiting + feature flags + pino + AI testing team | server/features/flags.js (8 flags, all OFF by default), server/middleware/rateLimiter.js (auth 20/15min, pay 10/1min, api 200/1min), server/utils/logger.js (pino structured logging), CHANGELOG.md, Sam/Mike/Paul Playwright agents, VITE_SENTRY_DSN + SENTRY_DSN env vars needed on Railway |
-| Apr 11, 2026 | v2.1.0 full product sprint — 8 agents in parallel | (1) 11 bugs fixed: settings persistence, Stripe status display, PO carryover, formatMoney.ts, ARIA avatar Step 2, contract decimal input, PayAppEditor CO inputs, hub rejection chips. (2) Trust Score /763: 5 tiers (platinum/gold/silver/bronze/review), SCORE_EVENTS (11 types), TrustScoreBadge always shows "X/763". (3) CA Lien Module: PRELIM_NOTICE_DAYS=20, §8202 PDF generation, checkAndAlert, non-blocking trigger on project creation, LienAlert.tsx + ARIAInsights.tsx. (4) DB: 11 new tables (project_join_codes, vendor_address_book, vendor_trust_scores, vendor_trust_events, payer_trust_scores, aria_lien_alerts, aria_follow_up_log, cash_flow_forecasts, early_payment_requests, hub_close_out_events, aria_knowledge_events). (5) Join code: {ADDR}-{YEAR}-{RAND} format, vendor self-registration, Stripe Express account creation on join, mobile-first join.html. (6) Vendor book: CSV/Excel import, trade matching, suggest by SOV. (7) Early pay: 1.5% fee CONFIRMED (0.015), quiet EarlyPayButton, EarlyPayModal with exact math breakdown. (8) Repository: archiver ZIP, checkProjectCompletion. (9) Vendor Dashboard /vendor route (orange theme), role switcher in TopBar. (10) SOV auto-detection: keyword matching → detected_trades JSONB on projects. (11) QA: 206/206 checks, TypeScript clean, Vite build green. Committed to staging. |
-| Apr 12, 2026 | Hub visual bugs fixed: badge rendering, stats refresh, OrbitalCanvas trust scores | Root causes: (1) React renders `0` as text — `{tab.badge && tab.badge > 0}` changed to `{tab.badge != null && tab.badge > 0}`. (2) handleTradeAdded called only getTrades, not getHubStats — badge count stale after add. Fixed with Promise.all. (3) OrbitalCanvas used Math.random() for trust score on every render — flickering. Fixed to use trade.trust_score ?? 0. |
-| Apr 12, 2026 | Module 8 Phase C shipped to staging — 4 new features built | (1) Stale alerts cron: setInterval/setTimeout at 3AM UTC daily, 2/5/7-day severity thresholds, double-send prevention via timestamp columns. (2) ZIP export: GET /api/projects/:id/hub/export-zip, archiver npm, organizes by doc_type directory, fetch+blob in frontend. (3) Email ingestion: POST /api/hub/inbound-email, no JWT — X-Hub-Secret header auth, parses alias {trade-slug}-{id}@hub.constructinv.com. (4) AI Collection tracking: CollectionAlerts.tsx on Cash Flow page, Claude Haiku draft follow-up emails, recordFollowUp() to payment_followups table. |
-| Apr 12, 2026 | Email ingestion endpoint uses X-Hub-Secret (HUB_INBOUND_SECRET) for auth — NOT JWT | Cloudflare Email Workers can't carry JWTs; shared secret is correct pattern for server-to-server webhook auth. Must set HUB_INBOUND_SECRET env var on Railway staging + production before Cloudflare Workers can push emails. |
-| Apr 12, 2026 | OrbitalCanvas trust scores use trade.trust_score field, not Math.random() | Math.random() in a canvas animation loop causes flicker on every render cycle. Backend already seeds trust_score in vendor_trust_scores table; HubTab now passes it through as `(trade as any).trust_score ?? 0`. |
-| Apr 12, 2026 | varshyl.com domain moved to Cloudflare DNS — nameservers updated at GoDaddy | varshyl.com is REGISTERED at GoDaddy (not IONOS — IONOS was just the old DNS host). Cloudflare assigned nameservers: `elias.ns.cloudflare.com` + `laylah.ns.cloudflare.com`. GoDaddy nameserver change completed; propagation in progress (1-24h). Cloudflare will send email when domain goes active. |
-| Apr 12, 2026 | Email alias domain updated to hub.constructinv.varshyl.com (not hub.constructinv.com) | Confirmed: the actual inbound email domain is `hub.constructinv.varshyl.com` — a subdomain of `varshyl.com` which is now on Cloudflare. Alias format: `{trade-slug}-{project-id}@hub.constructinv.varshyl.com`. Example: `plumbing-42@hub.constructinv.varshyl.com`. All previous references to `hub.constructinv.com` should be understood as this domain. |
-| Apr 12, 2026 | Cloudflare Email Worker code saved — cloudflare-hub-email-worker.js + wrangler.toml | Worker handles `*@hub.constructinv.varshyl.com` → POSTs to `https://constructinv.varshyl.com/api/hub/inbound-email` with X-Hub-Secret header. Parses alias: strips `@` domain → reads localPart → finds lastIndexOf('-') → checks if suffix is all digits → extracts tradeSlug + projectRef. Reads raw email up to 512KB. HUB_INBOUND_SECRET = `3f3af11ac59ef4f0d4fca14a5234feede4eac36e22f6d4d448a7d876189733e2`. Deploy with `npx wrangler deploy`. |
-| Apr 12, 2026 | White-label email branding: centralized infrastructure + per-company FROM display name | DECISION: Do NOT set up separate email accounts per customer company. Use one centralized `@hub.constructinv.varshyl.com` infrastructure for ALL contractors. Brand it per company using the FROM display name: `Glass Co Hub <noreply@hub.constructinv.varshyl.com>`. The sub/vendor sees the contractor's company name — the underlying email address is always ours. Reasons: (1) No per-customer DNS setup needed, (2) Zero extra cost per company, (3) SPF/DKIM managed once centrally = better deliverability, (4) Support is one codebase not 100 separate email accounts, (5) Customers never think to look at the actual address — they see the display name. |
-| Apr 12, 2026 | Enterprise tier email white-label path: one CNAME per customer domain | For future $199+/mo tier, offer contractors their own Hub subdomain: e.g., `hub.glassconstruction.com` → CNAME to `hub.constructinv.varshyl.com`. This gives them full white-label branding on their own domain with zero SPF/DKIM complexity (inherited from our domain). Cloudflare handles SSL via proxy. Premium upsell, not included in base Pro plan. |
-| Apr 13, 2026 | Admin page "Something went wrong" crash — root cause and fix | Root cause: `getAdminStats()` returned raw nested backend response `{ users: {total}, revenue: {avg_contract} }`. Component called `.toString()` on `stats?.users_count` which was `undefined` → TypeError → ErrorBoundary caught it. Fix: (1) Added Zod `AdminStatsRawSchema` to validate raw response before mapping. (2) `safeValidate()` throws in DEV (catches mismatches immediately), returns null in PROD (graceful empty state). (3) Manual mapping from nested to flat: `users_count = parseInt(validated.users?.total)`. (4) Lesson: QA layer had a blind spot — tests hit APIs but never rendered pages post-data-load. Solution: Layer 7 (Vitest + MSW) now tests components with controlled API responses. |
-| Apr 13, 2026 | QA suite upgraded to 8 layers — Layer 7 component unit tests added | New Layer 7: `cd client && npm run test:unit` (Vitest + MSW + Testing Library). Catches React component crashes from bad API shapes that all other layers miss. Infrastructure: `client/src/lib/schemas.ts` (Zod schemas for all API responses), `client/src/mocks/handlers.ts` (MSW request handlers), `client/src/mocks/server.ts` (Vitest MSW server), `client/vitest.config.ts` (jsdom environment), `client/src/test/setup.ts` (lifecycle hooks). New Playwright tests: `tests/e2e/page-smoke.spec.ts` (14 tests: page health + 401 enforcement), `tests/e2e/api-contract-crash.spec.ts` (10 tests: strict shape validation, shared auth token to avoid rate limit hits). |
-| Apr 13, 2026 | Wrong-project files cleaned from repo — EatMeFirst/Kanji campaign code removed | KanjiCampaign.tsx, video-campaign.js (server route), elevenlabs.js, elevenLabsService.js, videoComposer.js, videoComposerService.js were accidentally present in working directory from a different product (SnapClaps/EatMeFirst). All deleted. App.tsx and server/app.js reverted to HEAD (never committed to staging). These files belong in a different repo — construction-ai-billing is ConstructInvoice AI only. |
 
 ### What We're NOT Doing (and why)
 - NOT building a full accounting system — QB handles that, we sync to it
@@ -233,7 +216,6 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 - HeyGen (AI avatar videos)
 - ElevenLabs (AI voiceover)
 - Buffer / TikTok Studio (social media posting)
-- BetterStack Uptime (free) — monitor ID 4269747, constructinv.varshyl.com/api/health, 3-min checks
 
 ## Processes & Workflows
 
@@ -260,118 +242,30 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 ## Partnerships & Integrations
 - **Stripe Connect**: Live (test mode) — ACH + card payments between owners and contractors
 - **QuickBooks Online**: Built, pending activation (needs env vars on Railway)
-- **Cloudflare Email Workers**: Worker code written (`cloudflare-hub-email-worker.js`). varshyl.com DNS moved to Cloudflare (GoDaddy nameservers updated Apr 12). Catch-all `*@hub.constructinv.varshyl.com` → Railway backend. Pending: Cloudflare activation + Email Routing enable + wrangler deploy.
+- **Cloudflare Email Workers**: Planned for Project Hub email ingestion Phase 3 (replaces Mailgun until scale justifies it)
 - **Fora/InteleTravel**: Planned for SnapClaps travel advisor revenue
 - **Affiliate networks**: CJ (active), Villiers Jets (active), Travelpayouts (25 programs declined, reapplying after blog content)
 
 ## Infrastructure Decisions
 
-### Project Hub Email Ingestion — Cloudflare Email Workers Architecture (FINALIZED Apr 12, 2026)
+### Project Hub Email Ingestion — Hostinger → Mailgun Migration Path
 
-**Decision date:** April 6, 2026 (initial plan); **Updated:** April 12, 2026 (domain confirmed, Worker code written, Cloudflare DNS set up)
-**Status:** Worker code written. Cloudflare DNS propagating (varshyl.com nameservers updated at GoDaddy). Next: activate Email Routing + deploy Worker.
+**Decision date:** April 6, 2026
+**Status:** Phase 3 (not yet built) — current implementation uses magic links only
 
 ---
-
-#### Domain Architecture (CONFIRMED Apr 12, 2026)
-
-- **Inbound email domain:** `hub.constructinv.varshyl.com` (subdomain of varshyl.com)
-- **varshyl.com DNS:** Now managed by Cloudflare (nameservers: `elias.ns.cloudflare.com` + `laylah.ns.cloudflare.com`)
-- **Registrar:** GoDaddy (registered there — nameserver change was made in GoDaddy → Advanced DNS → Nameservers)
-- **Old DNS host was:** IONOS (ns27/ns28.1and1.com — now replaced by Cloudflare)
-- **Cloudflare Email Routing:** Free tier — catch-all `*@hub.constructinv.varshyl.com` → Email Worker
 
 #### What we decided and why
 
-The original PRD called for Mailgun Routes at ~$35/month. We chose **Cloudflare Email Workers = $0/month** for early-stage:
+The original PRD called for Mailgun Routes on `hub.constructinv.com` at ~$35/month. After reviewing Vagish's existing Hostinger Business plan (which includes email hosting for `@varshylinc.com`), we chose a **free alternative** for the early-stage launch:
 
-**Current plan (0 → ~100-200 users): Cloudflare Email Workers (FREE)**
-- Catch-all `*@hub.constructinv.varshyl.com` → routes to Cloudflare Email Worker
-- Worker parses trade slug + project ID from alias, POSTs to Railway backend with X-Hub-Secret auth
-- Railway inbound handler creates `hub_upload` record with `source: 'email_ingest'`
+**Current plan (0 → ~100-200 users): Hostinger + Cloudflare Email Workers = $0/month**
+- Add `hub.constructinv.com` as a domain on the existing Hostinger Business email plan
+- Set a catch-all rule: `*@hub.constructinv.com` → Cloudflare Email Worker (free tier, unlimited routing)
+- Cloudflare Worker forwards the parsed email + attachments to `POST /api/hub/inbound-email` on Railway
+- Our inbound handler parses the trade + project from the alias (`plumbing-123elm@hub.constructinv.com`), extracts attachments, creates a `hub_upload` record with `source: 'email_ingest'`
 
-**Why it works at small scale:** Cloudflare Email Workers free tier handles up to 100 messages/day — more than enough for early users.
-
----
-
-#### Cloudflare Email Worker — Saved File
-
-**Location:** `construction-ai-billing/cloudflare-hub-email-worker.js` + `wrangler.toml`
-**Deploy command:** `npx wrangler deploy` (from project root, requires Cloudflare account login)
-
-**Worker logic:**
-1. Receives inbound email to `*@hub.constructinv.varshyl.com`
-2. Parses localPart: `plumbing-42` → reads from right, finds last `-`, checks if suffix is all digits
-3. Extracts: `tradeSlug = "plumbing"`, `projectRef = "42"`
-4. Reads raw email stream up to 512KB, base64-encodes it
-5. POSTs JSON payload to `https://constructinv.varshyl.com/api/hub/inbound-email`
-6. Auth: `X-Hub-Secret: {HUB_INBOUND_SECRET}` header (NOT JWT — Cloudflare Workers can't carry JWTs)
-
-**Key constant:**
-- `BACKEND_URL = "https://constructinv.varshyl.com/api/hub/inbound-email"`
-- `HUB_INBOUND_SECRET = "3f3af11ac59ef4f0d4fca14a5234feede4eac36e22f6d4d448a7d876189733e2"`
-
-**Railway env var needed:** `HUB_INBOUND_SECRET=3f3af11ac59ef4f0d4fca14a5234feede4eac36e22f6d4d448a7d876189733e2`
-
----
-
-#### Email Alias Format (CONFIRMED)
-`{trade-slug}-{project-id}@hub.constructinv.varshyl.com`
-Example: `plumbing-42@hub.constructinv.varshyl.com`
-Example: `electrical-107@hub.constructinv.varshyl.com`
-
-Note: The alias parsing is smart — it reads from the RIGHT side, so trade names with hyphens (e.g., `fire-sprinkler`) are handled correctly: `fire-sprinkler-42` → tradeSlug=`fire-sprinkler`, projectRef=`42`.
-
----
-
-#### White-Label Email Branding Decision (FINALIZED Apr 12, 2026)
-
-**Question posed:** Should we set up separate email accounts per contractor company (e.g., `@glassconstruction.com` for Glass Co, `@acme.com` for Acme), or use centralized infrastructure with per-company branding?
-
-**Decision: Centralized infrastructure + per-company FROM display name.**
-
-**How it works:**
-- All email routes through `hub.constructinv.varshyl.com` infrastructure (ours)
-- FROM field: `Glass Co Hub <noreply@hub.constructinv.varshyl.com>`
-- Sub/vendor sees the contractor's company name in their inbox — they never notice the underlying address
-- We dynamically set the display name from `company_settings.company_name` when sending
-
-**Why NOT separate email per company:**
-1. **Cost:** $35+/month per customer domain on Mailgun (non-starter for $64/mo product)
-2. **DNS complexity:** Each customer would need to add MX records, SPF, DKIM to their own domain — most contractors have no idea how to do this
-3. **Support hell:** Every DNS misconfiguration becomes a support ticket
-4. **Deliverability:** Centralized domain with good reputation >> 100 cold customer domains with no history
-5. **Operations:** One integration to maintain, not N per customer
-
-**Why display name branding works:**
-- People look at the name in their inbox, not the email address
-- "Glass Co Hub" vs. "noreply@hub.constructinv.varshyl.com" — they see the first
-- This is standard practice for SaaS tools (Stripe does it, Notion does it, everyone does it)
-
----
-
-#### Enterprise Tier Path (Future — $199+/mo)
-
-For customers who want full white-label on their own domain:
-- Customer adds one CNAME: `hub.glassconstruction.com` → CNAME → `hub.constructinv.varshyl.com`
-- Cloudflare proxies the connection (SSL handled automatically)
-- FROM field can be: `Glass Co Hub <noreply@hub.glassconstruction.com>`
-- No extra SPF/DKIM setup needed — inherited from our Cloudflare config
-- Zero infrastructure complexity on our end (one Cloudflare proxy rule per enterprise customer)
-- Upsell: premium tier, not included in base $64/mo Pro
-
----
-
-#### Remaining Steps to Activate Email Ingestion
-
-1. ✅ varshyl.com DNS moved to Cloudflare (nameservers updated at GoDaddy, propagating)
-2. ⏳ Wait for Cloudflare "Active" status on varshyl.com (email from Cloudflare when done)
-3. ⬜ In Cloudflare: Email → Email Routing → Enable
-4. ⬜ Create catch-all rule: `*@hub.constructinv.varshyl.com` → Send to Worker
-5. ⬜ Deploy Cloudflare Email Worker: `cd construction-ai-billing && npx wrangler deploy`
-6. ⬜ Wire Worker to the catch-all routing rule in Cloudflare dashboard
-7. ⬜ Set `HUB_INBOUND_SECRET` env var on Railway (staging + production)
-8. ⬜ Test: send email to `test-999@hub.constructinv.varshyl.com` → confirm Railway logs it
+**Why it works at small scale:** Cloudflare Email Workers free tier handles up to 100 messages/day — more than enough for early users. Hostinger Business plan already paid for.
 
 ---
 
@@ -381,97 +275,87 @@ Switch when ANY of these are true:
 - **100+ active users** regularly using email ingestion
 - Hitting Cloudflare's 100 messages/day free tier limit
 - Need webhook retry logic, bounce handling, or spam filtering at scale
-- Deliverability issues
+- Deliverability issues (Mailgun has enterprise-grade IP reputation)
 
-**Migration is a 1-day job — no code changes:**
-1. Create Mailgun account → add `hub.constructinv.varshyl.com` → verify DNS
-2. Update Cloudflare DNS: swap MX records → Mailgun mail servers
-3. Create Mailgun catch-all route → `POST /api/hub/inbound-email`
-4. Add `MAILGUN_SIGNING_KEY` Railway env var
-5. Update `server/routes/hub.js`: swap X-Hub-Secret check → Mailgun HMAC verification (~15 min)
+**Migration is a 1-day job — no code changes needed, just infrastructure:**
 
-The rest of the system (DB, API, frontend) doesn't change at all.
+1. **Create Mailgun account** → add `hub.constructinv.com` domain → verify DNS
+2. **Update DNS on IONOS**: swap the MX records from Hostinger → Mailgun mail servers
+3. **Create Mailgun catch-all route**: `match_recipient(".*@hub.constructinv.com")` → forward to `POST /api/hub/inbound-email`
+4. **Add Railway env var**: `MAILGUN_SIGNING_KEY` for webhook signature verification
+5. **Update inbound handler** in `server/routes/hub.js`: change signature verification from Cloudflare to Mailgun format (15 min of code)
+6. **Test**: Send a test email to any alias → confirm it hits the inbox
+
+That's it. The rest of the system (DB, API, frontend) doesn't change at all. The `source: 'email_ingest'` flag in `hub_uploads` already tracks where docs came from.
 
 ---
 
-#### Hostinger account details (still used for varshylinc.com email)
+#### Inbound email handler location
+`server/routes/hub.js` → `POST /api/hub/inbound-email` (to be built in Phase 3)
+
+#### Email alias format (unchanged regardless of provider)
+`{trade-slug}-{project-id}@hub.constructinv.com`
+Example: `plumbing-123@hub.constructinv.com`
+
+#### Hostinger account details
 - Plan: Business
 - Email plan: Starter Business Email Free Trial (expires 2027-03-09, auto-renewal ON)
 - Current domain: `@varshylinc.com`, 1/5 mailboxes used
 - `varshylinc.com` domain is registered at another provider (not Hostinger)
 - hPanel: hpanel.hostinger.com
-- Note: Hostinger is NOT used for Hub email ingestion — Cloudflare Email Workers handle that
 
 ---
 
-## QA & Testing Standards — 8-Layer Test Suite
+## QA & Testing Standards — 7-Layer Test Suite
 
-**Layer 1-7 installed April 7, 2026. Layer 7 (component unit tests) added April 13, 2026. ALWAYS run all 8 layers before any push.**
+**Installed: April 7, 2026. ALWAYS run all 7 layers before any push.**
 
-When Vagish says "test", "QA", "what's broken", "run tests", "regression", "stress test", "find bugs", "check if this works", or any testing phrase — run ALL 8 layers in order. No exceptions. No skipping.
+When Vagish says "test", "QA", "what's broken", "run tests", "regression", "stress test", "find bugs", "check if this works", or any testing phrase — run ALL 7 layers in order. No exceptions. No skipping.
 
-### The 8 Layers
+### The 7 Layers
 
 | # | Layer | Command | What It Catches | Time |
 |---|-------|---------|-----------------|------|
 | 1 | Architecture Sanity | `node tests/arch/arch-sanity.js` | Fix applied to wrong file; formulas missing from live route files | ~2s |
-| 2 | Static QA | `node qa_test.js` | 157 pattern checks; CO math in BOTH server.js AND payApps.js | ~3s |
+| 2 | Static QA | `node qa_test.js` | 121 pattern checks; CO math in BOTH server.js AND payApps.js | ~3s |
 | 3 | Mutation Watchdog | `node tests/mutation/mutation-watchdog.js` | Blind spots in qa_test.js itself (if it doesn't catch a formula break, that's a bug) | ~30s |
 | 4 | TypeScript | `cd client && npx tsc --noEmit` | Type errors that fail silently in JavaScript | ~15s |
 | 5 | Vite Build | `cd client && npm run build` | Build failures — if this fails, Railway deploys nothing | ~30s |
 | 6 | Math Unit Tests | `npx playwright test tests/unit/ --reporter=list` | 13 G702 formula correctness tests — pure math, no network | ~10s |
-| 7 | Component Unit Tests | `cd client && npm run test:unit` | React component crashes from bad API shapes; Zod validation failures; ErrorBoundary fires | ~15s |
-| 8 | E2E + Contracts | `TEST_BASE_URL=https://construction-ai-billing-staging.up.railway.app npx playwright test tests/e2e/ --reporter=list` | API regressions, CO math cross-layer, contract shapes, page smoke tests, 401 enforcement | ~45s |
+| 7 | E2E + Contracts | `TEST_BASE_URL=https://construction-ai-billing-staging.up.railway.app npx playwright test tests/e2e/ --reporter=list` | API regressions, CO math cross-layer, contract shapes | ~30s |
 
-**Total: ~2.5 minutes. Run all 8 every time.**
+**Total: ~2 minutes. Run all 7 every time.**
 
 ### Test File Locations
 
 ```
 construction-ai-billing/
-├── client/
-│   ├── src/
-│   │   ├── lib/schemas.ts               ← Zod schemas for all API responses + safeValidate()
-│   │   ├── mocks/
-│   │   │   ├── handlers.ts              ← MSW request handlers (mock API for tests)
-│   │   │   ├── server.ts                ← MSW node server (Vitest)
-│   │   │   └── browser.ts              ← MSW browser worker (manual testing)
-│   │   └── test/
-│   │       ├── setup.ts                 ← Vitest global setup (MSW lifecycle)
-│   │       └── admin-crash.test.tsx     ← Layer 7: 2 component crash tests
-│   ├── vitest.config.ts                 ← Vitest config (jsdom, globals, path alias)
-│   └── public/mockServiceWorker.js      ← MSW service worker (auto-generated)
 ├── tests/
 │   ├── arch/arch-sanity.js              ← Layer 1: reads server/app.js, verifies formulas in live routes
 │   ├── mutation/mutation-watchdog.js    ← Layer 3: breaks formulas, confirms qa_test.js catches them
 │   ├── unit/g702math.test.ts            ← Layer 6: 13 pure G702 formula tests
 │   └── e2e/
-│       ├── construction-billing.spec.ts ← Layer 8a: 21 auth/CRUD/PDF/email tests
-│       ├── co-math-crosslayer.spec.ts   ← Layer 8b: 7 cross-layer CO math tests (H=$27,500 target)
-│       ├── api-contract-crash.spec.ts   ← Layer 8c: 10 API shape contract tests (shared auth token)
-│       ├── page-smoke.spec.ts           ← Layer 8d: 14 page health + 401 enforcement tests
+│       ├── construction-billing.spec.ts ← Layer 7a: 21 auth/CRUD/PDF/email tests
+│       ├── co-math-crosslayer.spec.ts   ← Layer 7b: 7 cross-layer CO math tests (H=$27,500 target)
+│       ├── api-contracts.spec.ts        ← Layer 7c: 9 API shape contract tests
 │       └── test-sov.csv                 ← Test SOV (5 lines, $65k total)
-├── qa_test.js                           ← Layer 2: 157 static checks
-└── .github/workflows/ci.yml            ← CI pipeline: all 8 layers on every push to staging/main
+├── qa_test.js                           ← Layer 2: 121 static checks (MODULE 7C added Apr 7)
+└── .github/workflows/ci.yml            ← CI pipeline: all 7 layers on every push to staging/main
 ```
 
 ### Why Each Layer Exists
 
 **Layer 1 — Architecture Sanity**: Catches "fixed the wrong file." In April 2026, a CO math fix was applied to `server.js` but the live server uses `server/routes/payApps.js`. Invoices showed wrong amounts. This layer reads `server/app.js`, finds which route files are mounted, and verifies critical formulas exist in ALL of them.
 
-**Layer 2 — Static QA**: 157 pattern checks. After the wrong-file bug, MODULE 7C was added to check `server/routes/payApps.js` specifically: void filter on tCO (3×), `+tCO` in due formula (3×), retainage-release ternary (3×).
+**Layer 2 — Static QA**: 121 pattern checks. After the wrong-file bug, MODULE 7C was added to check `server/routes/payApps.js` specifically: void filter on tCO (3×), `+tCO` in due formula (3×), retainage-release ternary (3×).
 
 **Layer 3 — Mutation Watchdog**: Breaks 4 critical formulas, runs qa_test.js, verifies the breaks ARE detected. If a mutation passes qa_test.js, that formula is a blind spot — the test suite would not catch that bug in production. First run in April 2026 caught 3/4 blind spots, prompting MODULE 7C.
 
 **Layer 6 — Math Unit Tests**: 13 pure G702 tests covering all 9 columns (A-I), CO math, voided CO exclusion, balance-to-finish, edge cases. No network. Fast.
 
-**Layer 7 — Component Unit Tests (NEW April 13, 2026)**: Vitest + MSW + Testing Library runs React components in a jsdom environment. Catches post-data-load crashes that all other layers miss. Root cause: the admin dashboard was showing "Something went wrong" in production because `getAdminStats()` returned raw nested data and the component called `.toString()` on undefined. No other layer could catch this — the app built fine, TypeScript was clean, and API tests passed. Layer 7 would have caught it immediately with a malformed MSW response. Files: `client/src/lib/schemas.ts` (Zod), `client/src/mocks/handlers.ts` (MSW).
+**Layer 7b — CO Cross-Layer**: Creates real project on staging, verifies H=$27,500 in server HTML/PDF/email. Proves the CO math is consistent across all 3 generation routes.
 
-**Layer 8b — CO Cross-Layer**: Creates real project on staging, verifies H=$27,500 in server HTML/PDF/email. Proves the CO math is consistent across all 3 generation routes.
-
-**Layer 8c — API Contracts**: Records which fields must exist in API responses. Fails if a field is renamed (e.g., `amount_due` → `amountDue`) BEFORE the frontend silently breaks. Uses shared auth token to avoid rate limit (20 req/15min on auth endpoints).
-
-**Layer 8d — Page Smoke Tests (NEW April 13, 2026)**: Every public page returns 200, protected API routes return 401, all major API endpoints return expected types (array vs object, not null). 14 tests. Fast — no browser rendering needed.
+**Layer 7c — API Contracts**: Records which fields must exist in API responses. Fails if a field is renamed (e.g., `amount_due` → `amountDue`) BEFORE the frontend silently breaks.
 
 ### The "Fixed the Wrong File" Bug Class
 
@@ -481,23 +365,13 @@ construction-ai-billing/
 
 Any fix applied to `server.js` alone will NOT affect production. ALWAYS check `server/app.js` to see which files are actually mounted, and apply fixes to those files. The architecture sanity test (Layer 1) enforces this automatically.
 
-### The "API Shape Mismatch → ErrorBoundary Crash" Bug Class
-
-**Root cause discovered April 13, 2026 (admin page crash):** When backend returns a different shape than frontend expects (e.g., nested `revenue.avg_contract` vs flat `avg_contract_size`), the component calls `.toString()` or `.toFixed()` on `undefined`, throws a TypeError, and the React ErrorBoundary catches it showing "Something went wrong". This is invisible to Layers 1-6.
-
-**Fix pattern:**
-1. Add Zod schema to `client/src/lib/schemas.ts` for the API response
-2. Call `safeValidate(Schema, res.data, 'label')` before using any API data
-3. Map from raw shape → expected flat shape explicitly
-4. Add MSW handler + component crash test in `client/src/test/`
-
 ### CI Pipeline
 
 Every push to `staging` or `main` triggers `.github/workflows/ci.yml`:
 - `static` job: Layers 1 + 2 + 3 (fast, no network)
 - `build` job: Layers 4 + 5 (TypeScript + Vite)
-- `unit` job: Layers 6 + 7 (G702 math + component tests)
-- `e2e` job: Layer 8 (only on push, not PRs — polls staging until healthy)
+- `unit` job: Layer 6 (G702 math)
+- `e2e` job: Layer 7 (only on push, not PRs — polls staging until healthy)
 
 Required GitHub Secrets: `TEST_EMAIL`, `TEST_PASSWORD`, `STAGING_URL`
 
@@ -529,8 +403,7 @@ TEST_BASE_URL=https://construction-ai-billing-staging.up.railway.app \
 
 ```
 QA Report — Construction AI Billing — [Date]
-=============================================
-Layer 1  Architecture Sanity:   ✅/❌  X/32
+======================================Layer 1  Architecture Sanity:   ✅/❌  X/32
 Layer 2  Static QA:             ✅/❌  X/121
 Layer 3  Mutation Watchdog:     ✅/❌  X/4 caught
 Layer 4  TypeScript:            ✅/❌
@@ -548,14 +421,11 @@ TOTAL: 207 checks
 ## Notes & Ideas (parking lot)
 - Switch Stripe to live mode (needs Vagish approval)
 - Create $64/month Stripe Price on prod_UHoK09nnd940UV
-- Dashboard sidebar (ProjectSidebar.tsx) — left-rail with search, Needs Attention / Active / Billing Soon / Archived sections (Agent 7 partial)
-- ProjectDetail split-screen (FinancialPanel + EcosystemPanel) — left 55% financial, right 45% orbital+inbox (Agent 7 partial)
-- HubInbox redesign — table view with Trust Score column, filter tabs, ARIA batch approve suggestion (spec written, not yet implemented)
 - Subcontractor recursive ecosystem (subs can create branches for THEIR vendors) — V2
 - SignNow integration for e-signatures on lien releases — future
+- Playwright E2E browser tests — Module 7 Phase B
 - Payment follow-up emails + "Mark as Paid" cron job — approved, not yet built
 - Net 30 as default payment terms — approved, not yet built
-- Enable feature flags one by one as features stabilize (FF_TRUST_SCORE first, then FF_LIEN, then FF_EARLY_PAY)
 
 ## Version History
 | Date | Changes | Summary |
@@ -563,7 +433,8 @@ TOTAL: 207 checks
 | Apr 6, 2026 | Initial Brain creation | Created from ConstructInvoice AI project context + Exp1_ConstructInv3 Project Hub PRD session. Captured all product state, tech stack, decisions, and strategy. |
 | Apr 6, 2026 | Infrastructure decision: email ingestion | Replaced Mailgun plan with Hostinger + Cloudflare Email Workers (free). Full migration path to Mailgun documented for when user base hits 100-200 users. |
 | Apr 6, 2026 | Project Hub Phase 1 shipped to staging | Full backend (18 endpoints, 5 DB tables) + frontend (Hub tab, DocDetail, Trades, MagicLink) pushed to staging branch. |
+| Apr 10, 2026 (Hub v2) | Hub v2 full build deployed to production | 7 parallel agents: orbital canvas hover-freeze, VendorDetailPanel, Trust /763 (5 tiers), CA lien module §8202 PDF, early pay 1.5% fix, vendor-book.service.js, repo.service.js ZIP, 11 DB tables, qa_test.js 157 checks. QA: L1-6 green, L7 115/116. All on main. |
+| Apr 10, 2026 (Bug sprint) | Emergency production recovery + 4 bug fixes shipped to main | (1) Hotfix: removed 6 CREATE INDEX statements referencing dropped columns — was crashing initDB() on 2nd deploy, causing 502. (2) Bug 5: Hub rejection flow — quick-select chips, sendRejectionEmail() to sub via Resend, "Awaiting resubmission" badge in inbox table. (3) Pay page: server now returns stripe_status ('none'|'pending'|'ready'); pay.html shows friendly no-stripe state instead of broken form — "contractor hasn't set up payments" vs "verification in progress". (4) Settings: credit card toggle now has Save button persisting to DB. (5) Pay App #2+: server copies po_number/special_notes from prev pay app on creation; PayAppEditor + app.html show "Carried from Pay App #N — edit freely" hint. All: 157/157 QA, TypeScript clean, Vite build green. |
 | Apr 7, 2026 | 7-Layer QA test suite built + installed | Architecture sanity (32 checks), mutation watchdog (4 mutations), API contract tests (9 tests), CO cross-layer tests rewritten (7 tests). qa_test.js expanded to 121 checks (MODULE 7C). GitHub Actions CI wired. Discovered + fixed "fixed the wrong file" bug: CO math was in server.js only, not live payApps.js. All 207 checks passing. e2e-qa skill updated to trigger on all test/QA phrases. |
 | Apr 10, 2026 | Fixed 4 production-blocking bugs (new user onboarding + dashboard) | Bug 1/4: GuidedTour removed from Shell.tsx — it was blocking Stripe banner with z-50 overlay. Bug 2: Dashboard always renders 2-column layout; Active Projects shows rich 🏗️ empty card + KPI cards always visible; floating ARIA CTA post-onboarding. Bug 3: New 2-step OnboardingFlow (Company Setup → Meet ARIA) with animated ARIA features stagger at 600ms, "Stop chasing. Start collecting." tagline, teal CTA, no skip on Step 2. Register.tsx now routes to /onboarding. App.tsx has /onboarding route (AuthGuard, no Shell). All 7 QA layers green. Pushed staging + main. |
-| Apr 11, 2026 | Infrastructure sprint deployed to staging | Sentry error monitoring (backend + frontend), rate limiting (3 tiers), feature flags (8 flags, all OFF), pino structured logging in payApps.js, Sam/Mike/Paul AI testing agents, CHANGELOG.md, MONITORING_SETUP.md. Vagish must add SENTRY_DSN and VITE_SENTRY_DSN to Railway to activate Sentry. BetterStack setup instructions in MONITORING_SETUP.md. |
-| Apr 11, 2026 (v2.1.0) | Full product sprint — 8 parallel agents, 206/206 QA, pushed to staging | Trust /763, CA lien module, 11 DB tables, join code system, vendor book, early pay 1.5%, ZIP repository, vendor dashboard, role switcher, SOV trade detection, ARIA insights panel, 11 bugs fixed, formatMoney.ts. See Key Decisions entry for full detail. |
+| Apr 11, 2026 | Infrastructure sprint v2.1.0 deployed to staging + main | server.js wired: Sentry graceful init at top, pino-http HTTP logging, tiered rate limiters (auth 20/15min, pay 10/min, api 200/min) from server/middleware/rateLimiter.js, /api/health returns {status,timestamp,version,database} with 503 on DB failure, Sentry error handler after routes. All 5 agents' work committed + deployed. 157 QA checks pass, 13 Playwright unit tests pass, TypeScript clean, Vite build green. PENDING (Vagish): add SENTRY_DSN + VITE_SENTRY_DSN to Railway env vars; set up BetterStack monitor at /api/health. |

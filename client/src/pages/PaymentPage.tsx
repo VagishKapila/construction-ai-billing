@@ -231,7 +231,7 @@ export function PaymentPage() {
   // Normal payment state
   const totalAmount = payAppData.amount_due
   const achTotal = totalAmount + payAppData.ach_fee
-  const cardFeeAmount = (totalAmount * (payAppData.cc_fee / 100))
+  const cardFeeAmount = payAppData.cc_fee  // already in dollars from server (e.g. $538.17)
   const cardTotal = totalAmount + cardFeeAmount
 
   return (

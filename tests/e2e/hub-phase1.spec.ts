@@ -42,7 +42,7 @@ async function createTestProject(request: any, token: string): Promise<number> {
     headers: h(token),
     data: { name, original_contract: 50000, payment_terms: 'Net 30', default_retainage: 10 },
   });
-  expect(resp.status(), 'Create test project for Hub').toBe(201);
+  expect(resp.status(), 'Create test project for Hub').toBe(200);
   const body = await resp.json();
   return body.id ?? body.project?.id;
 }
