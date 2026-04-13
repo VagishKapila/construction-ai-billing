@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
+import { CollectionAlerts } from '@/components/collection/CollectionAlerts';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -354,6 +355,14 @@ export function CashFlow() {
           accentColor="green"
         />
       </div>
+
+      {/* Collection Alerts — Priority Priority overdue items with AI follow-up */}
+      {outstanding && outstanding.length > 0 && (
+        <CollectionAlerts
+          overdue={outstanding.filter((inv) => inv.days_overdue > 0)}
+          isLoading={loading}
+        />
+      )}
 
       {/* 30-Day Forecast Chart */}
       {forecast && forecast.daily_forecast && forecast.daily_forecast.length > 0 && (

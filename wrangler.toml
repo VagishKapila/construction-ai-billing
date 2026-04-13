@@ -1,0 +1,8 @@
+name = "constructinv-hub-email"
+main = "cloudflare-hub-email-worker.js"
+compatibility_date = "2024-01-01"
+
+# Email handler — no HTTP routes needed
+[triggers]
+# Email routing is configured in the Cloudflare dashboard, not here
+# This worker handles inbound email via the email() handler

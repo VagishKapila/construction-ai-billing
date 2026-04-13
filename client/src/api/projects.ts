@@ -1,5 +1,14 @@
 /**
  * Projects API — Project CRUD and Schedule of Values (SOV)
+ *
+ * NOTE: Zod validation schemas for all responses are available in @/lib/schemas.ts:
+ * - ProjectSchema — validates project object shape
+ * - SOV parsing responses should validate against backend's actual response structure
+ *
+ * To add validation to any function below:
+ *   import { safeValidate, ProjectSchema } from '@/lib/schemas'
+ *   const validated = safeValidate(ProjectSchema, res.data, 'getProject')
+ *   // Use validated object from here on
  */
 
 import type { ApiResponse, Project, SOVLine } from '@/types';

@@ -897,6 +897,10 @@ async function initDB() {
     ALTER TABLE aria_knowledge_events ADD COLUMN IF NOT EXISTS data_json JSONB DEFAULT '{}';
     ALTER TABLE aria_knowledge_events ADD COLUMN IF NOT EXISTS learned_at TIMESTAMP DEFAULT NOW();
 
+    -- Module 8: Hub Stale Document Alerts (Apr 12 2026)
+    -- Track 7-day urgent alert separately from warning and escalation
+    ALTER TABLE hub_uploads ADD COLUMN IF NOT EXISTS stale_urgent_sent_at TIMESTAMPTZ;
+
     -- AGENT 1: Missing indexes for spec compliance
     CREATE INDEX IF NOT EXISTS idx_project_join_codes_project ON project_join_codes(project_id);
     CREATE INDEX IF NOT EXISTS idx_vendor_book_owner ON vendor_address_book(owner_user_id);

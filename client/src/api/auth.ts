@@ -1,5 +1,14 @@
 /**
  * Auth API — User authentication endpoints
+ *
+ * NOTE: Zod validation schemas available in @/lib/schemas.ts:
+ * - UserSchema — validates user object shape
+ * - AuthResponseSchema — validates { user, token } shape
+ *
+ * To add validation to any function:
+ *   import { safeValidate, AuthResponseSchema } from '@/lib/schemas'
+ *   const validated = safeValidate(AuthResponseSchema, res.data, 'login')
+ *   // Use validated.user and validated.token safely
  */
 
 import { api } from './client';
