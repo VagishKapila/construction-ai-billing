@@ -909,6 +909,15 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_lien_alerts_project ON aria_lien_alerts(project_id);
     CREATE INDEX IF NOT EXISTS idx_early_pay_upload ON early_payment_requests(upload_id);
     CREATE INDEX IF NOT EXISTS idx_cash_forecasts_user ON cash_flow_forecasts(user_id);
+
+    -- Payment follow-up magic link tokens (Apr 13 2026)
+    ALTER TABLE payment_followups
+      ADD COLUMN IF NOT EXISTS followup_token VARCHAR(128) UNIQUE,
+      ADD COLUMN IF NOT EXISTS followup_token_expires_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS email_sent_to VARCHAR(300),
+      ADD COLUMN IF NOT EXISTS owner_name VARCHAR(300);
+
+    CREATE INDEX IF NOT EXISTS idx_followups_token ON payment_followups(followup_token);
   `);
   console.log('Database ready');
 }
