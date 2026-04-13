@@ -82,7 +82,21 @@ export interface SupportRequest {
  * Only accessible to users with admin role
  */
 export async function getAdminStats(): Promise<ApiResponse<AdminStats>> {
-  return api.get<AdminStats>('/api/admin/stats');
+  // Backend returns a nested object — map it to the flat AdminStats shape the component expects
+  const res = await api.get<Record<string, any>>('/api/admin/stats');
+  if (!res.data) return res as ApiResponse<AdminStats>;
+
+  const raw = res.data;
+  const flat: AdminStats = {
+    users_count:       parseInt(raw.users?.total ?? raw.users_count ?? 0),
+    projects_count:    parseInt(raw.projects?.total ?? raw.projects_count ?? 0),
+    pay_apps_count:    parseInt(raw.payapps?.total ?? raw.pay_apps_count ?? 0),
+    events_today:      parseInt(raw.events?.last24h ?? raw.events_today ?? 0),
+    total_pipeline:    parseFloat(raw.revenue?.pipeline ?? raw.total_pipeline ?? 0),
+    total_billed:      parseFloat(raw.revenue?.total_billed ?? raw.total_billed ?? 0),
+    avg_contract_size: parseFloat(raw.revenue?.avg_contract ?? raw.avg_contract_size ?? 0),
+  };
+  return { data: flat, error: res.error };
 }
 
 /**
