@@ -143,17 +143,17 @@ export class ApiClient {
       // Flat response (e.g. { token, user }) — wrap in { data: ... }
       return { data: raw as unknown as T } as ApiResponse<T>;
     } catch (error) {
-      // TypeError = network-level failure (no internet, DNS, CORS, timeout)
+      // TypeError = network-level failure (DNS, CORS, service worker error, server unreachable)
+      // IMPORTANT: Do NOT assume "Failed to fetch" means "no internet."
+      // Chrome throws TypeError("Failed to fetch") for DNS failures, server crashes, CORS blocks,
+      // and service worker errors — all of which can happen when the user IS online.
+      // Only show "No internet connection" when navigator.onLine is actually false.
       if (error instanceof TypeError) {
         if (!navigator.onLine) {
           throw new Error('No internet connection. Please check your network and try again.');
         }
-        // navigator.onLine can be unreliable on some mobile browsers — check message too
-        const msg = error.message.toLowerCase();
-        if (msg.includes('fetch') || msg.includes('network') || msg.includes('failed')) {
-          throw new Error('No internet connection. Please check your network and try again.');
-        }
-        throw new Error('Unable to connect to the server. Please try again.');
+        // User is online but the request failed — server may be temporarily unreachable
+        throw new Error('Unable to reach the server. Please try again in a moment.');
       }
 
       // Re-throw errors that were already cleanly extracted from the HTTP response
