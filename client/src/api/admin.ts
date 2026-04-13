@@ -4,6 +4,7 @@
 
 import type { ApiResponse, User, AdminStats } from '@/types';
 import { api } from './client';
+import { safeValidate, AdminStatsRawSchema } from '@/lib/schemas';
 
 // ============================================================================
 // REQUEST TYPES
@@ -80,21 +81,43 @@ export interface SupportRequest {
  * Get admin dashboard stats
  * KPIs: users, projects, pay apps, events today, revenue metrics
  * Only accessible to users with admin role
+ *
+ * CRITICAL: This endpoint was causing production crashes because the backend
+ * returned nested { revenue: { avg_contract } } but the frontend expected flat
+ * { avg_contract_size }. We now validate the raw response with Zod before mapping.
  */
 export async function getAdminStats(): Promise<ApiResponse<AdminStats>> {
-  // Backend returns a nested object — map it to the flat AdminStats shape the component expects
+  // Fetch raw response from backend
   const res = await api.get<Record<string, any>>('/api/admin/stats');
   if (!res.data) return res as ApiResponse<AdminStats>;
 
-  const raw = res.data;
+  // Validate raw response shape against actual backend contract
+  const validated = safeValidate(AdminStatsRawSchema, res.data, 'getAdminStats');
+  if (!validated) {
+    console.error('[API] Admin stats validation failed — returning empty stats');
+    return {
+      error: 'Invalid response shape from server',
+      data: {
+        users_count: 0,
+        projects_count: 0,
+        pay_apps_count: 0,
+        events_today: 0,
+        total_pipeline: 0,
+        total_billed: 0,
+        avg_contract_size: 0,
+      },
+    };
+  }
+
+  // Safe to map nested response to flat structure now that we've validated it
   const flat: AdminStats = {
-    users_count:       parseInt(raw.users?.total ?? raw.users_count ?? 0),
-    projects_count:    parseInt(raw.projects?.total ?? raw.projects_count ?? 0),
-    pay_apps_count:    parseInt(raw.payapps?.total ?? raw.pay_apps_count ?? 0),
-    events_today:      parseInt(raw.events?.last24h ?? raw.events_today ?? 0),
-    total_pipeline:    parseFloat(raw.revenue?.pipeline ?? raw.total_pipeline ?? 0),
-    total_billed:      parseFloat(raw.revenue?.total_billed ?? raw.total_billed ?? 0),
-    avg_contract_size: parseFloat(raw.revenue?.avg_contract ?? raw.avg_contract_size ?? 0),
+    users_count:       parseInt(String(validated.users?.total ?? 0)),
+    projects_count:    parseInt(String(validated.projects?.total ?? 0)),
+    pay_apps_count:    parseInt(String(validated.payapps?.total ?? 0)),
+    events_today:      parseInt(String(validated.events?.last24h ?? 0)),
+    total_pipeline:    parseFloat(String(validated.revenue?.pipeline ?? 0)),
+    total_billed:      parseFloat(String(validated.revenue?.total_billed ?? 0)),
+    avg_contract_size: parseFloat(String(validated.revenue?.avg_contract ?? 0)),
   };
   return { data: flat, error: res.error };
 }
