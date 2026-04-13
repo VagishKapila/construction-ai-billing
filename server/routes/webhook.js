@@ -193,6 +193,44 @@ router.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), as
         [event.type === 'payment_intent.payment_failed' ? (session.last_payment_error?.message || 'Payment failed') : 'Session expired', sessionId]);
     }
 
+    // ── Connected account onboarding complete ─────────────────────────────
+    // Fires when a GC finishes Stripe Express onboarding (charges_enabled → true)
+    if (event.type === 'account.updated') {
+      const account = event.data.object;
+      const accountId = account.id;
+      const chargesEnabled = account.charges_enabled;
+      const payoutsEnabled = account.payouts_enabled;
+      const businessName = account.business_profile?.name || account.settings?.dashboard?.display_name || '';
+
+      // Only act if this is a connected account (not the platform account itself)
+      if (accountId !== process.env.STRIPE_PLATFORM_ACCOUNT_ID) {
+        const row = await pool.query(
+          'SELECT user_id FROM connected_accounts WHERE stripe_account_id=$1',
+          [accountId]
+        );
+        if (row.rows[0]) {
+          const userId = row.rows[0].user_id;
+          await pool.query(
+            `UPDATE connected_accounts
+             SET charges_enabled=$1, payouts_enabled=$2, account_status=$3,
+                 business_name=COALESCE(NULLIF($4,''), business_name),
+                 onboarded_at=CASE WHEN $1 AND onboarded_at IS NULL THEN NOW() ELSE onboarded_at END
+             WHERE stripe_account_id=$5`,
+            [chargesEnabled, payoutsEnabled, chargesEnabled ? 'active' : 'pending', businessName, accountId]
+          );
+          if (chargesEnabled) {
+            await pool.query('UPDATE users SET payments_enabled=TRUE WHERE id=$1', [userId]);
+          }
+          await logEvent(userId, 'stripe_account_updated', {
+            account_id: accountId,
+            charges_enabled: chargesEnabled,
+            payouts_enabled: payoutsEnabled,
+          });
+          console.log(`[Stripe Connect] account.updated: ${accountId} charges=${chargesEnabled} payouts=${payoutsEnabled} user=${userId}`);
+        }
+      }
+    }
+
     // ── Subscription lifecycle events ──────────────────────────────────────
     if (event.type === 'invoice.paid') {
       const invoice = event.data.object;
