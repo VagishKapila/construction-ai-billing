@@ -74,7 +74,7 @@ async function trialGate(req, res, next) {
     return res.status(403).json({
       error: 'Trial expired',
       code: 'TRIAL_EXPIRED',
-      message: 'Your 90-day trial has ended. Upgrade to Pro ($40/month) to continue.',
+      message: 'Your 90-day trial has ended. Upgrade to Pro ($64/month) to continue.',
       upgrade_url: '/settings#subscription',
     });
   } catch (error) {

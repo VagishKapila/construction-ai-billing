@@ -586,7 +586,7 @@ export function AdminDashboard() {
               </div>
             </div>
             <p className="text-xs text-text-secondary mt-2">
-              {subscriptionKpis.proUsers} Pro users × $40/month
+              {subscriptionKpis.proUsers} Pro users × $64/month
             </p>
           </div>
           <div>

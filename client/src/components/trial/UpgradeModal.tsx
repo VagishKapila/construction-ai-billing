@@ -107,7 +107,7 @@ export function UpgradeModal({ isOpen, onClose }: UpgradeModalProps): ReactNode 
             {/* Pricing */}
             <div className="bg-primary-50 rounded-lg p-4">
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-bold text-gray-900">$40</span>
+                <span className="text-3xl font-bold text-gray-900">$64</span>
                 <span className="text-gray-600">/month</span>
               </div>
               <p className="text-sm text-gray-600 mt-2">Cancel anytime</p>

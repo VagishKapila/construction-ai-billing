@@ -46,7 +46,7 @@ router.get('/status', async (req, res) => {
       ...status,
       authenticated: true,
       message: status.is_blocked
-        ? 'Your 90-day trial has ended. Upgrade to Pro ($40/month) to continue.'
+        ? 'Your 90-day trial has ended. Upgrade to Pro ($64/month) to continue.'
         : null
     });
   } catch (e) {

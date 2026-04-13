@@ -24,7 +24,7 @@ type NudgeMessages = Record<NudgeType, string>
 
 const NUDGE_MESSAGES: NudgeMessages = {
   '30day': 'Enjoying ConstructInvoice AI? Going Pro helps us keep this free for contractors who need it.',
-  '60day': 'Your trial ends in 30 days. Want to lock in Pro now? $40/month — cancel anytime.',
+  '60day': 'Your trial ends in 30 days. Want to lock in Pro now? $64/month — cancel anytime.',
   '5payapps': 'You\'ve generated 5+ pay applications! Pro users get advanced reporting and priority AI support.',
   'value': 'Your support helps other contractors use this for free and keeps our servers running.',
 }

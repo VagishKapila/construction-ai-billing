@@ -105,7 +105,7 @@ export function TrialBanner({ onUpgradeClick }: TrialBannerProps): ReactNode {
                   'active:scale-95'
                 )}
               >
-                Upgrade to Pro — $40/month
+                Upgrade to Pro — $64/month
               </button>
               <a
                 href="mailto:vaakapila@gmail.com"

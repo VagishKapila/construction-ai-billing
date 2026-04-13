@@ -115,7 +115,7 @@ export const PAYMENT_STATUSES: Record<string, PayAppStatusConfig> = {
 
 export const DEFAULT_RETAINAGE = 10 // percentage
 export const TRIAL_DURATION_DAYS = 90
-export const PRO_PRICE_MONTHLY = 40 // $40/month
+export const PRO_PRICE_MONTHLY = 64 // $64/month
 
 // ============================================================================
 // STRIPE FEES
