@@ -190,6 +190,9 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 | Apr 12, 2026 | Cloudflare Email Worker code saved — cloudflare-hub-email-worker.js + wrangler.toml | Worker handles `*@hub.constructinv.varshyl.com` → POSTs to `https://constructinv.varshyl.com/api/hub/inbound-email` with X-Hub-Secret header. Parses alias: strips `@` domain → reads localPart → finds lastIndexOf('-') → checks if suffix is all digits → extracts tradeSlug + projectRef. Reads raw email up to 512KB. HUB_INBOUND_SECRET = `3f3af11ac59ef4f0d4fca14a5234feede4eac36e22f6d4d448a7d876189733e2`. Deploy with `npx wrangler deploy`. |
 | Apr 12, 2026 | White-label email branding: centralized infrastructure + per-company FROM display name | DECISION: Do NOT set up separate email accounts per customer company. Use one centralized `@hub.constructinv.varshyl.com` infrastructure for ALL contractors. Brand it per company using the FROM display name: `Glass Co Hub <noreply@hub.constructinv.varshyl.com>`. The sub/vendor sees the contractor's company name — the underlying email address is always ours. Reasons: (1) No per-customer DNS setup needed, (2) Zero extra cost per company, (3) SPF/DKIM managed once centrally = better deliverability, (4) Support is one codebase not 100 separate email accounts, (5) Customers never think to look at the actual address — they see the display name. |
 | Apr 12, 2026 | Enterprise tier email white-label path: one CNAME per customer domain | For future $199+/mo tier, offer contractors their own Hub subdomain: e.g., `hub.glassconstruction.com` → CNAME to `hub.constructinv.varshyl.com`. This gives them full white-label branding on their own domain with zero SPF/DKIM complexity (inherited from our domain). Cloudflare handles SSL via proxy. Premium upsell, not included in base Pro plan. |
+| Apr 13, 2026 | Admin page "Something went wrong" crash — root cause and fix | Root cause: `getAdminStats()` returned raw nested backend response `{ users: {total}, revenue: {avg_contract} }`. Component called `.toString()` on `stats?.users_count` which was `undefined` → TypeError → ErrorBoundary caught it. Fix: (1) Added Zod `AdminStatsRawSchema` to validate raw response before mapping. (2) `safeValidate()` throws in DEV (catches mismatches immediately), returns null in PROD (graceful empty state). (3) Manual mapping from nested to flat: `users_count = parseInt(validated.users?.total)`. (4) Lesson: QA layer had a blind spot — tests hit APIs but never rendered pages post-data-load. Solution: Layer 7 (Vitest + MSW) now tests components with controlled API responses. |
+| Apr 13, 2026 | QA suite upgraded to 8 layers — Layer 7 component unit tests added | New Layer 7: `cd client && npm run test:unit` (Vitest + MSW + Testing Library). Catches React component crashes from bad API shapes that all other layers miss. Infrastructure: `client/src/lib/schemas.ts` (Zod schemas for all API responses), `client/src/mocks/handlers.ts` (MSW request handlers), `client/src/mocks/server.ts` (Vitest MSW server), `client/vitest.config.ts` (jsdom environment), `client/src/test/setup.ts` (lifecycle hooks). New Playwright tests: `tests/e2e/page-smoke.spec.ts` (14 tests: page health + 401 enforcement), `tests/e2e/api-contract-crash.spec.ts` (10 tests: strict shape validation, shared auth token to avoid rate limit hits). |
+| Apr 13, 2026 | Wrong-project files cleaned from repo — EatMeFirst/Kanji campaign code removed | KanjiCampaign.tsx, video-campaign.js (server route), elevenlabs.js, elevenLabsService.js, videoComposer.js, videoComposerService.js were accidentally present in working directory from a different product (SnapClaps/EatMeFirst). All deleted. App.tsx and server/app.js reverted to HEAD (never committed to staging). These files belong in a different repo — construction-ai-billing is ConstructInvoice AI only. |
 
 ### What We're NOT Doing (and why)
 - NOT building a full accounting system — QB handles that, we sync to it
@@ -401,56 +404,74 @@ The rest of the system (DB, API, frontend) doesn't change at all.
 
 ---
 
-## QA & Testing Standards — 7-Layer Test Suite
+## QA & Testing Standards — 8-Layer Test Suite
 
-**Installed: April 7, 2026. ALWAYS run all 7 layers before any push.**
+**Layer 1-7 installed April 7, 2026. Layer 7 (component unit tests) added April 13, 2026. ALWAYS run all 8 layers before any push.**
 
-When Vagish says "test", "QA", "what's broken", "run tests", "regression", "stress test", "find bugs", "check if this works", or any testing phrase — run ALL 7 layers in order. No exceptions. No skipping.
+When Vagish says "test", "QA", "what's broken", "run tests", "regression", "stress test", "find bugs", "check if this works", or any testing phrase — run ALL 8 layers in order. No exceptions. No skipping.
 
-### The 7 Layers
+### The 8 Layers
 
 | # | Layer | Command | What It Catches | Time |
 |---|-------|---------|-----------------|------|
 | 1 | Architecture Sanity | `node tests/arch/arch-sanity.js` | Fix applied to wrong file; formulas missing from live route files | ~2s |
-| 2 | Static QA | `node qa_test.js` | 121 pattern checks; CO math in BOTH server.js AND payApps.js | ~3s |
+| 2 | Static QA | `node qa_test.js` | 157 pattern checks; CO math in BOTH server.js AND payApps.js | ~3s |
 | 3 | Mutation Watchdog | `node tests/mutation/mutation-watchdog.js` | Blind spots in qa_test.js itself (if it doesn't catch a formula break, that's a bug) | ~30s |
 | 4 | TypeScript | `cd client && npx tsc --noEmit` | Type errors that fail silently in JavaScript | ~15s |
 | 5 | Vite Build | `cd client && npm run build` | Build failures — if this fails, Railway deploys nothing | ~30s |
 | 6 | Math Unit Tests | `npx playwright test tests/unit/ --reporter=list` | 13 G702 formula correctness tests — pure math, no network | ~10s |
-| 7 | E2E + Contracts | `TEST_BASE_URL=https://construction-ai-billing-staging.up.railway.app npx playwright test tests/e2e/ --reporter=list` | API regressions, CO math cross-layer, contract shapes | ~30s |
+| 7 | Component Unit Tests | `cd client && npm run test:unit` | React component crashes from bad API shapes; Zod validation failures; ErrorBoundary fires | ~15s |
+| 8 | E2E + Contracts | `TEST_BASE_URL=https://construction-ai-billing-staging.up.railway.app npx playwright test tests/e2e/ --reporter=list` | API regressions, CO math cross-layer, contract shapes, page smoke tests, 401 enforcement | ~45s |
 
-**Total: ~2 minutes. Run all 7 every time.**
+**Total: ~2.5 minutes. Run all 8 every time.**
 
 ### Test File Locations
 
 ```
 construction-ai-billing/
+├── client/
+│   ├── src/
+│   │   ├── lib/schemas.ts               ← Zod schemas for all API responses + safeValidate()
+│   │   ├── mocks/
+│   │   │   ├── handlers.ts              ← MSW request handlers (mock API for tests)
+│   │   │   ├── server.ts                ← MSW node server (Vitest)
+│   │   │   └── browser.ts              ← MSW browser worker (manual testing)
+│   │   └── test/
+│   │       ├── setup.ts                 ← Vitest global setup (MSW lifecycle)
+│   │       └── admin-crash.test.tsx     ← Layer 7: 2 component crash tests
+│   ├── vitest.config.ts                 ← Vitest config (jsdom, globals, path alias)
+│   └── public/mockServiceWorker.js      ← MSW service worker (auto-generated)
 ├── tests/
 │   ├── arch/arch-sanity.js              ← Layer 1: reads server/app.js, verifies formulas in live routes
 │   ├── mutation/mutation-watchdog.js    ← Layer 3: breaks formulas, confirms qa_test.js catches them
 │   ├── unit/g702math.test.ts            ← Layer 6: 13 pure G702 formula tests
 │   └── e2e/
-│       ├── construction-billing.spec.ts ← Layer 7a: 21 auth/CRUD/PDF/email tests
-│       ├── co-math-crosslayer.spec.ts   ← Layer 7b: 7 cross-layer CO math tests (H=$27,500 target)
-│       ├── api-contracts.spec.ts        ← Layer 7c: 9 API shape contract tests
+│       ├── construction-billing.spec.ts ← Layer 8a: 21 auth/CRUD/PDF/email tests
+│       ├── co-math-crosslayer.spec.ts   ← Layer 8b: 7 cross-layer CO math tests (H=$27,500 target)
+│       ├── api-contract-crash.spec.ts   ← Layer 8c: 10 API shape contract tests (shared auth token)
+│       ├── page-smoke.spec.ts           ← Layer 8d: 14 page health + 401 enforcement tests
 │       └── test-sov.csv                 ← Test SOV (5 lines, $65k total)
-├── qa_test.js                           ← Layer 2: 121 static checks (MODULE 7C added Apr 7)
-└── .github/workflows/ci.yml            ← CI pipeline: all 7 layers on every push to staging/main
+├── qa_test.js                           ← Layer 2: 157 static checks
+└── .github/workflows/ci.yml            ← CI pipeline: all 8 layers on every push to staging/main
 ```
 
 ### Why Each Layer Exists
 
 **Layer 1 — Architecture Sanity**: Catches "fixed the wrong file." In April 2026, a CO math fix was applied to `server.js` but the live server uses `server/routes/payApps.js`. Invoices showed wrong amounts. This layer reads `server/app.js`, finds which route files are mounted, and verifies critical formulas exist in ALL of them.
 
-**Layer 2 — Static QA**: 121 pattern checks. After the wrong-file bug, MODULE 7C was added to check `server/routes/payApps.js` specifically: void filter on tCO (3×), `+tCO` in due formula (3×), retainage-release ternary (3×).
+**Layer 2 — Static QA**: 157 pattern checks. After the wrong-file bug, MODULE 7C was added to check `server/routes/payApps.js` specifically: void filter on tCO (3×), `+tCO` in due formula (3×), retainage-release ternary (3×).
 
 **Layer 3 — Mutation Watchdog**: Breaks 4 critical formulas, runs qa_test.js, verifies the breaks ARE detected. If a mutation passes qa_test.js, that formula is a blind spot — the test suite would not catch that bug in production. First run in April 2026 caught 3/4 blind spots, prompting MODULE 7C.
 
 **Layer 6 — Math Unit Tests**: 13 pure G702 tests covering all 9 columns (A-I), CO math, voided CO exclusion, balance-to-finish, edge cases. No network. Fast.
 
-**Layer 7b — CO Cross-Layer**: Creates real project on staging, verifies H=$27,500 in server HTML/PDF/email. Proves the CO math is consistent across all 3 generation routes.
+**Layer 7 — Component Unit Tests (NEW April 13, 2026)**: Vitest + MSW + Testing Library runs React components in a jsdom environment. Catches post-data-load crashes that all other layers miss. Root cause: the admin dashboard was showing "Something went wrong" in production because `getAdminStats()` returned raw nested data and the component called `.toString()` on undefined. No other layer could catch this — the app built fine, TypeScript was clean, and API tests passed. Layer 7 would have caught it immediately with a malformed MSW response. Files: `client/src/lib/schemas.ts` (Zod), `client/src/mocks/handlers.ts` (MSW).
 
-**Layer 7c — API Contracts**: Records which fields must exist in API responses. Fails if a field is renamed (e.g., `amount_due` → `amountDue`) BEFORE the frontend silently breaks.
+**Layer 8b — CO Cross-Layer**: Creates real project on staging, verifies H=$27,500 in server HTML/PDF/email. Proves the CO math is consistent across all 3 generation routes.
+
+**Layer 8c — API Contracts**: Records which fields must exist in API responses. Fails if a field is renamed (e.g., `amount_due` → `amountDue`) BEFORE the frontend silently breaks. Uses shared auth token to avoid rate limit (20 req/15min on auth endpoints).
+
+**Layer 8d — Page Smoke Tests (NEW April 13, 2026)**: Every public page returns 200, protected API routes return 401, all major API endpoints return expected types (array vs object, not null). 14 tests. Fast — no browser rendering needed.
 
 ### The "Fixed the Wrong File" Bug Class
 
@@ -460,13 +481,23 @@ construction-ai-billing/
 
 Any fix applied to `server.js` alone will NOT affect production. ALWAYS check `server/app.js` to see which files are actually mounted, and apply fixes to those files. The architecture sanity test (Layer 1) enforces this automatically.
 
+### The "API Shape Mismatch → ErrorBoundary Crash" Bug Class
+
+**Root cause discovered April 13, 2026 (admin page crash):** When backend returns a different shape than frontend expects (e.g., nested `revenue.avg_contract` vs flat `avg_contract_size`), the component calls `.toString()` or `.toFixed()` on `undefined`, throws a TypeError, and the React ErrorBoundary catches it showing "Something went wrong". This is invisible to Layers 1-6.
+
+**Fix pattern:**
+1. Add Zod schema to `client/src/lib/schemas.ts` for the API response
+2. Call `safeValidate(Schema, res.data, 'label')` before using any API data
+3. Map from raw shape → expected flat shape explicitly
+4. Add MSW handler + component crash test in `client/src/test/`
+
 ### CI Pipeline
 
 Every push to `staging` or `main` triggers `.github/workflows/ci.yml`:
 - `static` job: Layers 1 + 2 + 3 (fast, no network)
 - `build` job: Layers 4 + 5 (TypeScript + Vite)
-- `unit` job: Layer 6 (G702 math)
-- `e2e` job: Layer 7 (only on push, not PRs — polls staging until healthy)
+- `unit` job: Layers 6 + 7 (G702 math + component tests)
+- `e2e` job: Layer 8 (only on push, not PRs — polls staging until healthy)
 
 Required GitHub Secrets: `TEST_EMAIL`, `TEST_PASSWORD`, `STAGING_URL`
 
