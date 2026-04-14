@@ -262,7 +262,9 @@ router.get('/me', auth, async (req, res) => {
       [req.user.id]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'User not found' });
-    res.json({ user: r.rows[0] });
+    // Return flat user object — AuthContext expects response.data to be the User directly
+    // (not wrapped in { user: {...} }). Wrapping caused isAdmin=false after page refresh.
+    res.json(r.rows[0]);
   } catch(e) { console.error('[API Error]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
