@@ -346,14 +346,34 @@ function StepTwo({ onComplete, completing }: StepTwoProps) {
 
       {/* Card */}
       <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
-        {/* Header */}
+        {/* Header — ARIA personal AI assistant */}
         <div className="mb-8 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-teal-200">
-            <span className="text-white text-2xl font-bold">A</span>
+          <div className="relative inline-block mb-4">
+            {/* ARIA avatar — professional AI assistant */}
+            <div className="w-20 h-20 rounded-full mx-auto overflow-hidden border-4 border-teal-100 shadow-xl shadow-teal-100">
+              <img
+                src="https://api.dicebear.com/9.x/personas/svg?seed=ARIA&backgroundColor=b6e3f4&hair=shortCurls&eyes=open&nose=mediumRound&mouth=smile&skinColor=ae9a7b&hairColor=2c1b18&clothingColor=059669"
+                alt="ARIA — Your AI billing assistant"
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  // Fallback to gradient avatar if image fails
+                  const parent = (e.target as HTMLImageElement).parentElement
+                  if (parent) {
+                    parent.innerHTML = '<div class="w-full h-full bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center"><span class="text-white text-3xl font-bold">A</span></div>'
+                  }
+                }}
+              />
+            </div>
+            {/* Online indicator */}
+            <span className="absolute bottom-1 right-1 w-4 h-4 bg-green-400 border-2 border-white rounded-full" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">ARIA is collecting money for you</h1>
+          <div className="inline-flex items-center gap-1.5 bg-teal-50 border border-teal-100 rounded-full px-3 py-1 mb-3">
+            <span className="w-1.5 h-1.5 bg-teal-500 rounded-full animate-pulse" />
+            <span className="text-xs font-semibold text-teal-700 uppercase tracking-wide">Your AI Billing Assistant</span>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900">Meet ARIA</h1>
           <p className="text-sm text-gray-500 mt-1.5">
-            While you're on the job, ARIA handles the follow-up
+            While you're on the job, ARIA chases the money for you
           </p>
         </div>
 

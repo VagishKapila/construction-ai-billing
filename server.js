@@ -880,7 +880,7 @@ app.post('/api/projects/:id/payapps', auth, async (req,res) => {
 
 app.get('/api/payapps/:id', auth, async (req,res) => {
   const pa = await pool.query(
-    'SELECT pa.*,p.name as project_name,p.owner,p.contractor,p.architect,p.contact,p.contact_name,p.contact_phone,p.contact_email,p.original_contract,p.number as project_number,p.building_area,p.id as project_id,p.contract_date,p.payment_terms,p.include_architect,p.include_retainage FROM pay_apps pa JOIN projects p ON p.id=pa.project_id WHERE pa.id=$1 AND p.user_id=$2 AND pa.deleted_at IS NULL',
+    'SELECT pa.*,p.name as project_name,p.owner,p.owner_email,p.owner_phone,p.contractor,p.architect,p.contact,p.contact_name,p.contact_phone,p.contact_email,p.original_contract,p.number as project_number,p.building_area,p.id as project_id,p.contract_date,p.payment_terms,p.include_architect,p.include_retainage FROM pay_apps pa JOIN projects p ON p.id=pa.project_id WHERE pa.id=$1 AND p.user_id=$2 AND pa.deleted_at IS NULL',
     [req.params.id, req.user.id]
   );
   if(!pa.rows[0]) return res.status(404).json({error:'Not found'});

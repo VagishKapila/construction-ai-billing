@@ -137,6 +137,8 @@ export function usePayApp(
           id: pa.project_id as unknown as number,
           name: (raw.project_name as string) || '',
           owner: (raw.owner as string) || '',
+          owner_email: (raw.owner_email as string) || '',
+          owner_phone: (raw.owner_phone as string) || '',
           contractor: (raw.contractor as string) || '',
           architect: (raw.architect as string) || '',
           contact_name: (raw.contact_name as string) || '',
