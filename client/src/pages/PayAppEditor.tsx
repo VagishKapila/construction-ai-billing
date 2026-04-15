@@ -1875,6 +1875,8 @@ export function PayAppEditor() {
   const handlePeriodEndChange = useCallback((v: string) => { setPeriodEnd(v); setFormDirty(true) }, [])
 
   // Sync from payApp
+  // When opening an existing pay app, load its values
+  // When creating a new pay app, try to inherit PO from the previous one
   useEffect(() => {
     if (payApp) {
       setNotes(payApp.special_notes || '')
@@ -1884,8 +1886,28 @@ export function PayAppEditor() {
       setPeriodStart(payApp.period_start ? payApp.period_start.split('T')[0] : '')
       setPeriodEnd(payApp.period_end ? payApp.period_end.split('T')[0] : '')
       setFormDirty(false)
+    } else if (payAppId === 0 && projectId) {
+      // New pay app — try to pre-populate PO from most recent pay app in this project
+      ;(async () => {
+        try {
+          const token = localStorage.getItem('ci_token')
+          if (!token) return
+          const resp = await fetch(`/api/projects/${projectId}/pay-apps?limit=1`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+          })
+          if (resp.ok) {
+            const { data } = await resp.json()
+            const mostRecent = Array.isArray(data) ? data[0] : data
+            if (mostRecent?.po_number) {
+              setPoNumber(mostRecent.po_number)
+            }
+          }
+        } catch (e) {
+          // Silent fail — just don't pre-populate if fetch fails
+        }
+      })()
     }
-  }, [payApp])
+  }, [payApp, payAppId, projectId])
 
   // Save handler — saves both line items and form fields (notes, PO, dates)
   const handleSave = useCallback(async () => {

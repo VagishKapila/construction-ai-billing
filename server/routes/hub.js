@@ -502,6 +502,48 @@ router.post('/api/projects/:id/hub/uploads', auth, upload.single('file'), async 
       file_size: req.file.size
     });
 
+    // Send email to contractor notifying them of the new document
+    try {
+      const projResult = await pool.query(
+        'SELECT p.name as project_name, cs.contact_email as gc_email FROM projects p LEFT JOIN company_settings cs ON cs.user_id = p.user_id WHERE p.id = $1',
+        [projectId]
+      );
+      const proj = projResult.rows[0];
+      if (proj?.gc_email) {
+        const apiKey = process.env.RESEND_API_KEY;
+        const fromEmail = process.env.FROM_EMAIL || 'billing@varshyl.com';
+        if (apiKey) {
+          const uploadedByName = uploaded_by || 'A subcontractor';
+          const html = `
+            <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#fff">
+              <h2 style="margin:0 0 8px;font-size:18px;color:#1a1a2e">
+                New document uploaded to ${proj.project_name}
+              </h2>
+              <p style="color:#555;font-size:14px;line-height:1.6;margin-bottom:20px">
+                ${uploadedByName} uploaded a ${doc_type === 'other' ? 'document' : doc_type} to your project Hub.
+                Review it in your Project Hub inbox when you're ready.
+              </p>
+            </div>
+          `;
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              from: fromEmail,
+              to: [proj.gc_email],
+              subject: `New document in ${proj.project_name}`,
+              html,
+            }),
+          }).catch(() => {});
+        }
+      }
+    } catch (e) {
+      console.error('[Hub] Error sending notification email:', e.message);
+    }
+
     res.json({ data: result.rows[0] });
   } catch (e) {
     console.error('[HUB POST uploads]', e.message);

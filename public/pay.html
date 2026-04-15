@@ -307,6 +307,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
         </div>
       </div>
 
+      <!-- Error Message -->
+      <div id="payment-error" style="display:none;padding:16px 24px;margin-bottom:16px;background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;color:#991b1b;font-size:14px"></div>
+
       <!-- Fee Summary (shows for CC) -->
       <div class="fee-summary" id="fee-summary">
         <div class="fee-row"><span>Invoice amount</span><span id="fee-base">$0.00</span></div>
@@ -672,14 +675,18 @@ function toggleDetails() {
 async function initiatePayment() {
   if (!selectedMethod) return;
   const btn = document.getElementById('pay-btn');
+  const errorEl = document.getElementById('payment-error');
   btn.classList.add('loading');
   btn.disabled = true;
+  errorEl.style.display = 'none';
+  errorEl.textContent = '';
 
   const amt = getPayAmount();
   if (amt < 1) {
     btn.classList.remove('loading');
     btn.disabled = false;
-    alert('Minimum payment is $1.00');
+    errorEl.textContent = 'Minimum payment is $1.00';
+    errorEl.style.display = 'block';
     return;
   }
 
@@ -707,7 +714,9 @@ async function initiatePayment() {
   } catch(e) {
     btn.classList.remove('loading');
     btn.disabled = false;
-    alert(e.message || 'Something went wrong. Please try again.');
+    const errorMsg = e.message || 'Could not process payment. Please try again or contact the contractor.';
+    errorEl.textContent = errorMsg;
+    errorEl.style.display = 'block';
   }
 }
 </script>

@@ -1,21 +1,11 @@
-import { Link } from 'react-router-dom'
-import { Button } from '@/components/ui/button'
-
 export function NotFound() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 px-4">
-      <div className="text-center">
-        <div className="text-9xl font-bold text-primary-600 mb-4">404</div>
-        <h1 className="text-4xl font-bold text-gray-900 mb-2">Page Not Found</h1>
-        <p className="text-xl text-gray-600 mb-8">
-          The page you're looking for doesn't exist or has been moved.
-        </p>
-        <Link to="/dashboard">
-          <Button size="lg" className="bg-primary-600 hover:bg-primary-700">
-            Go to Dashboard
-          </Button>
-        </Link>
-      </div>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f4fa', flexDirection: 'column', gap: 16, fontFamily: 'DM Sans, sans-serif' }}>
+      <div style={{ fontSize: 64, fontFamily: 'DM Serif Display, serif', color: '#1e293b' }}>404</div>
+      <div style={{ fontSize: 20, color: '#64748b' }}>Page not found</div>
+      <a href="/dashboard" style={{ background: '#2563eb', color: '#fff', padding: '10px 20px', borderRadius: 8, textDecoration: 'none', fontWeight: 600 }}>
+        Back to Dashboard
+      </a>
     </div>
   )
 }

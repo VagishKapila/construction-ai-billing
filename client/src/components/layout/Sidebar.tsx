@@ -136,7 +136,7 @@ export function Sidebar({ isCollapsed = false }: { isCollapsed?: boolean }) {
   return (
     <aside
       className={cn(
-        'fixed left-0 top-0 h-screen bg-white border-r border-[#e8e8f0]',
+        'fixed left-0 top-0 h-screen bg-white border-r border-[#e2e8f0]',
         'flex flex-col pt-6 pb-4 shadow-sm',
         isCollapsed ? 'w-[72px]' : 'w-[260px]',
         'hidden md:flex', // Desktop only
@@ -169,6 +169,23 @@ export function Sidebar({ isCollapsed = false }: { isCollapsed?: boolean }) {
           </Link>
         )}
       </div>
+
+      {/* Search bar + New Project button (desktop only, when not collapsed) */}
+      {!isCollapsed && (
+        <div className="px-2 mb-4 space-y-2">
+          <input
+            type="text"
+            placeholder="Search projects..."
+            className="w-full px-3 py-2 text-sm border border-[#e2e8f0] rounded-lg bg-[#f0f4fa] text-[#1a1a2e] placeholder-[#888888] focus:outline-none focus:ring-2 focus:ring-[#2563eb] focus:bg-white transition-all"
+          />
+          <Link
+            to="/projects/new"
+            className="w-full px-3 py-2 text-sm font-medium text-white bg-[#2563eb] rounded-lg hover:bg-[#1d4ed8] transition-colors text-center"
+          >
+            + New Project
+          </Link>
+        </div>
+      )}
 
       {/* Primary Navigation — Projects first, then money tools */}
       <nav className="space-y-1 px-2">

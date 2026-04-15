@@ -296,3 +296,40 @@ export const ApiResponseSchema = <T extends z.ZodTypeAny>(dataSchema: T) =>
     error: z.string().optional(),
     message: z.string().optional(),
   });
+
+// ============================================================================
+// HUB & TRADE SCHEMAS
+// ============================================================================
+
+export const TradeSchema = z.object({
+  id: z.number(),
+  project_id: z.number(),
+  trade_name: z.string(),
+  company_name: z.string().nullable().optional(),
+  status: z.enum(['active', 'pending', 'overdue', 'invited']).nullable().optional(),
+  trust_score: z.union([z.string().transform(Number), z.number()]).nullable().optional(),
+  email_alias: z.string().nullable().optional(),
+  contact_email: z.string().nullable().optional(),
+});
+
+export type TradeSchemaType = z.infer<typeof TradeSchema>;
+
+export const HubUploadSchema = z.object({
+  id: z.number(),
+  project_id: z.number(),
+  trade_id: z.number().nullable().optional(),
+  filename: z.string(),
+  doc_type: z
+    .enum(['invoice', 'lien_waiver', 'rfi', 'photo', 'submittal', 'daily_report', 'change_order', 'compliance', 'drawing', 'other'])
+    .nullable()
+    .optional(),
+  status: z.enum(['draft', 'submitted', 'approved', 'rejected']).nullable().optional(),
+  source: z.enum(['web_app', 'magic_link', 'email_ingest']).nullable().optional(),
+  created_at: z.string(),
+  amount: z.union([z.string().transform(Number), z.number()]).nullable().optional(),
+  company_name: z.string().nullable().optional(),
+  trade_name: z.string().nullable().optional(),
+  trust_score: z.union([z.string().transform(Number), z.number()]).nullable().optional(),
+});
+
+export type HubUploadSchemaType = z.infer<typeof HubUploadSchema>;

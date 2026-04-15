@@ -3,31 +3,36 @@ import { X } from 'lucide-react'
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
+import { TopNav } from './TopNav'
 import { MobileNav } from './MobileNav'
 import { AIChatWidget } from '@/components/ai'
 import { TrialBanner } from '@/components/trial/TrialBanner'
 import { UpgradeModal } from '@/components/trial/UpgradeModal'
 import { UpgradeNudge } from '@/components/trial/UpgradeNudge'
 import { InstallPrompt } from '@/components/pwa'
+import { RoleProvider } from '@/contexts/RoleContext'
 import { cn } from '@/lib/cn'
 
 /**
  * Main layout shell
  * Combines:
  * - Desktop sidebar (left, 260px)
- * - Top bar (sticky, 64px)
+ * - Desktop top nav (sticky, 56px) — role switcher + user menu
+ * - Mobile top bar (sticky, 64px) — hamburger + title + user
  * - Mobile bottom nav (mobile only, 80px with safe area)
  * - Content area with proper padding and scrolling
  * - Mobile overlay sidebar (hamburger menu)
+ * - Role context provider for role-aware navigation
  */
 export function Shell({ children }: { children?: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false)
 
   return (
-    <div className="min-h-screen bg-[#fafafe]">
-      {/* Desktop Sidebar */}
-      <Sidebar isCollapsed={false} />
+    <RoleProvider>
+      <div className="min-h-screen bg-[#f0f4fa]">
+        {/* Desktop Sidebar */}
+        <Sidebar isCollapsed={false} />
 
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
@@ -81,13 +86,18 @@ export function Shell({ children }: { children?: React.ReactNode }) {
         </>
       )}
 
-      {/* Top Bar */}
+      {/* Mobile Top Bar (hamburger + title + user) */}
       <TopBar
         onMenuToggle={(open) => setSidebarOpen(open)}
       />
 
+      {/* Desktop TopNav (role switcher + notifications + user) */}
+      <div className="hidden md:block fixed top-[64px] left-[260px] right-0 z-40">
+        <TopNav />
+      </div>
+
       {/* Trial Banner — shows above content when trial nearing expiry */}
-      <div className="md:ml-[260px] pt-[64px]">
+      <div className="md:ml-[260px] pt-[64px] md:pt-[56px]">
         <TrialBanner onUpgradeClick={() => setUpgradeModalOpen(true)} />
       </div>
 
@@ -120,5 +130,6 @@ export function Shell({ children }: { children?: React.ReactNode }) {
       {/* PWA Install Prompt — shows 30s after mobile page load */}
       <InstallPrompt />
     </div>
+    </RoleProvider>
   )
 }

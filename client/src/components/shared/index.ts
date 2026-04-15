@@ -1,9 +1,14 @@
-/**
- * Shared Components Barrel Export
- * Reusable compound components built on UI primitives
- */
-
-export { LoadingSpinner } from './LoadingSpinner'
+export { Badge } from './Badge'
+export { KPICard } from './KPICard'
+export { MoneyDisplay } from './MoneyDisplay'
+export { StatusChip } from './StatusChip'
+export { TradeDot } from './TradeDot'
+export { InlineAlert } from './InlineAlert'
+export { PayAppRow } from './PayAppRow'
+export { ProjectCard } from './ProjectCard'
+export { ARIAStrip } from './ARIAStrip'
 export { EmptyState } from './EmptyState'
-export { ErrorBoundary } from './ErrorBoundary'
-export { PageHeader } from './PageHeader'
+export { CurrencyInput } from './CurrencyInput'
+export { RoleSwitcher } from './RoleSwitcher'
+export { SidebarSection } from './SidebarSection'
+export { VendorDetailPanel } from './VendorDetailPanel'

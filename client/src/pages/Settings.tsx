@@ -114,6 +114,7 @@ export function Settings() {
 
   // Toast notifications
   const [toast, setToast] = useState<Toast | null>(null)
+  const [signatureMsg, setSignatureMsg] = useState<string | null>(null)
 
   // Initialize forms from settings
   useEffect(() => {
@@ -367,6 +368,8 @@ export function Settings() {
     try {
       const result = await uploadSignature(file)
       if (result) {
+        setSignatureMsg('✓ Signature saved')
+        setTimeout(() => setSignatureMsg(null), 3000)
         showToast('success', 'Signature uploaded successfully')
       } else {
         showToast('error', 'Failed to upload signature')
@@ -792,6 +795,9 @@ export function Settings() {
                     </p>
                   </div>
                 </label>
+                {signatureMsg && (
+                  <p className="text-sm text-green-600 font-medium mt-2">{signatureMsg}</p>
+                )}
               </div>
             </div>
           </CardContent>

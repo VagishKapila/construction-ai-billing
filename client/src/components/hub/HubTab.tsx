@@ -249,6 +249,34 @@ export function HubTab({ projectId }: HubTabProps) {
       {/* INBOX TAB */}
       {subTab === 'inbox' && (
         <div className="space-y-4">
+          {/* ARIA Auto-Approve Suggestion Banner */}
+          {filteredUploads.filter(u => u.status === 'pending' && !isStale(u)).length >= 2 && (
+            <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                <Inbox className="w-4 h-4 text-blue-600" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-blue-900">Auto-approve qualified documents?</p>
+                <p className="text-xs text-blue-700 mt-0.5">
+                  {filteredUploads.filter(u => u.status === 'pending' && !isStale(u) && (u as any).trust_score >= 760).length} invoices are Platinum-rated.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                className="bg-blue-600 hover:bg-blue-700 text-white whitespace-nowrap"
+                onClick={() => {
+                  // Approve all Platinum invoices
+                  filteredUploads
+                    .filter(u => u.status === 'pending' && (u as any).trust_score >= 760)
+                    .forEach(u => setSelectedUpload(u));
+                  setToast({ type: 'success', message: 'Ready to approve Platinum invoices' });
+                }}
+              >
+                Approve Platinum
+              </Button>
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-2 overflow-x-auto">
               {['all', 'pending', 'approved', 'rejected'].map(status => (

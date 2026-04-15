@@ -236,6 +236,22 @@ check('varshyl-logo.png is reasonably small (< 100KB)',
   fs.statSync('./public/varshyl-logo.png').size < 100000,
   `${Math.round(fs.statSync('./public/varshyl-logo.png').size/1024)}KB`);
 
+// Test infrastructure files (added Q2 2026)
+const testInfraFiles = [
+  'client/src/utils/formatMoney.ts',
+  'client/src/utils/dates.ts',
+  'client/src/lib/schemas.ts',
+  'client/src/mocks/handlers.ts',
+  'client/src/mocks/server.ts',
+  'client/src/test/setup.ts',
+  'client/src/test/smoke.test.ts',
+  'client/src/test/schemas.test.ts',
+  'client/vitest.config.ts',
+];
+for (const f of testInfraFiles) {
+  check(`Test infrastructure file exists: ${f}`, fs.existsSync(f));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 console.log('\n══════════════════════════════════════════════════');
 console.log('  MODULE 7A: API ROUTE INTEGRITY');

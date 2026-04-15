@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Upload, FileText, ChevronRight, Paperclip, CheckCircle2, AlertTriangle, ReceiptText, TableProperties, FolderOpen, Scale, X, Lock, RotateCcw, Trophy, Inbox, Plus } from 'lucide-react'
+import { Upload, FileText, ChevronRight, Paperclip, CheckCircle2, AlertTriangle, ReceiptText, TableProperties, FolderOpen, Scale, X, Lock, RotateCcw, Trophy, Inbox, Plus, Zap } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import type { PayApp, SOVLine } from '@/types'
 import { useProject } from '@/hooks/useProject'
 import { useTrial } from '@/hooks/useTrial'
@@ -32,46 +33,13 @@ const TABS: TabConfig[] = [
   { id: 'payapps', label: 'Pay Applications', icon: ReceiptText },
   { id: 'sov', label: 'Schedule of Values', icon: TableProperties },
   { id: 'changeorders', label: 'Change Orders', icon: FileText },
-  { id: 'hub', label: 'Project Hub', icon: Inbox },
   { id: 'documents', label: 'Documents', icon: FolderOpen },
   { id: 'reconciliation', label: 'Reconciliation', icon: Scale, accent: true },
 ]
 
-function TabBar({
-  activeTab,
-  onTabChange,
-}: {
-  activeTab: string
-  onTabChange: (tabId: string) => void
-}) {
-  return (
-    <div className="border-b border-border">
-      <div className="flex gap-1 sm:gap-4 overflow-x-auto">
-        {TABS.map((tab) => {
-          const Icon = tab.icon
-          const isActive = activeTab === tab.id
-          return (
-            <button
-              key={tab.id}
-              onClick={() => onTabChange(tab.id)}
-              className={`flex items-center gap-1.5 px-3 py-3.5 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
-                isActive
-                  ? tab.accent
-                    ? 'border-emerald-500 text-emerald-700 bg-emerald-50/50'
-                    : 'border-primary-500 text-primary-600'
-                  : 'border-transparent text-text-secondary hover:text-text-primary hover:bg-gray-50'
-              }`}
-            >
-              <Icon className={`w-4 h-4 ${isActive && tab.accent ? 'text-emerald-600' : ''}`} />
-              <span className="hidden sm:inline">{tab.label}</span>
-              <span className="sm:hidden">{tab.label.split(' ')[0]}</span>
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
+/* ─────────────────────────────────────────────────────────
+   SUBCOMPONENTS — Moved up for clarity
+   ───────────────────────────────────────────────────────── */
 
 interface PayAppRowProps {
   payApp: PayApp
@@ -102,7 +70,6 @@ function PayAppRow({
     submitted: 'default',
     paid: 'success',
   }
-  // Use payment_status if fully paid, otherwise fall back to billing status
   const displayStatus = payApp.payment_status === 'paid' ? 'paid' : payApp.status
 
   const payAppUrl = `/projects/${projectId}/pay-app/${payApp.id}`
@@ -177,7 +144,6 @@ function PayAppRow({
         </div>
       </div>
 
-      {/* Record Payment Form */}
       {showRecordPaymentForm && recordPaymentForm && onRecordPaymentChange && onRecordPaymentSubmit && (
         <div
           className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3"
@@ -193,19 +159,16 @@ function PayAppRow({
                 placeholder="0.00"
                 value={recordPaymentForm.amount}
                 onChange={(e) => {
-                  // Allow digits, commas, and one decimal point
                   const raw = e.target.value.replace(/[^0-9.]/g, '')
                   onRecordPaymentChange('amount', raw)
                 }}
                 onBlur={(e) => {
-                  // Format with commas on blur
                   const num = parseFloat(e.target.value.replace(/,/g, ''))
                   if (!isNaN(num)) {
                     onRecordPaymentChange('amount', num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
                   }
                 }}
                 onFocus={(e) => {
-                  // Strip commas on focus so user can edit raw number
                   onRecordPaymentChange('amount', e.target.value.replace(/,/g, ''))
                 }}
                 className="w-full mt-1 px-3 py-2 border border-border rounded-lg text-sm"
@@ -297,57 +260,57 @@ function SOVTable({ lines, isLoading }: SOVTableProps) {
     )
   }
 
-  const total = lines.reduce((sum, line) => sum + (Number(line.scheduled_value) || 0), 0)
-
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border">
-            <th className="text-left py-3 px-4 font-semibold text-text-primary">
-              Item
-            </th>
-            <th className="text-left py-3 px-4 font-semibold text-text-primary">
-              Description
-            </th>
-            <th className="text-right py-3 px-4 font-semibold text-text-primary">
-              Amount
-            </th>
+        <thead className="border-b border-border">
+          <tr className="text-text-muted font-medium">
+            <th className="text-left py-2 px-4">#</th>
+            <th className="text-left py-2 px-4">Description</th>
+            <th className="text-right py-2 px-4">Scheduled Value</th>
+            <th className="text-right py-2 px-4">% Billed</th>
           </tr>
         </thead>
         <tbody>
-          {lines.map((line) => (
-            <tr key={line.id} className="border-b border-border hover:bg-primary-50">
-              <td className="py-3 px-4 text-text-secondary">
-                {line.item_id || '—'}
+          {lines.map((line, idx) => (
+            <tr key={line.id} className="border-b border-border hover:bg-gray-50">
+              <td className="py-3 px-4 text-text-muted">{idx + 1}</td>
+              <td className="py-3 px-4 font-medium text-text-primary">{line.description}</td>
+              <td className="py-3 px-4 text-right font-mono text-text-primary">
+                {formatCurrency(line.scheduled_value)}
               </td>
-              <td className="py-3 px-4 text-text-primary font-medium">
-                {line.description}
-              </td>
-              <td className="py-3 px-4 text-right text-text-primary font-mono tabular-nums">
-                {formatCurrency(Number(line.scheduled_value) || 0)}
+              <td className="py-3 px-4 text-right">
+                <div className="flex items-center justify-end gap-2">
+                  <div className="w-24 bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-emerald-500 h-2 rounded-full"
+                      style={{ width: `${line.percent_complete || 0}%` }}
+                    />
+                  </div>
+                  <span className="font-medium text-text-primary min-w-12 text-right">
+                    {(line.percent_complete || 0).toFixed(0)}%
+                  </span>
+                </div>
               </td>
             </tr>
           ))}
-          <tr className="font-semibold bg-primary-50 border-t-2 border-primary-200">
-            <td colSpan={2} className="py-3 px-4 text-text-primary">
-              Total
-            </td>
-            <td className="py-3 px-4 text-right text-text-primary font-mono tabular-nums">
-              {formatCurrency(total)}
-            </td>
-          </tr>
         </tbody>
       </table>
     </div>
   )
 }
 
+/* ─────────────────────────────────────────────────────────
+   MAIN COMPONENT — Split-screen command center
+   ───────────────────────────────────────────────────────── */
+
 export function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const projectId = Number(id)
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+
+  // State: Left panel & core
   const [activeTab, setActiveTab] = useState('payapps')
   const [isCreatingPayApp, setIsCreatingPayApp] = useState(false)
   const [reconciliation, setReconciliation] = useState<ReconciliationReport | null>(null)
@@ -362,37 +325,43 @@ export function ProjectDetail() {
   const [recordPaymentOpen, setRecordPaymentOpen] = useState<number | null>(null)
   const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'Check', checkNumber: '', notes: '' })
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false)
-  const [hubView, setHubView] = useState<'orbital' | 'inbox'>('inbox')
-  const [hubTrades, setHubTrades] = useState<HubTrade[]>([])
-  const [selectedTradeName, setSelectedTradeName] = useState<string | null>(null)
 
+  // State: Right panel — Orbital/Hub ecosystem
+  const [hubView, setHubView] = useState<'orbital' | 'inbox'>('orbital')
+  const [hubTrades, setHubTrades] = useState<HubTrade[]>([])
+  const [selectedTrade, setSelectedTrade] = useState<VDPTrade | null>(null)
+
+  // Data hooks
   const { project, sovLines, payApps, changeOrders, attachments, isLoading, error, refresh } =
     useProject(projectId)
   const { isTrialGated } = useTrial()
 
-  // Derived: is the project completed?
+  // Derived state
   const isJobCompleted = project?.status === 'completed'
-
-  // Derived: is the project fully billed? (all SOV lines at 100% from last pay app)
   const isFullyBilled = reconciliation?.summary?.is_fully_reconciled ?? false
+  const nextPayAppNumber = (payApps[payApps.length - 1]?.app_number ?? 0) + 1
 
-  // Show success banner when redirected from email send
+  // Calculate ready-to-bill amount (total scheduled - total billed)
+  const readyToBill = useMemo(() => {
+    if (!reconciliation?.summary) return 0
+    const { total_work_completed = 0, total_billed = 0 } = reconciliation.summary
+    return Math.max(0, total_work_completed - total_billed)
+  }, [reconciliation])
+
+  // Success banner effect
   useEffect(() => {
     const sent = searchParams.get('sent')
     if (sent) {
       const paNum = sent.replace('pa', '#')
       setSuccessBanner(`Pay Application ${paNum} sent successfully!`)
-      // Clear the param from URL without navigation
       searchParams.delete('sent')
       setSearchParams(searchParams, { replace: true })
-      // Auto-dismiss after 8 seconds
       const timer = setTimeout(() => setSuccessBanner(null), 8000)
       return () => clearTimeout(timer)
     }
   }, [searchParams, setSearchParams])
 
-  // Load reconciliation when tab is active OR eagerly when project has pay apps
-  // (needed to know if job is fully billed for the completed state)
+  // Load reconciliation
   useEffect(() => {
     if (projectId && !reconciliation && (activeTab === 'reconciliation' || payApps.length > 0)) {
       setReconLoading(true)
@@ -403,12 +372,10 @@ export function ProjectDetail() {
     }
   }, [activeTab, projectId, reconciliation, payApps.length])
 
-  // Check QB connection status on mount
+  // Check QB connection status
   useEffect(() => {
     const checkQBStatus = async () => {
       try {
-        // Try to fetch QB status — if successful, QB is connected
-        // This endpoint returns { connected: true/false }
         const response = await fetch('/api/quickbooks/status', {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}`,
@@ -419,37 +386,44 @@ export function ProjectDetail() {
           setQbConnected(data.connected === true)
         }
       } catch {
-        // If check fails, assume not connected
         setQbConnected(false)
       }
     }
-
     checkQBStatus()
   }, [])
 
-  // Load hub trades when the orbital view is shown
+  // Load hub trades when orbital view is active
   useEffect(() => {
-    if (activeTab !== 'hub' || hubView !== 'orbital' || !projectId) return
+    if (hubView !== 'orbital' || !projectId) return
     getTrades(projectId)
       .then(res => { if (res.data) setHubTrades(res.data) })
       .catch(() => {})
-  }, [activeTab, hubView, projectId])
+  }, [hubView, projectId])
 
-  /**
-   * Handle adding a new change order
-   */
+  // Handlers
+  const handleCreatePayApp = async () => {
+    if (isCreatingPayApp || isTrialGated) return
+    try {
+      setIsCreatingPayApp(true)
+      const newPayApp = await createPayApp(projectId, 'web')
+      if (newPayApp?.id) {
+        navigate(`/projects/${projectId}/pay-app/${newPayApp.id}`)
+      }
+    } catch (err) {
+      console.error('Failed to create pay app:', err)
+    } finally {
+      setIsCreatingPayApp(false)
+    }
+  }
+
   const handleAddChangeOrder = async () => {
     if (isSubmittingCO || !coForm.description.trim() || !coForm.amount.trim()) {
       alert('Please fill in all fields')
       return
     }
-    setIsSubmittingCO(true)
     try {
-      const amount = Number(coForm.amount)
-      if (isNaN(amount) || amount <= 0) {
-        alert('Please enter a valid amount')
-        return
-      }
+      setIsSubmittingCO(true)
+      const amount = parseFloat(coForm.amount.replace(/[^0-9.-]/g, ''))
       await createProjectChangeOrder(projectId, {
         description: coForm.description,
         amount,
@@ -458,809 +432,581 @@ export function ProjectDetail() {
       setShowAddCO(false)
       await refresh()
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to create change order'
-      alert(msg)
+      console.error('Failed to add change order:', err)
+      alert('Failed to add change order')
     } finally {
       setIsSubmittingCO(false)
     }
   }
 
-  /**
-   * Handle updating a change order status
-   */
-  const handleUpdateCOStatus = async (coId: number, newStatus: string) => {
-    try {
-      await updateChangeOrderStatus(coId, newStatus)
-      await refresh()
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to update change order'
-      alert(msg)
-    }
-  }
-
-  /**
-   * Handle recording a manual payment
-   */
   const handleRecordPayment = async (payAppId: number) => {
-    if (isSubmittingPayment || !paymentForm.amount.trim()) {
-      alert('Please enter an amount')
-      return
-    }
-    setIsSubmittingPayment(true)
+    if (isSubmittingPayment || !paymentForm.amount) return
     try {
-      const amount = Number(paymentForm.amount)
-      if (isNaN(amount) || amount <= 0) {
-        alert('Please enter a valid amount')
-        return
-      }
+      setIsSubmittingPayment(true)
+      const amount = parseFloat(paymentForm.amount.replace(/[^0-9.-]/g, ''))
       await recordManualPayment(projectId, payAppId, {
         amount,
-        payment_method: paymentForm.method,
+        method: paymentForm.method,
         check_number: paymentForm.method === 'Check' ? paymentForm.checkNumber : undefined,
         notes: paymentForm.notes || undefined,
       })
-      setPaymentForm({ amount: '', method: 'Check', checkNumber: '', notes: '' })
       setRecordPaymentOpen(null)
+      setPaymentForm({ amount: '', method: 'Check', checkNumber: '', notes: '' })
       await refresh()
-      setReconciliation(null) // Force reload reconciliation
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to record payment'
-      alert(msg)
+      console.error('Failed to record payment:', err)
+      alert('Failed to record payment')
     } finally {
       setIsSubmittingPayment(false)
     }
   }
 
-  /**
-   * Create a new pay app and navigate to it
-   * This avoids navigating to /pay-app/new which causes "Invalid pay app ID"
-   */
-  const handleCreatePayApp = async () => {
-    if (isCreatingPayApp || isTrialGated) return
-    setIsCreatingPayApp(true)
-    try {
-      // Auto-generate period label and dates (matching old app.html behavior)
-      const now = new Date()
-      const months = ['January','February','March','April','May','June','July','August','September','October','November','December']
-      const periodLabel = `${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`
-      const periodStart = now.toISOString().split('T')[0]
-      // Period end = last day of current month
-      const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-      const periodEnd = endDate.toISOString().split('T')[0]
-
-      const response = await createPayApp(projectId, {
-        period_label: periodLabel,
-        period_start: periodStart,
-        period_end: periodEnd,
-      })
-      if (response.data) {
-        navigate(`/projects/${projectId}/pay-app/${response.data.id}`)
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to create pay application'
-      alert(msg)
-    } finally {
-      setIsCreatingPayApp(false)
-    }
-  }
-
-  // Mark job as completed
   const handleCompleteJob = async () => {
     if (isCompletingJob) return
-    if (!confirm('Mark this job as completed? This will prevent creating new pay applications. You can reopen the project later if needed.')) return
-    setIsCompletingJob(true)
     try {
+      setIsCompletingJob(true)
       await completeProject(projectId)
       await refresh()
-      setReconciliation(null) // Force reload reconciliation data
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to complete project'
-      alert(msg)
+      console.error('Failed to complete project:', err)
+      alert('Failed to complete project')
     } finally {
       setIsCompletingJob(false)
     }
   }
 
-  // Reopen a completed job
   const handleReopenJob = async () => {
     if (isReopeningJob) return
-    if (!confirm('Reopen this project? This will allow creating new pay applications again.')) return
-    setIsReopeningJob(true)
     try {
+      setIsReopeningJob(true)
       await reopenProject(projectId)
       await refresh()
-      setReconciliation(null) // Force reload reconciliation data
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to reopen project'
-      alert(msg)
+      console.error('Failed to reopen project:', err)
+      alert('Failed to reopen project')
     } finally {
       setIsReopeningJob(false)
     }
   }
 
-  // Sort pay apps by app_number descending (newest first)
-  const sortedPayApps = useMemo(
-    () =>
-      [...payApps].sort((a, b) => b.app_number - a.app_number),
-    [payApps]
-  )
+  // Orbital planets from trades
+  const orbitalPlanets = useMemo(() => {
+    return hubTrades.map((trade, idx) => {
+      const trustColorMap: Record<string, string> = {
+        high: '#00b87a',
+        medium: '#2563eb',
+        low: '#d97706',
+      }
+      const trustTier = (trade.trust_tier as 'high' | 'medium' | 'low') ?? 'medium'
+      return {
+        name: trade.trade_name || `Trade ${idx + 1}`,
+        initials: (trade.trade_name?.[0] || 'T').toUpperCase(),
+        color: trustColorMap[trustTier],
+        orbitRadius: 80 + idx * 20,
+        speed: 1 + idx * 0.15,
+        size: 16,
+        trustScore: trade.trust_score ?? 0,
+      }
+    })
+  }, [hubTrades])
 
-  // --- Orbital view helpers ---
-  const ORBIT_RADII = [90, 130, 165, 200, 235, 268]
-  const TRUST_TIER_COLORS: Record<string, string> = {
-    platinum: '#7c3aed', gold: '#d97706', silver: '#64748b', bronze: '#ea580c', review: '#dc2626',
-  }
-  function getHubTierColor(score: number) {
-    if (score >= 687) return TRUST_TIER_COLORS.platinum
-    if (score >= 534) return TRUST_TIER_COLORS.gold
-    if (score >= 381) return TRUST_TIER_COLORS.silver
-    if (score >= 229) return TRUST_TIER_COLORS.bronze
-    return TRUST_TIER_COLORS.review
-  }
-
-  const orbitalPlanets = useMemo(() =>
-    hubTrades.map((trade, i) => ({
-      name: trade.name,
-      initials: trade.name.substring(0, 3),
-      color: getHubTierColor(500), // default score until per-trade scores are fetched
-      orbitRadius: ORBIT_RADII[i % ORBIT_RADII.length],
-      speed: 0.4 + (i % 4) * 0.25,
-      size: 18,
-      trustScore: 500,
-    })),
-    [hubTrades] // eslint-disable-line react-hooks/exhaustive-deps
-  )
-
-  const selectedVDPTrade: VDPTrade | null = useMemo(() => {
-    if (!selectedTradeName) return null
-    const t = hubTrades.find(h => h.name === selectedTradeName)
-    if (!t) return null
-    return {
-      id: t.id,
-      name: t.name,
-      company_name: t.company_name || t.name,
-      contact_email: t.contact_email || '',
-      status: t.status === 'active' ? 'active' : 'invited',
-      email_alias: t.email_alias ?? undefined,
-      doc_count: t.upload_count,
-      unread_count: t.pending_count,
-      trust_score: 500,
+  // Handle planet click in orbital
+  const handleOrbitalPlanetClick = (tradeName: string) => {
+    const trade = hubTrades.find(t => t.trade_name === tradeName)
+    if (trade) {
+      const vdpTrade: VDPTrade = {
+        id: trade.id,
+        name: trade.trade_name,
+        company_name: trade.company_name || '',
+        contact_email: trade.contact_email || '',
+        status: trade.status || 'pending',
+        email_alias: trade.email_alias,
+        invoice_total: trade.invoice_total,
+        last_upload_at: trade.last_upload_at,
+        doc_count: trade.doc_count,
+        unread_count: trade.unread_count,
+        trust_score: trade.trust_score,
+        trust_tier: trade.trust_tier,
+      }
+      setSelectedTrade(vdpTrade)
     }
-  }, [selectedTradeName, hubTrades])
+  }
 
+  // Handle loading state
   if (isLoading) {
     return (
-      <div className="space-y-8">
-        <Skeleton className="h-16 rounded-lg" />
-        <Skeleton className="h-40 rounded-lg" />
+      <div className="min-h-screen bg-gray-50 p-6">
+        <Skeleton className="h-8 w-64 mb-6" />
+        <div className="grid grid-cols-3 gap-6 mb-8">
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-32" />)}
+        </div>
+        <Skeleton className="h-96" />
       </div>
     )
   }
 
   if (error || !project) {
     return (
-      <div className="space-y-8">
-        <PageHeader title="Project Not Found" />
-        <EmptyState
-          icon={FileText}
-          title="Project not found"
-          description="The project you're looking for doesn't exist or has been deleted"
-          actions={
-            <Link to="/dashboard">
-              <Button>Back to Dashboard</Button>
-            </Link>
-          }
-        />
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+        <div className="text-center">
+          <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-text-primary mb-2">Project not found</h2>
+          <p className="text-text-muted mb-6">We couldn't load the project details.</p>
+          <Button onClick={() => navigate('/projects')}>Back to Projects</Button>
+        </div>
       </div>
     )
   }
 
+  // ═══════════════════════════════════════════════════════
+  // MAIN RENDER — Split-screen layout
+  // ═══════════════════════════════════════════════════════
+
   return (
-    <div className="space-y-8">
-      {/* Success Banner */}
-      {successBanner && (
-        <div className="rounded-lg bg-emerald-50 border border-emerald-300 p-4 flex items-center justify-between animate-in fade-in slide-in-from-top-2">
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-emerald-800">{successBanner}</p>
-              <p className="text-xs text-emerald-600 mt-0.5">
-                Check the <button onClick={() => setActiveTab('reconciliation')} className="underline font-semibold hover:text-emerald-800">Reconciliation</button> tab to verify all invoices add up to the contract total.
+    <div style={{ display: 'flex', height: 'calc(100vh - 56px)' }} className="bg-gray-50">
+      {/* LEFT PANEL — 55% — Financial data, scrollable, white */}
+      <div
+        style={{
+          width: '55%',
+          overflowY: 'auto',
+          background: '#ffffff',
+          borderRight: '1.5px solid #e2e8f0',
+          padding: '24px',
+        }}
+        className="flex flex-col gap-6"
+      >
+        {/* Back link */}
+        <Link to="/projects" className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1">
+          <ChevronRight className="w-4 h-4 rotate-180" />
+          Back to Projects
+        </Link>
+
+        {/* Success banner */}
+        <AnimatePresence>
+          {successBanner && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="bg-emerald-50 border-l-4 border-emerald-500 p-4 rounded"
+            >
+              <p className="text-emerald-800 font-medium flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5" />
+                {successBanner}
               </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Header: Project name + status */}
+        <div className="space-y-3">
+          <div className="flex items-baseline justify-between gap-4">
+            <h1 className="text-3xl font-bold text-text-primary font-serif">{project.name}</h1>
+            {isJobCompleted && (
+              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 flex items-center gap-1">
+                <Trophy className="w-3.5 h-3.5" />
+                Completed
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-4 text-sm">
+            <div>
+              <p className="text-text-muted">Owner</p>
+              <p className="font-medium text-text-primary">{project.owner || 'Unknown'}</p>
+            </div>
+            <div>
+              <p className="text-text-muted">Contract Amount</p>
+              <p className="font-mono font-semibold text-text-primary">{formatCurrency(project.original_contract || 0)}</p>
+            </div>
+            <div>
+              <p className="text-text-muted">Terms</p>
+              <p className="font-medium text-text-primary">{project.payment_terms || 'Net 30'}</p>
             </div>
           </div>
-          <button onClick={() => setSuccessBanner(null)} className="text-emerald-400 hover:text-emerald-600 p-1">
-            <X className="w-4 h-4" />
-          </button>
         </div>
-      )}
 
-      {/* Trial Gated Banner */}
-      {isTrialGated && (
-        <div className="rounded-lg bg-warning-50 border border-warning-200 p-4">
-          <p className="text-sm text-warning-700">
-            <strong>Trial ended.</strong> This project is in read-only mode.
-          </p>
-        </div>
-      )}
+        {/* HERO CTA: Create Pay App */}
+        {!isJobCompleted && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-gradient-to-r from-blue-50 to-cyan-50 border-l-4 border-blue-500 rounded-lg p-5"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-blue-900 mb-1">Ready to bill</p>
+                <p className="text-2xl font-bold text-blue-950 font-mono">{formatCurrency(readyToBill)}</p>
+                <p className="text-xs text-blue-700 mt-2">
+                  {payApps.length === 0
+                    ? 'Create your first pay application'
+                    : `Next: Pay Application #${nextPayAppNumber}`}
+                </p>
+              </div>
+              <Button
+                onClick={handleCreatePayApp}
+                disabled={isCreatingPayApp || isTrialGated}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-medium flex items-center gap-2"
+              >
+                {isCreatingPayApp ? '...' : <>
+                  <Zap className="w-4 h-4" />
+                  Create Pay App
+                </>}
+              </Button>
+            </div>
+          </motion.div>
+        )}
 
-      {/* Page Header */}
-      <PageHeader
-        title={project.name}
-        description={`Contract Amount: ${formatCurrency(project.original_contract)}`}
-      />
-      <div className="-mt-4 flex items-center gap-3">
+        {/* Job completed state */}
         {isJobCompleted && (
-          <Badge variant="success" className="text-xs">
-            <Trophy className="w-3 h-3 mr-1" /> Completed
-          </Badge>
-        )}
-        <QBSyncButton
-          projectId={projectId}
-          qbSyncStatus={project.qb_sync_status}
-          qbConnected={qbConnected}
-          variant="button"
-          onSyncComplete={() => refresh()}
-        />
-      </div>
-
-      {/* Project Info Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-        {project.owner && (
-          <div className="bg-card rounded-lg p-4 border border-border">
-            <p className="text-text-muted text-xs font-medium uppercase tracking-wide">
-              Owner
-            </p>
-            <p className="text-text-primary font-medium mt-1">{project.owner}</p>
-          </div>
-        )}
-        {project.contractor && (
-          <div className="bg-card rounded-lg p-4 border border-border">
-            <p className="text-text-muted text-xs font-medium uppercase tracking-wide">
-              Contractor
-            </p>
-            <p className="text-text-primary font-medium mt-1">
-              {project.contractor}
-            </p>
-          </div>
-        )}
-        {project.contract_date && (
-          <div className="bg-card rounded-lg p-4 border border-border">
-            <p className="text-text-muted text-xs font-medium uppercase tracking-wide">
-              Contract Date
-            </p>
-            <p className="text-text-primary font-medium mt-1">
-              {formatDate(project.contract_date)}
-            </p>
-          </div>
-        )}
-        {project.payment_terms && (
-          <div className="bg-card rounded-lg p-4 border border-border">
-            <p className="text-text-muted text-xs font-medium uppercase tracking-wide">
-              Payment Terms
-            </p>
-            <p className="text-text-primary font-medium mt-1">
-              {project.payment_terms}
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Error State */}
-      {error && (
-        <div className="rounded-lg bg-danger-50 border border-danger-200 p-4">
-          <p className="text-sm text-danger-700">{error}</p>
-        </div>
-      )}
-
-      {/* Tabs */}
-      <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
-
-      {/* Tab Content */}
-      <div>
-        {activeTab === 'payapps' && (
-          <div className="space-y-4">
-            {/* Job Completed Banner */}
-            {isJobCompleted && (
-              <div className="rounded-lg bg-emerald-50 border border-emerald-300 p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3">
-                    <Trophy className="w-6 h-6 text-emerald-600 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-base font-semibold text-emerald-800">Job Completed</p>
-                      <p className="text-sm text-emerald-600 mt-1">
-                        All billing for this project is finished. No new pay applications can be created.
-                        {project?.completed_at && (
-                          <span className="block text-xs text-emerald-500 mt-1">
-                            Completed on {formatDate(project.completed_at)}
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isReopeningJob}
-                    onClick={handleReopenJob}
-                    className="flex-shrink-0 text-emerald-700 border-emerald-300 hover:bg-emerald-100"
-                  >
-                    <RotateCcw className="w-4 h-4 mr-1.5" />
-                    {isReopeningJob ? 'Reopening...' : 'Reopen Job'}
-                  </Button>
-                </div>
+          <Card className="bg-emerald-50 border-emerald-200 p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="font-semibold text-emerald-900 mb-1">Job Completed</h3>
+                <p className="text-sm text-emerald-700">
+                  All line items have been billed. You can reopen this project to add more pay applications if needed.
+                </p>
               </div>
-            )}
-
-            {/* Fully billed suggestion — show when reconciled but not yet completed */}
-            {!isJobCompleted && isFullyBilled && payApps.length > 0 && (
-              <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-blue-600 flex-shrink-0" />
-                    <p className="text-sm text-blue-800">
-                      <strong>All billing is complete.</strong> Ready to close out this job?
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    disabled={isCompletingJob}
-                    onClick={handleCompleteJob}
-                    className="flex-shrink-0 bg-blue-600 hover:bg-blue-700"
-                  >
-                    <Lock className="w-4 h-4 mr-1.5" />
-                    {isCompletingJob ? 'Completing...' : 'Mark Job Complete'}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Create next pay app button — hidden for completed jobs */}
-            {!isTrialGated && !isJobCompleted && (
-              <div className="flex justify-end">
-                <Button
-                  disabled={isCreatingPayApp}
-                  onClick={handleCreatePayApp}
-                >
-                  {isCreatingPayApp
-                    ? 'Creating...'
-                    : sortedPayApps.length === 0
-                      ? 'Create Pay Application #1'
-                      : `Create Pay Application #${Math.max(...payApps.map(p => p.app_number)) + 1}`}
-                </Button>
-              </div>
-            )}
-
-            {sortedPayApps.length === 0 ? (
-              <EmptyState
-                icon={FileText}
-                title="No pay applications yet"
-                description="Create your first pay application to track progress on this project"
-              />
-            ) : (
-              <div className="space-y-4">
-                {sortedPayApps.map((payApp) => (
-                  <PayAppRow
-                    key={payApp.id}
-                    payApp={payApp}
-                    projectId={projectId}
-                    showRecordPaymentForm={recordPaymentOpen === payApp.id}
-                    onShowRecordPaymentChange={(show) => {
-                      if (show) {
-                        setRecordPaymentOpen(payApp.id)
-                        setPaymentForm({ amount: String(payApp.amount_due || ''), method: 'Check', checkNumber: '', notes: '' })
-                      } else {
-                        setRecordPaymentOpen(null)
-                        setPaymentForm({ amount: '', method: 'Check', checkNumber: '', notes: '' })
-                      }
-                    }}
-                    recordPaymentForm={recordPaymentOpen === payApp.id ? paymentForm : undefined}
-                    onRecordPaymentChange={(field, value) => {
-                      setPaymentForm(prev => ({ ...prev, [field]: value }))
-                    }}
-                    onRecordPaymentSubmit={() => handleRecordPayment(payApp.id)}
-                    isRecordingPayment={isSubmittingPayment}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'sov' && (
-          <div className="space-y-6">
-            <SOVTable lines={sovLines} isLoading={isLoading} />
-            {/* Import from QuickBooks Estimate */}
-            {sovLines.length === 0 && (
-              <QBEstimateImport
-                projectId={projectId}
-                onImportComplete={() => refresh()}
-              />
-            )}
-          </div>
-        )}
-
-        {activeTab === 'changeorders' && (
-          <div className="space-y-4">
-            {/* Add Change Order Form */}
-            {!showAddCO ? (
               <Button
                 variant="outline"
-                onClick={() => setShowAddCO(true)}
-                className="w-full sm:w-auto"
+                size="sm"
+                onClick={handleReopenJob}
+                disabled={isReopeningJob}
               >
-                <Plus className="w-4 h-4 mr-2" />
-                Add Change Order
+                {isReopeningJob ? 'Reopening...' : 'Reopen Job'}
               </Button>
-            ) : (
-              <Card className="p-4 bg-blue-50 border border-blue-200 space-y-3">
-                <p className="text-sm font-medium text-blue-900">Create New Change Order</p>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-medium text-text-muted">Description</label>
-                    <input
-                      type="text"
-                      placeholder="e.g., Additional framing work"
-                      value={coForm.description}
-                      onChange={(e) => setCoForm({ ...coForm, description: e.target.value })}
-                      className="w-full mt-1 px-3 py-2 border border-border rounded-lg text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-text-muted">Amount</label>
-                    <input
-                      type="number"
-                      placeholder="0.00"
-                      value={coForm.amount}
-                      onChange={(e) => setCoForm({ ...coForm, amount: e.target.value })}
-                      className="w-full mt-1 px-3 py-2 border border-border rounded-lg text-sm"
-                    />
-                  </div>
-                  <div className="flex gap-2 justify-end">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setShowAddCO(false)
-                        setCoForm({ description: '', amount: '' })
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={handleAddChangeOrder}
-                      disabled={isSubmittingCO || !coForm.description.trim() || !coForm.amount.trim()}
-                    >
-                      {isSubmittingCO ? 'Creating...' : 'Create Change Order'}
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-            )}
-
-            {/* Change Orders Table */}
-            {changeOrders.length === 0 ? (
-              <Card className="p-6">
-                <EmptyState
-                  icon={FileText}
-                  title="No change orders"
-                  description="Change orders from pay applications will appear here"
-                />
-              </Card>
-            ) : (
-              <Card className="p-6">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b-2 border-border">
-                        <th className="text-left py-3 px-4 font-semibold text-text-primary">CO #</th>
-                        <th className="text-left py-3 px-4 font-semibold text-text-primary">Description</th>
-                        <th className="text-left py-3 px-4 font-semibold text-text-primary">Pay App</th>
-                        <th className="text-left py-3 px-4 font-semibold text-text-primary">Status</th>
-                        <th className="text-right py-3 px-4 font-semibold text-text-primary">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {changeOrders.map((co: any) => (
-                        <tr key={co.id} className="border-b border-border hover:bg-primary-50">
-                          <td className="py-3 px-4 text-text-secondary">{co.co_number || '—'}</td>
-                          <td className="py-3 px-4 text-text-primary font-medium">{co.description}</td>
-                          <td className="py-3 px-4 text-text-secondary">#{co.app_number}</td>
-                          <td className="py-3 px-4">
-                            <select
-                              value={co.status || 'pending'}
-                              onChange={(e) => handleUpdateCOStatus(co.id, e.target.value)}
-                              className="px-2 py-1 border border-border rounded text-sm font-medium"
-                            >
-                              <option value="pending">Pending</option>
-                              <option value="approved">Approved</option>
-                              <option value="billed">Billed</option>
-                              <option value="void">Void</option>
-                            </select>
-                          </td>
-                          <td className="py-3 px-4 text-right text-text-primary font-mono tabular-nums">
-                            {formatCurrency(Number(co.amount) || 0)}
-                          </td>
-                        </tr>
-                      ))}
-                      <tr className="font-semibold bg-primary-50 border-t-2 border-primary-200">
-                        <td colSpan={4} className="py-3 px-4 text-text-primary">Total Change Orders</td>
-                        <td className="py-3 px-4 text-right text-text-primary font-mono tabular-nums">
-                          {formatCurrency(changeOrders.reduce((s: number, co: any) => s + (Number(co.amount) || 0), 0))}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-            )}
-          </div>
+            </div>
+          </Card>
         )}
 
-        {activeTab === 'hub' && (
-          <div>
-            {/* View toggle */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-              <button
-                onClick={() => setHubView('orbital')}
-                style={{
-                  padding: '6px 14px',
-                  borderRadius: 8,
-                  border: '1.5px solid',
-                  borderColor: hubView === 'orbital' ? '#2563eb' : '#e2e8f0',
-                  background: hubView === 'orbital' ? '#2563eb' : '#ffffff',
-                  color: hubView === 'orbital' ? '#ffffff' : '#64748b',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                🪐 Orbital
-              </button>
-              <button
-                onClick={() => setHubView('inbox')}
-                style={{
-                  padding: '6px 14px',
-                  borderRadius: 8,
-                  border: '1.5px solid',
-                  borderColor: hubView === 'inbox' ? '#2563eb' : '#e2e8f0',
-                  background: hubView === 'inbox' ? '#2563eb' : '#ffffff',
-                  color: hubView === 'inbox' ? '#ffffff' : '#64748b',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                📥 Inbox
-              </button>
-            </div>
+        {/* Financial KPI grid */}
+        <div className="grid grid-cols-2 gap-4">
+          <Card className="p-5">
+            <p className="text-xs text-text-muted uppercase tracking-wide">Contract Amount</p>
+            <p className="text-xl font-bold text-text-primary font-mono mt-2">
+              {formatCurrency(project.original_contract || 0)}
+            </p>
+          </Card>
+          <Card className="p-5">
+            <p className="text-xs text-text-muted uppercase tracking-wide">Total Change Orders</p>
+            <p className="text-xl font-bold text-text-primary font-mono mt-2">
+              {formatCurrency(changeOrders.reduce((sum, co) => sum + (co.amount || 0), 0))}
+            </p>
+          </Card>
+          <Card className="p-5">
+            <p className="text-xs text-text-muted uppercase tracking-wide">Total Billed</p>
+            <p className="text-xl font-bold text-emerald-700 font-mono mt-2">
+              {formatCurrency(reconciliation?.summary?.total_billed || 0)}
+            </p>
+          </Card>
+          <Card className="p-5">
+            <p className="text-xs text-text-muted uppercase tracking-wide">Retention Held</p>
+            <p className="text-xl font-bold text-amber-700 font-mono mt-2">
+              {formatCurrency(reconciliation?.summary?.total_retainage_held || 0)}
+            </p>
+          </Card>
+        </div>
 
-            {/* Orbital view */}
-            {hubView === 'orbital' && (
-              <div style={{ display: 'flex', gap: 16, minHeight: 500, alignItems: 'flex-start' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  {orbitalPlanets.length === 0 ? (
-                    <Card className="p-8 bg-gradient-to-br from-slate-900 to-slate-950 border-slate-800 rounded-xl flex items-center justify-center min-h-96">
-                      <div className="text-center">
-                        <p className="text-2xl mb-3">🪐</p>
-                        <p className="text-slate-300 text-sm font-medium mb-1">No trades yet</p>
-                        <p className="text-slate-500 text-xs">Add trades in the Inbox view to see them orbit</p>
+        {/* Tabs */}
+        <div className="border-b border-border">
+          <div className="flex gap-1 overflow-x-auto">
+            {TABS.map((tab) => {
+              const Icon = tab.icon
+              const isActive = activeTab === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-1.5 px-3 py-3.5 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+                    isActive
+                      ? tab.accent
+                        ? 'border-emerald-500 text-emerald-700'
+                        : 'border-blue-500 text-blue-700'
+                      : 'border-transparent text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Tab content */}
+        <div className="flex-1">
+          {activeTab === 'payapps' && (
+            <div className="space-y-4">
+              {payApps.length === 0 ? (
+                <EmptyState
+                  icon={ReceiptText}
+                  title="No Pay Applications"
+                  description="Create your first pay application to get started"
+                />
+              ) : (
+                payApps.map(pa => (
+                  <PayAppRow
+                    key={pa.id}
+                    payApp={pa}
+                    projectId={projectId}
+                    recordPaymentForm={paymentForm}
+                    showRecordPaymentForm={recordPaymentOpen === pa.id}
+                    onShowRecordPaymentChange={(show) => setRecordPaymentOpen(show ? pa.id : null)}
+                    onRecordPaymentChange={(field, value) =>
+                      setPaymentForm(prev => ({ ...prev, [field]: value }))
+                    }
+                    onRecordPaymentSubmit={() => handleRecordPayment(pa.id)}
+                    isRecordingPayment={isSubmittingPayment}
+                  />
+                ))
+              )}
+            </div>
+          )}
+
+          {activeTab === 'sov' && (
+            <div className="space-y-4">
+              {sovLines.length === 0 ? (
+                <EmptyState
+                  icon={Upload}
+                  title="No Schedule of Values"
+                  description="Upload a Schedule of Values to get started"
+                />
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-text-primary">{sovLines.length} Line Items</h3>
+                    {qbConnected && <QBEstimateImport projectId={projectId} />}
+                  </div>
+                  <SOVTable lines={sovLines} isLoading={false} />
+                </>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'changeorders' && (
+            <div className="space-y-4">
+              {changeOrders.length > 0 && (
+                <div className="space-y-3">
+                  {changeOrders.map(co => (
+                    <Card key={co.id} className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h4 className="font-semibold text-text-primary">{co.description}</h4>
+                          <p className="text-sm text-text-muted mt-1">{formatDate(co.created_at)}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-mono font-bold text-lg text-text-primary">
+                            {formatCurrency(co.amount)}
+                          </p>
+                          <Badge variant="outline" className="mt-1">
+                            {co.status}
+                          </Badge>
+                        </div>
                       </div>
                     </Card>
-                  ) : (
-                    <OrbitalCanvas
-                      planets={orbitalPlanets}
-                      onPlanetHover={(name) => {
-                        if (name) setSelectedTradeName(name)
-                      }}
-                    />
-                  )}
+                  ))}
                 </div>
-                <VendorDetailPanel
-                  trade={selectedVDPTrade}
-                  projectAddress={project.address || project.name}
-                  onClose={() => setSelectedTradeName(null)}
-                />
-              </div>
-            )}
-
-            {/* Inbox view */}
-            {hubView === 'inbox' && (
-              <HubTab projectId={projectId} />
-            )}
-          </div>
-        )}
-
-        {activeTab === 'documents' && (
-          attachments.length === 0 ? (
-            <Card className="p-6">
-              <EmptyState
-                icon={FileText}
-                title="No documents"
-                description="Uploaded documents and lien waivers will appear here"
-              />
-            </Card>
-          ) : (
-            <Card className="p-6">
+              )}
               <div className="space-y-3">
-                {attachments.map((att: any) => (
-                  <div key={att.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
-                    <div className="flex items-center gap-3">
-                      <Paperclip className="w-4 h-4 text-text-muted" />
+                <Button
+                  variant="outline"
+                  onClick={() => setShowAddCO(!showAddCO)}
+                  className="w-full"
+                >
+                  {showAddCO ? 'Cancel' : '+ Add Change Order'}
+                </Button>
+                {showAddCO && (
+                  <Card className="p-4 space-y-3">
+                    <div>
+                      <label className="text-xs font-medium text-text-muted">Description</label>
+                      <input
+                        type="text"
+                        value={coForm.description}
+                        onChange={e => setCoForm({ ...coForm, description: e.target.value })}
+                        placeholder="e.g., Additional site work"
+                        className="w-full mt-1 px-3 py-2 border border-border rounded-lg text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-text-muted">Amount</label>
+                      <input
+                        type="text"
+                        value={coForm.amount}
+                        onChange={e => setCoForm({ ...coForm, amount: e.target.value })}
+                        placeholder="0.00"
+                        className="w-full mt-1 px-3 py-2 border border-border rounded-lg text-sm"
+                      />
+                    </div>
+                    <Button
+                      onClick={handleAddChangeOrder}
+                      disabled={isSubmittingCO}
+                      className="w-full"
+                    >
+                      {isSubmittingCO ? 'Adding...' : 'Add Change Order'}
+                    </Button>
+                  </Card>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'documents' && (
+            <div>
+              {attachments.length === 0 ? (
+                <EmptyState
+                  icon={FolderOpen}
+                  title="No Documents"
+                  description="Upload project documents here"
+                />
+              ) : (
+                <div className="space-y-3">
+                  {attachments.map(att => (
+                    <Card key={att.id} className="p-4 flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-text-primary">{att.original_name || att.filename}</p>
-                        <p className="text-xs text-text-muted">
-                          Pay App #{att.app_number}
-                          {att.file_size ? ` • ${(att.file_size / 1024).toFixed(0)} KB` : ''}
+                        <p className="font-medium text-text-primary">{att.filename}</p>
+                        <p className="text-xs text-text-muted mt-1">{formatDate(att.created_at)}</p>
+                      </div>
+                      <Button variant="outline" size="sm">
+                        <FileText className="w-4 h-4" />
+                      </Button>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'reconciliation' && (
+            <div>
+              {reconLoading ? (
+                <Skeleton className="h-64" />
+              ) : reconciliation ? (
+                <div className="space-y-4">
+                  <Card className={`p-4 ${isFullyBilled ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className={`text-sm font-medium ${isFullyBilled ? 'text-emerald-900' : 'text-amber-900'}`}>
+                          {isFullyBilled ? '✓ Fully Reconciled' : 'Reconciliation pending'}
+                        </p>
+                        <p className={`text-xs mt-1 ${isFullyBilled ? 'text-emerald-700' : 'text-amber-700'}`}>
+                          All work completed has been billed
                         </p>
                       </div>
                     </div>
-                    <a
-                      href={`/uploads/${att.filename}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-primary-600 hover:text-primary-700 font-medium"
-                    >
-                      View
-                    </a>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )
-        )}
-
-        {activeTab === 'reconciliation' && (
-          reconLoading ? (
-            <div className="space-y-2">
-              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 rounded-lg" />)}
-            </div>
-          ) : !reconciliation ? (
-            <Card className="p-6">
-              <EmptyState
-                icon={FileText}
-                title="No billing data"
-                description="Submit pay applications to see reconciliation"
-              />
-            </Card>
-          ) : (
-            <div className="space-y-6">
-              {/* Reconciliation Status */}
-              <Card className={`p-4 border-2 ${reconciliation.summary.is_fully_reconciled ? 'border-emerald-300 bg-emerald-50' : 'border-amber-300 bg-amber-50'}`}>
-                <div className="flex items-center gap-3">
-                  {reconciliation.summary.is_fully_reconciled ? (
-                    <CheckCircle2 className="w-6 h-6 text-emerald-600 flex-shrink-0" />
-                  ) : (
-                    <AlertTriangle className="w-6 h-6 text-amber-600 flex-shrink-0" />
-                  )}
-                  <div>
-                    <p className={`font-semibold ${reconciliation.summary.is_fully_reconciled ? 'text-emerald-800' : 'text-amber-800'}`}>
-                      {reconciliation.summary.is_fully_reconciled
-                        ? 'Fully Reconciled — All invoices add up to the contract amount'
-                        : `Variance: ${formatCurrency(Math.abs(reconciliation.summary.variance))} remaining to bill`}
-                    </p>
-                    <p className={`text-sm mt-0.5 ${reconciliation.summary.is_fully_reconciled ? 'text-emerald-600' : 'text-amber-600'}`}>
-                      Contract: {formatCurrency(reconciliation.adjusted_contract)} | Work Completed: {formatCurrency(reconciliation.summary.total_work_completed || (reconciliation.summary.total_billed + reconciliation.summary.total_retainage_held))}
-                    </p>
+                  </Card>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Card className="p-4">
+                      <p className="text-xs text-text-muted">Total Work Completed</p>
+                      <p className="text-lg font-bold text-text-primary font-mono mt-1">
+                        {formatCurrency(reconciliation.summary?.total_work_completed || 0)}
+                      </p>
+                    </Card>
+                    <Card className="p-4">
+                      <p className="text-xs text-text-muted">Total Billed</p>
+                      <p className="text-lg font-bold text-text-primary font-mono mt-1">
+                        {formatCurrency(reconciliation.summary?.total_billed || 0)}
+                      </p>
+                    </Card>
+                    <Card className="p-4">
+                      <p className="text-xs text-text-muted">Total Retainage</p>
+                      <p className="text-lg font-bold text-amber-700 font-mono mt-1">
+                        {formatCurrency(reconciliation.summary?.total_retainage_held || 0)}
+                      </p>
+                    </Card>
+                    <Card className="p-4">
+                      <p className="text-xs text-text-muted">Balance to Finish</p>
+                      <p className="text-lg font-bold text-text-primary font-mono mt-1">
+                        {formatCurrency((reconciliation.summary?.total_work_completed || 0) - (reconciliation.summary?.total_billed || 0))}
+                      </p>
+                    </Card>
                   </div>
                 </div>
-              </Card>
+              ) : null}
+            </div>
+          )}
+        </div>
+      </div>
 
-              {/* Why is this off? */}
-              {!reconciliation.summary.is_fully_reconciled && (
-                <Card className="p-4 border border-amber-200 bg-amber-50/50">
-                  <div className="flex items-center gap-2 mb-2">
-                    <AlertTriangle className="w-4 h-4 text-amber-600" />
-                    <p className="font-semibold text-amber-800 text-sm">Why is this off?</p>
-                  </div>
-                  <div className="space-y-1">
-                    {(reconciliation.summary.variance_reasons as string[] | undefined)?.length ? (
-                      (reconciliation.summary.variance_reasons as string[]).map((reason: string, i: number) => (
-                        <p key={i} className="text-sm text-amber-700">→ {reason}</p>
-                      ))
-                    ) : (
-                      <p className="text-sm text-amber-700">→ Review your change orders and SOV progress to identify unbilled items.</p>
+      {/* RIGHT PANEL — 45% — Dark orbital + hub ecosystem */}
+      <div
+        style={{
+          width: '45%',
+          display: 'flex',
+          flexDirection: 'column',
+          background: '#04070f',
+        }}
+        className="overflow-hidden relative"
+      >
+        {/* Toggle bar — orbital / inbox / invite */}
+        <div className="bg-slate-900 border-b border-slate-700 p-3 flex items-center gap-2">
+          <button
+            onClick={() => setHubView('orbital')}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+              hubView === 'orbital'
+                ? 'bg-white text-slate-900'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            🪐 Orbital
+          </button>
+          <button
+            onClick={() => setHubView('inbox')}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+              hubView === 'inbox'
+                ? 'bg-white text-slate-900'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            📥 Inbox
+          </button>
+        </div>
+
+        {/* Content area */}
+        <div className="flex-1 overflow-hidden relative">
+          {hubView === 'orbital' && (
+            <div className="relative w-full h-full">
+              {hubTrades.length > 0 ? (
+                <>
+                  <OrbitalCanvas
+                    planets={orbitalPlanets}
+                    onPlanetHover={(name) => {
+                      // Could be used for tooltip, but orbital handles this internally
+                    }}
+                  />
+                  {/* Vendor detail panel slides in from right */}
+                  <AnimatePresence>
+                    {selectedTrade && (
+                      <motion.div
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 20 }}
+                        className="absolute right-0 top-0 bottom-0 w-72 bg-white border-l border-slate-200 shadow-2xl z-50"
+                      >
+                        <VendorDetailPanel
+                          trade={selectedTrade}
+                          projectAddress={project?.address || ''}
+                          onClose={() => setSelectedTrade(null)}
+                        />
+                      </motion.div>
                     )}
+                  </AnimatePresence>
+                </>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center p-6 text-center">
+                  <div>
+                    <p className="text-slate-400 text-sm">No trades added yet</p>
+                    <p className="text-slate-500 text-xs mt-1">Add trades to see the orbital ecosystem</p>
                   </div>
-                </Card>
+                </div>
               )}
-
-              {/* Contract Summary */}
-              <Card className="p-6">
-                <h3 className="text-lg font-semibold text-text-primary mb-4">Contract Summary</h3>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  <div>
-                    <p className="text-xs text-text-muted uppercase tracking-wide">Original Contract</p>
-                    <p className="text-lg font-mono font-semibold text-text-primary">{formatCurrency(reconciliation.original_contract)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-text-muted uppercase tracking-wide">Change Orders</p>
-                    <p className="text-lg font-mono font-semibold text-text-primary">{formatCurrency(reconciliation.total_change_orders)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-text-muted uppercase tracking-wide">Adjusted Contract</p>
-                    <p className="text-lg font-mono font-semibold text-primary-600">{formatCurrency(reconciliation.adjusted_contract)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-text-muted uppercase tracking-wide">Total Paid</p>
-                    <p className="text-lg font-mono font-semibold text-emerald-600">{formatCurrency(reconciliation.summary.total_paid)}</p>
-                  </div>
-                </div>
-              </Card>
-
-              {/* Invoice Breakdown */}
-              <Card className="p-6">
-                <h3 className="text-lg font-semibold text-text-primary mb-4">Invoice Breakdown</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b-2 border-border">
-                        <th className="text-left py-3 px-3 font-semibold text-text-primary">#</th>
-                        <th className="text-left py-3 px-3 font-semibold text-text-primary">Period</th>
-                        <th className="text-left py-3 px-3 font-semibold text-text-primary">Status</th>
-                        <th className="text-right py-3 px-3 font-semibold text-text-primary">Amount Due</th>
-                        <th className="text-right py-3 px-3 font-semibold text-text-primary">Retainage Held</th>
-                        <th className="text-right py-3 px-3 font-semibold text-text-primary">Paid</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {reconciliation.invoices.map((inv) => (
-                        <tr key={inv.app_number} className={`border-b border-border ${inv.is_retainage_release ? 'bg-emerald-50' : 'hover:bg-primary-50'}`}>
-                          <td className="py-3 px-3 text-text-secondary">
-                            {inv.is_retainage_release ? 'RR' : inv.app_number}
-                          </td>
-                          <td className="py-3 px-3 text-text-primary font-medium">
-                            {inv.period_label || '—'}
-                            {inv.is_retainage_release && (
-                              <span className="ml-2 text-xs text-emerald-600 font-semibold">RETAINAGE RELEASE</span>
-                            )}
-                          </td>
-                          <td className="py-3 px-3">
-                            <Badge variant={inv.status === 'submitted' ? 'default' : inv.status === 'paid' ? 'success' : 'warning'}>
-                              {inv.status}
-                            </Badge>
-                          </td>
-                          <td className="py-3 px-3 text-right font-mono tabular-nums">{formatCurrency(inv.amount_due)}</td>
-                          <td className="py-3 px-3 text-right font-mono tabular-nums">{formatCurrency(inv.retention_held)}</td>
-                          <td className="py-3 px-3 text-right font-mono tabular-nums text-emerald-600">{formatCurrency(inv.amount_paid)}</td>
-                        </tr>
-                      ))}
-                      <tr className="font-semibold bg-primary-50 border-t-2 border-primary-200">
-                        <td colSpan={3} className="py-3 px-3 text-text-primary">Totals (Billed)</td>
-                        <td className="py-3 px-3 text-right font-mono tabular-nums">{formatCurrency(reconciliation.summary.total_billed)}</td>
-                        <td className="py-3 px-3 text-right font-mono tabular-nums">{formatCurrency(reconciliation.summary.total_retainage_held)}</td>
-                        <td className="py-3 px-3 text-right font-mono tabular-nums text-emerald-600">{formatCurrency(reconciliation.summary.total_paid)}</td>
-                      </tr>
-                      {reconciliation.summary.total_retainage_released > 0 && (
-                        <tr className="font-semibold bg-emerald-50/50">
-                          <td colSpan={3} className="py-3 px-3 text-emerald-700">+ Retainage Released</td>
-                          <td className="py-3 px-3 text-right font-mono tabular-nums text-emerald-700">{formatCurrency(reconciliation.summary.total_retainage_released)}</td>
-                          <td className="py-3 px-3"></td>
-                          <td className="py-3 px-3"></td>
-                        </tr>
-                      )}
-                      <tr className="font-bold bg-primary-100 border-t border-primary-300">
-                        <td colSpan={3} className="py-3 px-3 text-text-primary">Work Completed</td>
-                        <td className="py-3 px-3 text-right font-mono tabular-nums">{formatCurrency(reconciliation.summary.total_work_completed || (reconciliation.summary.total_billed + reconciliation.summary.total_retainage_held))}</td>
-                        <td className="py-3 px-3"></td>
-                        <td className="py-3 px-3"></td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-                {reconciliation.summary.total_outstanding > 0 && (
-                  <p className="mt-3 text-sm text-amber-600 font-medium">
-                    Amount Outstanding (unpaid): {formatCurrency(reconciliation.summary.total_outstanding)}
-                  </p>
-                )}
-              </Card>
             </div>
-          )
-        )}
+          )}
+
+          {hubView === 'inbox' && (
+            <div className="w-full h-full overflow-hidden">
+              <HubTab projectId={projectId} />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

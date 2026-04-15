@@ -373,7 +373,7 @@ function StepTwo({ onComplete, completing }: StepTwoProps) {
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Meet ARIA</h1>
           <p className="text-sm text-gray-500 mt-1.5">
-            While you're on the job, ARIA chases the money for you
+            While you're on the job, ARIA helps you get paid faster
           </p>
         </div>
 
@@ -412,14 +412,14 @@ function StepTwo({ onComplete, completing }: StepTwoProps) {
           }}
         >
           <p className="text-center text-lg font-bold text-gray-900 mb-5">
-            Stop chasing. Start collecting.
+            You build it. ARIA gets you paid.
           </p>
           <Button
             onClick={onComplete}
             disabled={completing}
             className="w-full h-11 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 text-white rounded-xl font-semibold gap-2 shadow-sm shadow-teal-200"
           >
-            {completing ? 'Setting up...' : 'Take me to my dashboard'}
+            {completing ? 'Setting up...' : 'Take me to my dashboard →'}
             <ArrowRight className="w-4 h-4" />
           </Button>
         </div>

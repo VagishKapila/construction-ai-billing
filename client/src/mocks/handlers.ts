@@ -58,6 +58,112 @@ export const handlers = [
       name: 'Test User',
       email: 'test@test.com',
       subscription_status: 'trial',
+      plan_type: 'free_trial',
+      trial_start_date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      trial_end_date: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+  }),
+
+  // Project pay apps
+  http.get('/api/projects/:id/pay-apps', () => {
+    return HttpResponse.json([
+      {
+        id: 1,
+        pay_app_number: 1,
+        project_id: 1,
+        amount_due: 85950,
+        status: 'paid',
+        created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+        period_label: 'March 2026',
+      },
+      {
+        id: 2,
+        pay_app_number: 2,
+        project_id: 1,
+        amount_due: 67440,
+        status: 'submitted',
+        created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+        period_label: 'April 1-13, 2026',
+      },
+    ])
+  }),
+
+  // Trades list
+  http.get('/api/projects/:id/hub/trades', () => {
+    return HttpResponse.json([
+      {
+        id: 1,
+        project_id: 1,
+        trade_name: 'Plumbing',
+        company_name: 'Pacific Plumbing',
+        status: 'active',
+        trust_score: 712,
+        email_alias: 'plumbing-elm@hub.constructinv.com',
+        contact_email: 'dispatcher@pacificplumbing.com',
+      },
+      {
+        id: 2,
+        project_id: 1,
+        trade_name: 'Electrical',
+        company_name: 'City Electric',
+        status: 'active',
+        trust_score: 568,
+        email_alias: 'electrical-elm@hub.constructinv.com',
+        contact_email: 'office@cityelectric.com',
+      },
+      {
+        id: 3,
+        project_id: 1,
+        trade_name: 'HVAC',
+        company_name: null,
+        status: 'invited',
+        trust_score: null,
+        email_alias: 'hvac-elm@hub.constructinv.com',
+        contact_email: null,
+      },
+    ])
+  }),
+
+  // Hub uploads
+  http.get('/api/projects/:id/hub/uploads', () => {
+    return HttpResponse.json([
+      {
+        id: 1,
+        project_id: 1,
+        trade_id: 1,
+        filename: 'invoices_march.pdf',
+        doc_type: 'invoice',
+        status: 'approved',
+        source: 'email_ingest',
+        created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+        amount: 18500,
+        company_name: 'Pacific Plumbing',
+        trade_name: 'Plumbing',
+        trust_score: 712,
+      },
+      {
+        id: 2,
+        project_id: 1,
+        trade_id: 2,
+        filename: 'lien_waiver_unconditional.pdf',
+        doc_type: 'lien_waiver',
+        status: 'approved',
+        source: 'web_app',
+        created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        amount: null,
+        company_name: 'City Electric',
+        trade_name: 'Electrical',
+        trust_score: 568,
+      },
+    ])
+  }),
+
+  // Stripe account status
+  http.get('/api/stripe/account-status', () => {
+    return HttpResponse.json({
+      connected: true,
+      charges_enabled: true,
+      payouts_enabled: true,
     })
   }),
 ]
