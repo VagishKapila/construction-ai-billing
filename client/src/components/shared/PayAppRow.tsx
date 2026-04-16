@@ -1,4 +1,3 @@
-import React from 'react'
 import { motion } from 'framer-motion'
 import { MoneyDisplay } from './MoneyDisplay'
 import { StatusChip } from './StatusChip'
@@ -20,7 +19,7 @@ interface PayAppRowProps {
 
 export function PayAppRow({
   payApp,
-  projectId,
+  projectId: _projectId,
   onDownloadPdf,
   onSendEmail,
   onShareLink,

@@ -1,3 +1,4 @@
+export { ErrorBoundary } from './ErrorBoundary'
 export { Badge } from './Badge'
 export { KPICard } from './KPICard'
 export { MoneyDisplay } from './MoneyDisplay'

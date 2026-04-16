@@ -20,7 +20,6 @@ export const RoleContext = createContext<RoleContextValue | null>(null)
 
 export function RoleProvider({ children }: { children: ReactNode }) {
   const [role, setRoleState] = useState<Role>('contractor')
-  const [isReady, setIsReady] = useState(false)
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -32,7 +31,6 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     } catch {
       // localStorage not available, use default
     }
-    setIsReady(true)
   }, [])
 
   // Save to localStorage when role changes

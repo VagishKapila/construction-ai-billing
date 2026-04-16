@@ -408,7 +408,7 @@ export function Reports() {
         </Card>
       ) : (
         <EmptyState
-          icon={TrendingUp}
+          icon={<TrendingUp />}
           title="No Pay Applications"
           description="No pay applications match your filter criteria. Adjust your filters or create a new pay application to get started."
         />

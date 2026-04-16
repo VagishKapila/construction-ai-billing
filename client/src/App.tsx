@@ -11,6 +11,7 @@ import { Login } from '@/pages/Login'
 import { Register } from '@/pages/Register'
 import { ForgotPassword } from '@/pages/ForgotPassword'
 import { ResetPassword } from '@/pages/ResetPassword'
+import { Status } from '@/pages/Status'
 import { Dashboard } from '@/pages/Dashboard'
 import { NewProject } from '@/pages/NewProject'
 import { ProjectDetail } from '@/pages/ProjectDetail'
@@ -82,6 +83,7 @@ function AppRouter() {
       <Route path="/register" element={<PageTransition><Register /></PageTransition>} />
       <Route path="/forgot-password" element={<PageTransition><ForgotPassword /></PageTransition>} />
       <Route path="/reset-password" element={<PageTransition><ResetPassword /></PageTransition>} />
+      <Route path="/status" element={<PageTransition><Status /></PageTransition>} />
 
       {/* Public payment page (no auth, no shell) */}
       <Route path="/pay/:token" element={<PageTransition><PaymentPage /></PageTransition>} />
@@ -89,8 +91,8 @@ function AppRouter() {
       {/* Public magic link hub page (no auth, no shell) */}
       <Route path="/hub/:token" element={<PageTransition><MagicLinkHub /></PageTransition>} />
 
-      {/* Vendor portal (no shell — dedicated vendor/sub view) */}
-      <Route path="/vendor" element={<PageTransition><VendorDashboard /></PageTransition>} />
+      {/* Vendor portal — wrapped in Shell so TopNav + role switcher is visible */}
+      <Route path="/vendor" element={<ProtectedRoute><PageTransition><VendorDashboard /></PageTransition></ProtectedRoute>} />
 
       {/* Onboarding route — auth required, no shell (fullscreen flow) */}
       <Route

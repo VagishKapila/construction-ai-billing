@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 
 interface TradeDotProps {
@@ -9,50 +9,36 @@ interface TradeDotProps {
   onClick?: () => void
 }
 
-const statusColorMap = {
+const statusColors: Record<string, string> = {
   active: '#2563eb',
   pending: '#d97706',
   overdue: '#dc2626',
-  invited: '#64748b',
+  invited: '#94a3b8',
 }
 
-const statusBgMap = {
-  active: 'bg-[#2563eb]',
-  pending: 'bg-[#d97706]',
-  overdue: 'bg-[#dc2626]',
-  invited: 'bg-[#64748b]',
-}
-
-export function TradeDot({
-  tradeName,
-  companyName,
-  trustScore,
-  status = 'active',
-  onClick,
-}: TradeDotProps) {
+export function TradeDot({ tradeName, companyName, trustScore, status = 'active', onClick }: TradeDotProps) {
   const [showTooltip, setShowTooltip] = useState(false)
   const letter = tradeName.charAt(0).toUpperCase()
-  const bgColor = statusBgMap[status]
+  const color = statusColors[status] ?? '#2563eb'
 
   return (
-    <div
-      className="relative inline-block"
-      onMouseEnter={() => setShowTooltip(true)}
-      onMouseLeave={() => setShowTooltip(false)}
-    >
-      <motion.div
-        whileHover={{ scale: 1.15 }}
+    <div style={{ position: 'relative', display: 'inline-block' }}>
+      <motion.button
+        type="button"
         onClick={onClick}
-        className={`w-10 h-10 rounded-full ${bgColor} text-white flex items-center justify-center font-bold text-sm cursor-pointer transition-all`}
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+        whileHover={{ scale: 1.15 }}
+        style={{ width: 28, height: 28, borderRadius: '50%', background: color, color: '#fff', fontWeight: 700, fontSize: 12, border: 'none', cursor: onClick ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        title={tradeName}
       >
         {letter}
-      </motion.div>
-
+      </motion.button>
       {showTooltip && (
-        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 bg-[#0f172a] text-white text-xs rounded px-2 py-1 whitespace-nowrap z-10">
-          <div className="font-semibold">{tradeName}</div>
-          {companyName && <div className="text-[#94a3b8]">{companyName}</div>}
-          {trustScore && <div className="text-[#7c3aed]">Trust: {trustScore}/763</div>}
+        <div style={{ position: 'absolute', bottom: '110%', left: '50%', transform: 'translateX(-50%)', background: '#0f172a', color: '#e2e8f0', padding: '6px 10px', borderRadius: 6, fontSize: 11, whiteSpace: 'nowrap', zIndex: 100, pointerEvents: 'none' }}>
+          <div style={{ fontWeight: 700 }}>{tradeName}</div>
+          {companyName && <div style={{ color: '#94a3b8' }}>{companyName}</div>}
+          {trustScore != null && <div style={{ color: '#0891b2' }}>{trustScore}/763</div>}
         </div>
       )}
     </div>

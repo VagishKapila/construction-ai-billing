@@ -1,20 +1,18 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Upload, FileText, ChevronRight, Paperclip, CheckCircle2, AlertTriangle, ReceiptText, TableProperties, FolderOpen, Scale, X, Lock, RotateCcw, Trophy, Inbox, Plus, Zap } from 'lucide-react'
+import { Upload, FileText, ChevronRight, CheckCircle2, AlertTriangle, ReceiptText, TableProperties, FolderOpen, Scale, Trophy, Zap } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { PayApp, SOVLine } from '@/types'
 import { useProject } from '@/hooks/useProject'
 import { useTrial } from '@/hooks/useTrial'
 import { createPayApp } from '@/api/payApps'
-import { getProjectReconciliation, completeProject, reopenProject, createProjectChangeOrder, updateChangeOrderStatus, recordManualPayment, type ReconciliationReport } from '@/api/projects'
-import { QBSyncButton, QBEstimateImport } from '@/components/quickbooks'
+import { getProjectReconciliation, reopenProject, createProjectChangeOrder, recordManualPayment, type ReconciliationReport } from '@/api/projects'
 import { HubTab } from '@/components/hub/HubTab'
 import OrbitalCanvas from '@/components/hub/OrbitalCanvas'
 import { VendorDetailPanel } from '@/features/hub'
 import type { Trade as VDPTrade } from '@/features/hub'
 import type { Trade as HubTrade } from '@/types/hub'
 import { getTrades } from '@/api/hub'
-import { PageHeader } from '@/components/shared/PageHeader'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -253,7 +251,7 @@ function SOVTable({ lines, isLoading }: SOVTableProps) {
   if (lines.length === 0) {
     return (
       <EmptyState
-        icon={Upload}
+        icon={<Upload />}
         title="No Schedule of Values"
         description="Upload a Schedule of Values to get started"
       />
@@ -284,11 +282,11 @@ function SOVTable({ lines, isLoading }: SOVTableProps) {
                   <div className="w-24 bg-gray-200 rounded-full h-2">
                     <div
                       className="bg-emerald-500 h-2 rounded-full"
-                      style={{ width: `${line.percent_complete || 0}%` }}
+                      style={{ width: `${(line as any)?.percent_complete || 0}%` }}
                     />
                   </div>
                   <span className="font-medium text-text-primary min-w-12 text-right">
-                    {(line.percent_complete || 0).toFixed(0)}%
+                    {((line as any)?.percent_complete || 0).toFixed(0)}%
                   </span>
                 </div>
               </td>
@@ -316,9 +314,9 @@ export function ProjectDetail() {
   const [reconciliation, setReconciliation] = useState<ReconciliationReport | null>(null)
   const [reconLoading, setReconLoading] = useState(false)
   const [successBanner, setSuccessBanner] = useState<string | null>(null)
-  const [isCompletingJob, setIsCompletingJob] = useState(false)
+  const [_isCompletingJob, _setIsCompletingJob] = useState(false)
   const [isReopeningJob, setIsReopeningJob] = useState(false)
-  const [qbConnected, setQbConnected] = useState(false)
+  const [_qbConnected, _setQbConnected] = useState(false)
   const [showAddCO, setShowAddCO] = useState(false)
   const [coForm, setCoForm] = useState({ description: '', amount: '' })
   const [isSubmittingCO, setIsSubmittingCO] = useState(false)
@@ -383,10 +381,10 @@ export function ProjectDetail() {
         })
         if (response.ok) {
           const data = await response.json()
-          setQbConnected(data.connected === true)
+          _setQbConnected(data.connected === true)
         }
       } catch {
-        setQbConnected(false)
+        _setQbConnected(false)
       }
     }
     checkQBStatus()
@@ -405,9 +403,9 @@ export function ProjectDetail() {
     if (isCreatingPayApp || isTrialGated) return
     try {
       setIsCreatingPayApp(true)
-      const newPayApp = await createPayApp(projectId, 'web')
-      if (newPayApp?.id) {
-        navigate(`/projects/${projectId}/pay-app/${newPayApp.id}`)
+      const newPayApp = await createPayApp(projectId, {})
+      if ((newPayApp as any)?.data?.id || (newPayApp as any)?.id) {
+        navigate(`/projects/${projectId}/pay-app/${(newPayApp as any)?.data?.id || (newPayApp as any)?.id}`)
       }
     } catch (err) {
       console.error('Failed to create pay app:', err)
@@ -446,7 +444,7 @@ export function ProjectDetail() {
       const amount = parseFloat(paymentForm.amount.replace(/[^0-9.-]/g, ''))
       await recordManualPayment(projectId, payAppId, {
         amount,
-        method: paymentForm.method,
+        payment_method: paymentForm.method,
         check_number: paymentForm.method === 'Check' ? paymentForm.checkNumber : undefined,
         notes: paymentForm.notes || undefined,
       })
@@ -461,19 +459,6 @@ export function ProjectDetail() {
     }
   }
 
-  const handleCompleteJob = async () => {
-    if (isCompletingJob) return
-    try {
-      setIsCompletingJob(true)
-      await completeProject(projectId)
-      await refresh()
-    } catch (err) {
-      console.error('Failed to complete project:', err)
-      alert('Failed to complete project')
-    } finally {
-      setIsCompletingJob(false)
-    }
-  }
 
   const handleReopenJob = async () => {
     if (isReopeningJob) return
@@ -497,40 +482,20 @@ export function ProjectDetail() {
         medium: '#2563eb',
         low: '#d97706',
       }
-      const trustTier = (trade.trust_tier as 'high' | 'medium' | 'low') ?? 'medium'
+      const trustTier = ((trade as any).trust_tier as string as 'high' | 'medium' | 'low') ?? 'medium'
       return {
-        name: trade.trade_name || `Trade ${idx + 1}`,
-        initials: (trade.trade_name?.[0] || 'T').toUpperCase(),
+        name: (trade as any).trade_name || `Trade ${idx + 1}`,
+        initials: ((trade as any).trade_name?.[0] || 'T').toUpperCase(),
         color: trustColorMap[trustTier],
         orbitRadius: 80 + idx * 20,
         speed: 1 + idx * 0.15,
         size: 16,
-        trustScore: trade.trust_score ?? 0,
+        trustScore: (trade as any).trust_score ?? 0,
       }
     })
   }, [hubTrades])
 
   // Handle planet click in orbital
-  const handleOrbitalPlanetClick = (tradeName: string) => {
-    const trade = hubTrades.find(t => t.trade_name === tradeName)
-    if (trade) {
-      const vdpTrade: VDPTrade = {
-        id: trade.id,
-        name: trade.trade_name,
-        company_name: trade.company_name || '',
-        contact_email: trade.contact_email || '',
-        status: trade.status || 'pending',
-        email_alias: trade.email_alias,
-        invoice_total: trade.invoice_total,
-        last_upload_at: trade.last_upload_at,
-        doc_count: trade.doc_count,
-        unread_count: trade.unread_count,
-        trust_score: trade.trust_score,
-        trust_tier: trade.trust_tier,
-      }
-      setSelectedTrade(vdpTrade)
-    }
-  }
 
   // Handle loading state
   if (isLoading) {
@@ -738,7 +703,7 @@ export function ProjectDetail() {
             <div className="space-y-4">
               {payApps.length === 0 ? (
                 <EmptyState
-                  icon={ReceiptText}
+                  icon={<ReceiptText />}
                   title="No Pay Applications"
                   description="Create your first pay application to get started"
                 />
@@ -766,7 +731,7 @@ export function ProjectDetail() {
             <div className="space-y-4">
               {sovLines.length === 0 ? (
                 <EmptyState
-                  icon={Upload}
+                  icon={<Upload />}
                   title="No Schedule of Values"
                   description="Upload a Schedule of Values to get started"
                 />
@@ -774,7 +739,7 @@ export function ProjectDetail() {
                 <>
                   <div className="flex items-center justify-between">
                     <h3 className="font-semibold text-text-primary">{sovLines.length} Line Items</h3>
-                    {qbConnected && <QBEstimateImport projectId={projectId} />}
+                    {/* QBEstimateImport hidden */}
                   </div>
                   <SOVTable lines={sovLines} isLoading={false} />
                 </>
@@ -853,7 +818,7 @@ export function ProjectDetail() {
             <div>
               {attachments.length === 0 ? (
                 <EmptyState
-                  icon={FolderOpen}
+                  icon={<FolderOpen />}
                   title="No Documents"
                   description="Upload project documents here"
                 />
@@ -968,7 +933,7 @@ export function ProjectDetail() {
                 <>
                   <OrbitalCanvas
                     planets={orbitalPlanets}
-                    onPlanetHover={(name) => {
+                    onPlanetHover={(_name) => {
                       // Could be used for tooltip, but orbital handles this internally
                     }}
                   />

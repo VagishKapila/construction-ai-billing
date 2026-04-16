@@ -269,7 +269,6 @@ export function HubTab({ projectId }: HubTabProps) {
                   filteredUploads
                     .filter(u => u.status === 'pending' && (u as any).trust_score >= 760)
                     .forEach(u => setSelectedUpload(u));
-                  setToast({ type: 'success', message: 'Ready to approve Platinum invoices' });
                 }}
               >
                 Approve Platinum

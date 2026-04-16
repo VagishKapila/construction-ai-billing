@@ -151,7 +151,12 @@ export function Landing() {
       </motion.nav>
 
       {/* ═══════════════ HERO — PAIN POINT FIRST ═══════════════ */}
-      <section className="relative min-h-screen flex flex-col justify-center pt-20">
+      {/* isolate + contain confines the WebGL GPU compositor layer to this section,
+           preventing Chrome from rendering all sections below as black */}
+      <section
+        className="relative min-h-screen flex flex-col justify-center pt-20 isolate overflow-hidden"
+        style={{ contain: 'layout style paint' }}
+      >
         {/* 3D Cash Flow Scene */}
         <div className="absolute inset-0 z-0">
           <Suspense fallback={null}>
@@ -267,7 +272,7 @@ export function Landing() {
       </section>
 
       {/* ═══════════════ THE PROBLEM — PAIN STATS ═══════════════ */}
-      <section id="problem" className="relative py-24 px-6 bg-[#0d1320]">
+      <section id="problem" className="relative py-24 px-6 bg-[#0d1320] isolate" style={{ transform: 'translateZ(0)' }}>
         <div className="max-w-6xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -303,7 +308,7 @@ export function Landing() {
       </section>
 
       {/* ═══════════════ THE SOLUTION — TRANSITION ═══════════════ */}
-      <section className="relative py-24 px-6 overflow-hidden">
+      <section className="relative py-24 px-6 overflow-hidden isolate" style={{ transform: 'translateZ(0)' }}>
         {/* Gradient transition from red to green */}
         <div className="absolute inset-0 bg-gradient-to-b from-[#0d1320] via-[#0a1a15] to-[#0a0f1a]" />
 
@@ -392,7 +397,7 @@ export function Landing() {
       </section>
 
       {/* ═══════════════ APP PREVIEW ═══════════════ */}
-      <section className="relative py-16 px-6">
+      <section className="relative py-16 px-6 isolate" style={{ transform: 'translateZ(0)' }}>
         <div className="max-w-5xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 40 }}
@@ -451,7 +456,7 @@ export function Landing() {
       </section>
 
       {/* ═══════════════ FEATURES ═══════════════ */}
-      <section id="features" className="relative py-24 px-6 bg-[#0d1320]">
+      <section id="features" className="relative py-24 px-6 bg-[#0d1320] isolate" style={{ transform: 'translateZ(0)' }}>
         <div className="max-w-6xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -490,7 +495,7 @@ export function Landing() {
       </section>
 
       {/* ═══════════════ PRICING ═══════════════ */}
-      <section id="pricing" className="relative py-24 px-6">
+      <section id="pricing" className="relative py-24 px-6 isolate" style={{ transform: 'translateZ(0)' }}>
         <div className="max-w-lg mx-auto text-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -548,7 +553,7 @@ export function Landing() {
       </section>
 
       {/* ═══════════════ FINAL CTA ═══════════════ */}
-      <section className="relative py-24 px-6 overflow-hidden">
+      <section className="relative py-24 px-6 overflow-hidden isolate" style={{ transform: 'translateZ(0)' }}>
         <div className="absolute inset-0 bg-gradient-to-b from-[#0a0f1a] via-[#0a1a15] to-[#0a0f1a]" />
         <div className="absolute inset-0">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-emerald-500/5 rounded-full blur-[120px]" />

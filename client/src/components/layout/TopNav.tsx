@@ -15,7 +15,7 @@ import { cn } from '@/lib/cn'
 export function TopNav() {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
-  const { role, setRole, isContractor, isVendor } = useRole()
+  const { setRole, isContractor, isVendor } = useRole()
   const [dropdownOpen, setDropdownOpen] = useState(false)
 
   // Notification count (placeholder — integrate with real notification system)

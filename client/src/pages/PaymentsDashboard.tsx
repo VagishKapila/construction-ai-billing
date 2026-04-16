@@ -393,7 +393,7 @@ export function PaymentsDashboard() {
         </Card>
       ) : (
         <EmptyState
-          icon={CreditCard}
+          icon={<CreditCard />}
           title="No Payments Yet"
           description="Payments from your clients will appear here once you send them a payment link and they complete their payment."
         />

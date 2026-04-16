@@ -308,7 +308,7 @@ export function CashFlow() {
         />
         <div className="mt-8">
           <EmptyState
-            icon={AlertCircle}
+            icon={<AlertCircle />}
             title="Failed to load cash flow data"
             description={error}
           />
@@ -456,7 +456,7 @@ export function CashFlow() {
         ) : (
           <div className="p-8">
             <EmptyState
-              icon={CheckCircle}
+              icon={<CheckCircle />}
               title="No outstanding invoices"
               description="You're all caught up! All invoices have been paid."
             />
@@ -478,7 +478,7 @@ export function CashFlow() {
         ) : (
           <Card className="p-8">
             <EmptyState
-              icon={AlertCircle}
+              icon={<AlertCircle />}
               title="No payer data yet"
               description="Once you send pay applications and receive payments, payer patterns will appear here."
             />

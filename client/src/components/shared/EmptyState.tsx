@@ -1,12 +1,27 @@
-import React from 'react'
+import type React from 'react'
 import { motion } from 'framer-motion'
 
 interface EmptyStateProps {
   firstName?: string
-  onCreateProject: () => void
+  onCreateProject?: () => void
+  // Legacy props (used by CashFlow, PaymentsDashboard) — render as generic empty state
+  icon?: React.ReactNode
+  title?: string
+  description?: string
 }
 
-export function EmptyState({ firstName, onCreateProject }: EmptyStateProps) {
+export function EmptyState({ firstName, onCreateProject, icon, title, description }: EmptyStateProps) {
+  // Legacy mode: icon/title/description passed directly
+  if (title && !onCreateProject) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[40vh] px-4 text-center">
+        {icon && <div className="mb-4 text-[#94a3b8]">{icon}</div>}
+        <h3 className="font-['DM_Serif_Display'] text-xl font-bold text-[#0f172a] mb-2">{title}</h3>
+        {description && <p className="text-[#64748b] text-sm">{description}</p>}
+      </div>
+    )
+  }
+  // Default: onboarding empty state for new users
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
       <motion.div
@@ -61,7 +76,7 @@ export function EmptyState({ firstName, onCreateProject }: EmptyStateProps) {
         <motion.button
           whileHover={{ scale: 1.02, boxShadow: '0 8px 40px rgba(37,99,235,0.12)' }}
           whileTap={{ scale: 0.98 }}
-          onClick={onCreateProject}
+          onClick={() => onCreateProject?.()}
           className="px-6 py-3 bg-[#2563eb] text-white font-bold rounded-[8px] hover:bg-[#1d4ed8] transition-all"
         >
           Create Your First Project →

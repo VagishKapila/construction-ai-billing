@@ -1,4 +1,3 @@
-import React from 'react'
 import { formatMoney } from '@/utils/formatMoney'
 
 interface MoneyDisplayProps {
