@@ -1,23 +1,11 @@
 # Tell Railway's nixpacks to include BOTH Node.js and Python runtimes.
 # Without this, Railway only activates the Node provider and python3 is
 # not available when server.js tries to spawn parse_sov.py.
+#
+# NOTE: aptPkgs section intentionally removed (Apr 16, 2026).
+# Puppeteer was removed from dependencies, so nixpacks no longer
+# auto-detects Chromium system libraries. We let nixpacks auto-detect
+# what it needs — with puppeteer gone, that list is now empty.
+# sharp (image compression) is in optionalDependencies and will fail
+# gracefully without libvips-dev — client-side compression is the fallback.
 providers = ["node", "python"]
-
-# IMPORTANT: aptPkgs is intentionally empty.
-#
-# Puppeteer was removed from dependencies (Apr 16, 2026) because its Chromium
-# system libraries (libnss3, libatk, libcups, libdrm, libgbm, etc.) caused
-# the Railway apt-get install phase to hang for 40+ minutes on every deploy.
-#
-# PDF generation now uses PDFKit exclusively (already the fallback path).
-# The try/catch in payApps.js still handles require('puppeteer') gracefully
-# — it just always falls through to PDFKit now.
-#
-# sharp (image compression) is in optionalDependencies — it will fail to
-# compile without libvips-dev, but that failure is caught and the app
-# continues with client-side compression only. No aptPkgs needed.
-[phases.setup]
-aptPkgs = []
-
-[start]
-cmd = "node server/index.js"
