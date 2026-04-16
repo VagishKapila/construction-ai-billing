@@ -167,7 +167,6 @@ describe('Shared Components', () => {
 
   describe('CurrencyInput', () => {
     it('renders with placeholder', () => {
-      const input = document.createElement('input')
       render(
         <CurrencyInput
           value={null}
@@ -175,8 +174,7 @@ describe('Shared Components', () => {
           placeholder="Enter amount"
         />
       )
-      const currencyInput = screen.getByPlaceholderText('Enter amount') as HTMLInputElement
-      expect(currencyInput).toBeInTheDocument()
+      expect(screen.getByPlaceholderText('Enter amount')).toBeInTheDocument()
     })
 
     it('displays dollar sign prefix', () => {

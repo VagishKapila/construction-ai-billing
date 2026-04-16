@@ -106,7 +106,7 @@ class MockCanvasContext {
   canvas = { width: 800, height: 600 }
 }
 
-HTMLCanvasElement.prototype.getContext = vi.fn(() => new MockCanvasContext() as unknown as CanvasRenderingContext2D)
+HTMLCanvasElement.prototype.getContext = vi.fn(() => new MockCanvasContext()) as unknown as typeof HTMLCanvasElement.prototype.getContext
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
