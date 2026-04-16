@@ -12,7 +12,10 @@
     "test:e2e:headed": "npx playwright test --headed",
     "test:all": "node qa_test.js && npx playwright test",
     "payment-health": "node scripts/payment-health-check.js",
-    "aria-daily": "node scripts/aria-daily.js"
+    "aria-daily": "node scripts/aria-daily.js",
+    "test:real-user": "node tests/real-user/live-site-check.js",
+    "test:real-user:staging": "ENV=staging node tests/real-user/live-site-check.js",
+    "test:real-user:production": "ENV=production node tests/real-user/live-site-check.js"
   },
   "dependencies": {
     "@sentry/node": "^10.48.0",
@@ -33,13 +36,13 @@
     "pg": "^8.11.3",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
-    "puppeteer": "^22.0.0",
     "railway": "^2.0.17",
     "stripe": "^21.0.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@playwright/test": "^1.42.0"
+    "@playwright/test": "^1.42.0",
+    "playwright": "^1.59.1"
   },
   "optionalDependencies": {
     "sharp": "^0.33.5"
