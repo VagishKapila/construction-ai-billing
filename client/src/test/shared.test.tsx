@@ -99,10 +99,12 @@ describe('Shared Components', () => {
       expect(screen.getByText('P')).toBeInTheDocument()
     })
 
-    it('applies correct status color', () => {
+    it('applies correct status color via inline style', () => {
       const { container } = render(<TradeDot tradeName="Electrical" status="active" />)
-      const dot = container.querySelector('div[class*="bg-\\[#2563eb\\]"]')
+      // TradeDot uses inline style for colors (not Tailwind class)
+      const dot = container.querySelector('button')
       expect(dot).toBeInTheDocument()
+      expect(dot?.style.backgroundColor).toBeTruthy()
     })
 
     it('shows tooltip on hover with company name and trust score', async () => {

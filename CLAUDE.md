@@ -980,3 +980,27 @@ qa_test.js                        ← Static code scan (118 tests)
 - **After any G702/CO/math change:** + unit tests + e2e cross-layer tests
 - **Before merging to main:** Full suite, all tests green
 - **Do NOT merge if any test is red** — find the root cause first
+
+
+## 🧪 Real User Testing (Layer 9 — MANDATORY)
+
+Before claiming ANY frontend task is "done", run:
+
+```bash
+npm run test:real-user:production
+```
+
+This must return zero broken indicators (`$0`, `NaN`, `undefined`, `null`, `[object Object]`, `Error:`).
+"Tests pass" only counts if Layer 9 passes on the LIVE URL.
+Backend tests, unit tests, TypeScript compilation, and Vite build success do NOT prove the frontend works. Only real-user-testing does.
+
+The mandatory test suite is now:
+1. `node qa_test.js` — 118 static checks
+2. `npx playwright test tests/unit/` — G702 math (13 tests)
+3. `cd client && npx tsc --noEmit` — TypeScript
+4. `cd client && npm run build` — Vite build
+5. `npm run test:real-user:production` — **Layer 9: real browser on live URL**
+
+All 5 must pass. No exceptions.
+
+See: `tests/real-user/live-site-check.js`

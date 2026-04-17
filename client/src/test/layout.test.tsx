@@ -35,6 +35,16 @@ vi.mock('@/hooks/useProjects', () => ({
   }),
 }))
 
+// Mock useNavigate (used inside TopNav)
+const mockNavigate = vi.fn()
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom')
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  }
+})
+
 // ─── RoleContext tests ──────────────────────────────────────────────────────
 
 const RoleConsumer = () => {
@@ -92,13 +102,12 @@ describe('RoleContext', () => {
         <RoleConsumer />
       </RoleProvider>
     )
-    // role will be contractor initially (state = default), localStorage loaded after effect
-    // Just verify it renders without crashing
+    // Verify it renders without crashing — localStorage effect fires after render
     expect(screen.getByTestId('role')).toBeInTheDocument()
   })
 })
 
-// ─── Sidebar smoke test ─────────────────────────────────────────────────────
+// ─── Sidebar smoke tests ────────────────────────────────────────────────────
 
 describe('Sidebar navigation', () => {
   it('renders Projects nav item and Settings', async () => {
@@ -110,13 +119,11 @@ describe('Sidebar navigation', () => {
         </RoleProvider>
       </BrowserRouter>
     )
-    // Projects should appear in navigation
     expect(screen.getByText('Projects')).toBeInTheDocument()
-    // Settings should appear at bottom
     expect(screen.getByText('Settings')).toBeInTheDocument()
   })
 
-  it('renders New Project button', async () => {
+  it('renders New Project link', async () => {
     const { Sidebar } = await import('@/components/layout/Sidebar')
     render(
       <BrowserRouter>
@@ -125,7 +132,117 @@ describe('Sidebar navigation', () => {
         </RoleProvider>
       </BrowserRouter>
     )
-    expect(screen.getByText('+ New Project')).toBeInTheDocument()
+    expect(screen.getByText('New Project')).toBeInTheDocument()
+  })
+
+  it('renders search input', async () => {
+    const { Sidebar } = await import('@/components/layout/Sidebar')
+    render(
+      <BrowserRouter>
+        <RoleProvider>
+          <Sidebar />
+        </RoleProvider>
+      </BrowserRouter>
+    )
+    expect(screen.getByPlaceholderText('Search projects...')).toBeInTheDocument()
+  })
+
+  it('shows active project section when projects passed', async () => {
+    const { Sidebar } = await import('@/components/layout/Sidebar')
+    const projects = [
+      { id: 1, name: 'Elm Street Addition', address: '123 Elm St', status: 'active' },
+    ]
+    render(
+      <BrowserRouter>
+        <RoleProvider>
+          <Sidebar projects={projects} />
+        </RoleProvider>
+      </BrowserRouter>
+    )
+    expect(screen.getByText('Elm Street Addition')).toBeInTheDocument()
+  })
+
+  it('renders Admin nav item for admin users', async () => {
+    const { Sidebar } = await import('@/components/layout/Sidebar')
+    render(
+      <BrowserRouter>
+        <RoleProvider>
+          <Sidebar />
+        </RoleProvider>
+      </BrowserRouter>
+    )
+    // useAuth mock returns isAdmin: true
+    expect(screen.getByText('Admin')).toBeInTheDocument()
+  })
+})
+
+// ─── TopNav tests ────────────────────────────────────────────────────────────
+
+describe('TopNav', () => {
+  it('renders Contractor and Vendor role buttons', async () => {
+    const { TopNav } = await import('@/components/layout/TopNav')
+    render(
+      <BrowserRouter>
+        <RoleProvider>
+          <TopNav />
+        </RoleProvider>
+      </BrowserRouter>
+    )
+    expect(screen.getByText(/Contractor/i)).toBeInTheDocument()
+    expect(screen.getByText(/Vendor/i)).toBeInTheDocument()
+  })
+
+  it('renders notification bell button', async () => {
+    const { TopNav } = await import('@/components/layout/TopNav')
+    render(
+      <BrowserRouter>
+        <RoleProvider>
+          <TopNav />
+        </RoleProvider>
+      </BrowserRouter>
+    )
+    expect(screen.getByRole('button', { name: /notifications/i })).toBeInTheDocument()
+  })
+
+  it('opens notification dropdown on bell click', async () => {
+    const { TopNav } = await import('@/components/layout/TopNav')
+    render(
+      <BrowserRouter>
+        <RoleProvider>
+          <TopNav />
+        </RoleProvider>
+      </BrowserRouter>
+    )
+    const bellBtn = screen.getByRole('button', { name: /notifications/i })
+    fireEvent.click(bellBtn)
+    expect(screen.getByText('No new notifications')).toBeInTheDocument()
+  })
+
+  it('renders user avatar button', async () => {
+    const { TopNav } = await import('@/components/layout/TopNav')
+    render(
+      <BrowserRouter>
+        <RoleProvider>
+          <TopNav />
+        </RoleProvider>
+      </BrowserRouter>
+    )
+    // User menu button uses aria-label with user name
+    expect(screen.getByRole('button', { name: /user menu/i })).toBeInTheDocument()
+  })
+
+  it('opens user dropdown on avatar click and shows sign out', async () => {
+    const { TopNav } = await import('@/components/layout/TopNav')
+    render(
+      <BrowserRouter>
+        <RoleProvider>
+          <TopNav />
+        </RoleProvider>
+      </BrowserRouter>
+    )
+    const userBtn = screen.getByRole('button', { name: /user menu/i })
+    fireEvent.click(userBtn)
+    expect(screen.getByRole('menuitem', { name: /sign out/i })).toBeInTheDocument()
   })
 })
 

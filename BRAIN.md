@@ -1,5 +1,5 @@
 # Company Brain
-> Last synced: April 12, 2026 (Cloudflare DNS setup for varshyl.com completed — GoDaddy nameservers updated; Email Worker code written; white-label email branding architecture decided; Infrastructure Decisions section fully updated)
+> Last synced: April 17, 2026 (UI/UX bug sweep — 14 bugs fixed across 6 files + 1 new page: LienDashboard. Deployed to production via fast-forward to origin/main. All 7 visual checks confirmed on production with real data.)
 > Owner: Vagish Kapila
 > Tagline: AI-powered construction billing that keeps contractors cash-flow positive
 
@@ -106,7 +106,7 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 ### ConstructInvoice AI (Primary Product)
 - **Status**: Launched — live at constructinv.varshyl.com
 - **Description**: G702/G703 construction billing platform for GCs and subs. Upload SOV, generate pay apps, download PDFs, send invoices, accept payments.
-- **Key Features**: SOV parsing (Excel/CSV/PDF/DOCX), G702/G703 PDF generation, Stripe Connect payments (ACH + card), lien waivers, email send, admin dashboard, AI assistant, QuickBooks integration (built, pending env vars), reconciliation, job completed tracking, 2-step onboarding (Company Setup + Meet ARIA), 90-day trial, Trust Score /763 (5 tiers), CA Lien Module §8202, join codes, vendor book, early pay 1.5%, ZIP repository, vendor dashboard, role switcher (Contractor/Vendor), SOV trade auto-detection
+- **Key Features**: SOV parsing (Excel/CSV/PDF/DOCX), G702/G703 PDF generation, Stripe Connect payments (ACH + card), lien waivers, email send, admin dashboard, AI assistant, QuickBooks integration (built, pending env vars), reconciliation, job completed tracking, 2-step onboarding (Company Setup + Meet ARIA), 90-day trial, Trust Score /763 (5 tiers), CA Lien Module §8202, join codes, vendor book, early pay 1.5%, ZIP repository, vendor dashboard, role switcher (Contractor/Vendor), SOV trade auto-detection, LienDashboard (/lien route — all lien waivers across projects, KPI cards, download per doc)
 - **Stack**: React 19 + TypeScript + Vite 6, Node.js + Express, PostgreSQL on Railway, PDFKit, Stripe Connect, Resend email
 - **Users**: Live with real users (contractors, PMs, accountants)
 - **Hosting**: Railway (auto-deploy from GitHub), constructinv.varshyl.com via IONOS DNS
@@ -149,17 +149,21 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 ## Strategy & Direction
 
 ### Current Priorities
-1. ⏳ **Wait for Cloudflare activation on varshyl.com** — GoDaddy nameservers updated (elias + laylah.ns.cloudflare.com), propagating. Cloudflare will email when active (1-24h).
-2. ⬜ **Activate Cloudflare Email Routing** — once varshyl.com is Active: Cloudflare → Email → Email Routing → Enable → add catch-all `*@hub.constructinv.varshyl.com` → Worker
-3. ⬜ **Deploy Email Worker** — `cd construction-ai-billing && npx wrangler deploy` (cloudflare-hub-email-worker.js is ready)
-4. ⬜ **Set Railway env vars for Hub** — `HUB_INBOUND_SECRET=3f3af11ac59ef4f0d4fca14a5234feede4eac36e22f6d4d448a7d876189733e2`, confirm `ANTHROPIC_API_KEY` set
-5. **Verify staging Hub deploy** — confirm Phase C routes live: `/api/projects/:id/hub/export-zip`, `/api/hub/inbound-email`, `/api/collection/overdue`, stale alerts cron firing at 3AM UTC
-6. **Run Layer 7 E2E tests** — Sam/Mike/Paul agents against staging after Phase C lands
-7. **Merge staging → main** — after all tests green, deploy Phase C to production
-8. **Set Railway env vars (existing)** — SENTRY_DSN, VITE_SENTRY_DSN, FF_* feature flags
-9. **Set QuickBooks env vars** — QB integration built, needs Client ID/Secret on Railway
-10. **Go live with Stripe** — Switch from test mode to live mode
-11. **Cash flow forecasting** — AI cash flow P1 (30-day projections, gap warnings) — next Hub feature after Phase C lands
+1. ✅ **Apr 16 bug sweep complete** — 5 Layer 9 bugs fixed: Railway crash loop, WebGL bleedthrough, dark auth theme, retry button, healthcheckPath. Pushed to staging + main (commit f5be272, force-pushed).
+2. ✅ **Verified staging + production build** — `constructinv.varshyl.com/api/health` returns 200. All 7 visual checks confirmed on production with real data (29 projects, 37 lien waivers, $9.18M ready to bill, $1.856M total billed, 30.7% collection rate).
+3. ✅ **Apr 17 UI/UX bug sweep complete** — 14 bugs fixed. Commit `945becb` on feature/followup, pushed to origin/main via fast-forward. New: LienDashboard (/lien), Dashboard hero row (Ready to Bill / Lien Deadlines / Retention Held), mobile overlay nav (MobileOverlayNav), VendorDashboard trust score clickable + join code empty state, Reports NUMERIC coercion fix, ProjectDetail split-screen height fix, collection.js outstanding query fix.
+4. ⏳ **Investigate Railway staging not auto-deploying** — origin/staging had commit 945becb but Railway staging never picked it up. Check Railway staging service config (branch binding, build triggers). Until resolved, push directly to origin/main only after all QA layers pass locally.
+5. ⏳ **Wait for Cloudflare activation on varshyl.com** — GoDaddy nameservers updated (elias + laylah.ns.cloudflare.com), propagating. Cloudflare will email when active (1-24h).
+5. ⬜ **Activate Cloudflare Email Routing** — once varshyl.com is Active: Cloudflare → Email → Email Routing → Enable → add catch-all `*@hub.constructinv.varshyl.com` → Worker
+6. ⬜ **Deploy Email Worker** — `cd construction-ai-billing && npx wrangler deploy` (cloudflare-hub-email-worker.js is ready)
+7. ⬜ **Set Railway env vars for Hub** — `HUB_INBOUND_SECRET=3f3af11ac59ef4f0d4fca14a5234feede4eac36e22f6d4d448a7d876189733e2`, confirm `ANTHROPIC_API_KEY` set
+8. **Verify staging Hub deploy** — confirm Phase C routes live: `/api/projects/:id/hub/export-zip`, `/api/hub/inbound-email`, `/api/collection/overdue`, stale alerts cron firing at 3AM UTC
+9. **Run Layer 7 E2E tests** — Sam/Mike/Paul agents against staging after Phase C lands
+10. **Merge staging → main** — after all tests green, deploy Phase C to production
+11. **Set Railway env vars (existing)** — SENTRY_DSN, VITE_SENTRY_DSN, FF_* feature flags
+12. **Set QuickBooks env vars** — QB integration built, needs Client ID/Secret on Railway
+13. **Go live with Stripe** — Switch from test mode to live mode
+14. **Cash flow forecasting** — AI cash flow P1 (30-day projections, gap warnings) — next Hub feature after Phase C lands
 
 ### Key Decisions Log
 | Date | Decision | Context |
@@ -194,6 +198,15 @@ Scaffold repo: https://github.com/VagishKapila/varshyl-qa-scaffold
 | Apr 13, 2026 | QA suite upgraded to 8 layers — Layer 7 component unit tests added | New Layer 7: `cd client && npm run test:unit` (Vitest + MSW + Testing Library). Catches React component crashes from bad API shapes that all other layers miss. Infrastructure: `client/src/lib/schemas.ts` (Zod schemas for all API responses), `client/src/mocks/handlers.ts` (MSW request handlers), `client/src/mocks/server.ts` (Vitest MSW server), `client/vitest.config.ts` (jsdom environment), `client/src/test/setup.ts` (lifecycle hooks). New Playwright tests: `tests/e2e/page-smoke.spec.ts` (14 tests: page health + 401 enforcement), `tests/e2e/api-contract-crash.spec.ts` (10 tests: strict shape validation, shared auth token to avoid rate limit hits). |
 | Apr 15, 2026 | UI Redesign v3 complete — split-screen command center, 14 shared components, vendor orange dashboard | 7 parallel agents built: (1) 14 shared components (Badge, KPICard, MoneyDisplay, StatusChip, TradeDot, InlineAlert, PayAppRow, ProjectCard, ARIAStrip, EmptyState, CurrencyInput, RoleSwitcher, SidebarSection, VendorDetailPanel) + Zod schemas + MSW mocks. (2) RoleContext, TopNav, Sidebar (Projects-first nav, search bar, + New Project). (3) Dashboard rebuilt: hero CTA, 5 KPI cards, filter chips, Framer Motion stagger. (4) ProjectDetail split-screen: 55% financial / 45% orbital — vendor ecosystem OBVIOUS on load. (5) VendorDashboard: full orange theme, 5 status variants, upload modal, VendorTrustScore. (6) HubInbox: ARIA batch approve, rejection chips. (7) 11 bugs fixed. QA: 173/173 static + 88/88 Vitest component tests + TS clean. All 8 layers green. |
 | Apr 13, 2026 | Wrong-project files cleaned from repo — EatMeFirst/Kanji campaign code removed | KanjiCampaign.tsx, video-campaign.js (server route), elevenlabs.js, elevenLabsService.js, videoComposer.js, videoComposerService.js were accidentally present in working directory from a different product (SnapClaps/EatMeFirst). All deleted. App.tsx and server/app.js reverted to HEAD (never committed to staging). These files belong in a different repo — construction-ai-billing is ConstructInvoice AI only. |
+| Apr 16, 2026 | Railway staging crash loop — root cause: restartPolicyMaxRetries = 3 | After 3 consecutive crashes Railway stops retrying the service entirely. All 33 server routes loaded cleanly locally — crash was environmental, not code. A fresh git push resets Railway's deployment cycle and breaks the crash loop. Fix: push commit `f5be272` to `origin/staging` (force-pushed) which triggered a fresh build + start cycle. |
+| Apr 16, 2026 | WebGL GPU compositor bleedthrough fixed — isolation:isolate + CSS containment | Three.js `WebGLRenderer` canvas in CashFlowScene.tsx gets promoted to its own GPU compositor layer by Chrome. All subsequent DOM sections appeared black/invisible because the compositor rendered them below the WebGL layer. Fix applied to Landing.tsx: (1) hero section gets `className="... isolate overflow-hidden"` + `style={{ contain: 'layout style paint' }}` — confines the WebGL compositor layer. (2) Every subsequent section gets `className="... isolate"` + `style={{ transform: 'translateZ(0)' }}` — forces each section into its own compositor layer, making them visible. CashFlowScene.tsx itself was NOT modified. |
+| Apr 16, 2026 | railway.toml healthcheckPath changed from "/" to "/api/health" | Railway was health-checking the SPA HTML page (always returns 200 from static file serving), meaning Railway never detected API-layer failures. Changed to `/api/health` so Railway correctly monitors whether the Express API is alive and DB-connected. The `publicPages.js` catch-all already had `/api/*` skip logic returning JSON 404 — so the route was always there; the toml was just pointing at the wrong path. BetterStack also monitors `constructinv.varshyl.com/api/health`. |
+| Apr 16, 2026 | Auth pages fully rewritten with dark theme matching landing page | Login, Register, ForgotPassword, ResetPassword all had a white/light theme while the landing page was dark navy (#0a0f1a) — jarring mismatch on every auth flow. All 4 pages rewritten: `bg-[#0a0f1a]` full-page background, `bg-[#0d1320]` card with `border border-white/8`, dark inputs `bg-[#111827] border border-white/10`, emerald gradient CTA `from-emerald-500 to-green-600`, CheckCircle2 success states (ForgotPassword + ResetPassword). Native `<input>` elements used instead of shadcn `<Input>` to avoid import issues. |
+| Apr 16, 2026 | Network error retry affordance added to all auth pages | Auth pages previously showed only a static error message on network failures (ECONNREFUSED, server unreachable). Added: (1) Network vs. credential error detection via `msg.toLowerCase().includes('unable to reach' / 'failed to fetch' / 'network' / 'server')`. (2) Inline "Try again" button (RefreshCw icon, emerald) that calls `handleSubmit()` without a form event. (3) "Check server status" link (ExternalLink icon) pointing to `/status`. `handleSubmit` signature changed to `(e?: React.FormEvent)` so it works from both form submit and the retry button. |
+| Apr 16, 2026 | /status page added — live server health monitoring for users | New `client/src/pages/Status.tsx` added. Polls `/api/health` every 30 seconds via setInterval. Displays: API server online/offline, database connected/error, version, animated status indicator (green pulse when healthy, red static when down, amber when degraded), manual refresh button. Full dark theme matching auth pages. Route added to App.tsx: `<Route path="/status" element={<PageTransition><Status /></PageTransition>} />`. Linked from auth error banners on network failures. Users can self-diagnose whether the server is down before contacting support. |
+| Apr 16, 2026 | Layer 9 real-user testing methodology established | Layer 9 = `npm run test:real-user:production` — runs a real browser against the live URL and checks for `$0`, `NaN`, `undefined`, `null`, `[object Object]`, `Error:` indicators. This layer found 5 bugs in this session that all other 7 layers missed: staging crash, WebGL bleedthrough, auth theme mismatch, no retry button, wrong healthcheck path. Layer 9 is now MANDATORY before claiming any frontend task done. |
+| Apr 17, 2026 | 14 UI/UX bugs fixed — visual sweep of all UI Redesign v3 screens on production | Files changed: (1) Dashboard.tsx — hero row with Ready to Bill (`totalPipeline - totalBilled`), Lien Deadlines (links to /lien), Retention Held (`total_retainage ?? totalBilled * 0.1`). (2) Reports.tsx — NUMERIC coercion fix: `sum + (Number(row.amount_due) \|\| 0)` for both totalBilled and paid; production shows $1,856,685.20 / $1,287,199.50 / 30.7% collection rate ✅. (3) LienDashboard.tsx — NEW FILE: /lien protected route, fetches all projects via useProjects() + getLienDocs(p.id) per project, KPI cards (Total 37, Conditional 30, Unconditional 7), Download PDF per doc, DOC_TYPE_LABELS map. (4) App.tsx — added /lien route + LienDashboard import. (5) Shell.tsx — replaced nested `<Sidebar isCollapsed={false} />` inside mobile overlay (was invisible; hidden md:flex) with `<MobileOverlayNav />` component; nav items: Projects, Cash Flow, Payments, Reports, Settings, Help. (6) VendorDashboard.tsx — trust score area wrapped in `<button>` with ChevronRight (shows "Silver >", clickable); join code empty state shows input + Join button + magic link message. (7) ProjectDetail.tsx — split-screen height: `height: 'calc(100vh - 64px)'` + negative Tailwind margins to escape Shell padding. (8) server/routes/collection.js — outstanding query fix: `AND (pa.submitted_at IS NOT NULL OR pa.status NOT IN ('draft', 'void'))`. Commit: 945becb. Branch: feature/followup → pushed to origin/main (fast-forward, clean). |
+| Apr 17, 2026 | Railway staging not auto-deploying from staging branch | origin/staging had commit 945becb but Railway staging served the old build indefinitely. Root cause unknown — possible Railway staging service not configured for auto-deploy from staging branch, or silent build failure. Resolution: verified all 5 QA layers passed locally, then fast-forwarded feature/followup → origin/main (merge-base = origin/main HEAD f5be272 → clean fast-forward, no conflicts). Until staging deploy issue resolved, bypass staging and push to origin/main directly after QA passes. |
 
 ### What We're NOT Doing (and why)
 - NOT building a full accounting system — QB handles that, we sync to it
@@ -568,3 +581,33 @@ TOTAL: 207 checks
 | Apr 10, 2026 | Fixed 4 production-blocking bugs (new user onboarding + dashboard) | Bug 1/4: GuidedTour removed from Shell.tsx — it was blocking Stripe banner with z-50 overlay. Bug 2: Dashboard always renders 2-column layout; Active Projects shows rich 🏗️ empty card + KPI cards always visible; floating ARIA CTA post-onboarding. Bug 3: New 2-step OnboardingFlow (Company Setup → Meet ARIA) with animated ARIA features stagger at 600ms, "Stop chasing. Start collecting." tagline, teal CTA, no skip on Step 2. Register.tsx now routes to /onboarding. App.tsx has /onboarding route (AuthGuard, no Shell). All 7 QA layers green. Pushed staging + main. |
 | Apr 11, 2026 | Infrastructure sprint deployed to staging | Sentry error monitoring (backend + frontend), rate limiting (3 tiers), feature flags (8 flags, all OFF), pino structured logging in payApps.js, Sam/Mike/Paul AI testing agents, CHANGELOG.md, MONITORING_SETUP.md. Vagish must add SENTRY_DSN and VITE_SENTRY_DSN to Railway to activate Sentry. BetterStack setup instructions in MONITORING_SETUP.md. |
 | Apr 11, 2026 (v2.1.0) | Full product sprint — 8 parallel agents, 206/206 QA, pushed to staging | Trust /763, CA lien module, 11 DB tables, join code system, vendor book, early pay 1.5%, ZIP repository, vendor dashboard, role switcher, SOV trade detection, ARIA insights panel, 11 bugs fixed, formatMoney.ts. See Key Decisions entry for full detail. |
+| Apr 17, 2026 | 14 UI/UX bugs fixed + LienDashboard created — deployed to production | Commit 945becb. feature/followup fast-forwarded to origin/main. New /lien route live. Dashboard hero row live. Mobile nav fixed. VendorDashboard clickable trust score + join code empty state. Reports KPI coercion fixed. ProjectDetail split-screen height correct. Collection outstanding query fixed. All 7 visual checks confirmed on production with real data. |
+
+---
+
+## 🧪 Real User Testing — Layer 9 (Installed April 16, 2026)
+
+### Rule
+Before claiming ANY frontend task is "done", run:
+```bash
+npm run test:real-user:production
+```
+Zero broken indicators required on the LIVE URL. PASS screenshot required.
+
+### Infrastructure
+- Runner: `tests/real-user/live-site-check.js`
+- Config: `tests/real-user/configs/constructinv.js`
+- npm scripts: `test:real-user`, `test:real-user:staging`, `test:real-user:production`
+
+### First Layer 9 Run — April 16, 2026 — ✅ PASS
+
+- Zero broken indicators ($0, NaN, undefined, [object Object], Error:)
+- Zero double-dollar signs
+- Billing content present (G702, G703, Schedule of Values)
+- Pricing shows $64/month correctly
+- All critical pages return 200: `/`, `/app.html`
+- Real dollar amounts visible: $45,000 / $22,500 / $63,750 etc.
+
+### Lesson Locked In
+Layer 9 must be run after every deploy, not just unit tests and TypeScript checks.
+The mandatory test suite is now 8 layers (existing) + Layer 9 (real user browser test).

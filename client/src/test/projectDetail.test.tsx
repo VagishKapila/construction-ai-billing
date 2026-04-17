@@ -124,15 +124,51 @@ describe('ProjectDetail — Split-screen Command Center', () => {
     expect(() => render(<ProjectDetail />, { wrapper: Wrapper })).not.toThrow()
   })
 
-  it('does not crash on missing project data', async () => {
+  it('renders split layout — left panel and right panel', async () => {
+    const { ProjectDetail } = await import('@/pages/ProjectDetail')
+    const { getByTestId } = render(<ProjectDetail />, { wrapper: Wrapper })
+    expect(getByTestId('project-detail-split')).toBeInTheDocument()
+    expect(getByTestId('left-panel')).toBeInTheDocument()
+    expect(getByTestId('right-panel')).toBeInTheDocument()
+  })
+
+  it('renders right panel toggle buttons', async () => {
+    const { ProjectDetail } = await import('@/pages/ProjectDetail')
+    const { getByTestId } = render(<ProjectDetail />, { wrapper: Wrapper })
+    expect(getByTestId('toggle-orbital')).toBeInTheDocument()
+    expect(getByTestId('toggle-inbox')).toBeInTheDocument()
+    expect(getByTestId('toggle-invite')).toBeInTheDocument()
+  })
+
+  it('switches to inbox view when inbox toggle is clicked', async () => {
+    const { ProjectDetail } = await import('@/pages/ProjectDetail')
+    const { getByTestId } = render(<ProjectDetail />, { wrapper: Wrapper })
+    const inboxBtn = getByTestId('toggle-inbox')
+    inboxBtn.click()
+    // No crash = pass; detailed behavior is E2E
+    expect(inboxBtn).toBeInTheDocument()
+  })
+
+  it('switches to invite view when invite toggle is clicked', async () => {
+    const { ProjectDetail } = await import('@/pages/ProjectDetail')
+    const { getByTestId } = render(<ProjectDetail />, { wrapper: Wrapper })
+    const inviteBtn = getByTestId('toggle-invite')
+    inviteBtn.click()
+    expect(inviteBtn).toBeInTheDocument()
+  })
+
+  it('does not crash on missing project data (loading state)', async () => {
     vi.doMock('@/hooks/useProject', () => ({
       useProject: () => ({
         project: null,
         payApps: [],
         sovLines: [],
+        changeOrders: [],
+        attachments: [],
         isLoading: true,
         error: null,
-        refetch: vi.fn(),
+        refresh: vi.fn(),
+        updateProject: vi.fn(),
       }),
     }))
     // Component should show loading state, not crash

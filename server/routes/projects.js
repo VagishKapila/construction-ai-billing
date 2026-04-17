@@ -1,3 +1,4 @@
+const { california: lienModule } = require('../features/aria/lien');
 const express = require('express');
 const router = express.Router();
 const path = require('path');
@@ -56,6 +57,29 @@ router.post('/api/projects', auth, trialGate, async (req, res) => {
     project_id: r.rows[0].id,
     contract_value: original_contract
   });
+
+  // Auto-create CA lien alerts — non-blocking, fire and forget
+  setImmediate(async () => {
+    try {
+      const workStart = contract_date || est_date || new Date().toISOString().slice(0,10);
+      const deadlines = lienModule.calculateDeadlines(workStart);
+      await pool.query(
+        `INSERT INTO aria_lien_alerts
+          (project_id, state, work_start_date, preliminary_notice_due, mechanics_lien_deadline)
+         VALUES ($1, 'CA', $2, $3, $4)
+         ON CONFLICT DO NOTHING`,
+        [
+          r.rows[0].id,
+          deadlines.work_start_date,
+          deadlines.preliminary_notice_due,
+          deadlines.mechanics_lien_deadline,
+        ]
+      );
+    } catch (e) {
+      console.error('[Lien] Auto-alert creation failed:', e.message);
+    }
+  });
+
   res.status(201).json(r.rows[0]);
 });
 

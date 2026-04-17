@@ -505,23 +505,40 @@ router.post('/api/projects/:id/hub/uploads', auth, upload.single('file'), async 
     // Send email to contractor notifying them of the new document
     try {
       const projResult = await pool.query(
-        'SELECT p.name as project_name, cs.contact_email as gc_email FROM projects p LEFT JOIN company_settings cs ON cs.user_id = p.user_id WHERE p.id = $1',
+        `SELECT p.name as project_name, p.address,
+                u.email as gc_email_fallback,
+                cs.company_name, cs.contact_email as gc_email
+         FROM projects p
+         JOIN users u ON u.id = p.user_id
+         LEFT JOIN company_settings cs ON cs.user_id = p.user_id
+         WHERE p.id = $1`,
         [projectId]
       );
       const proj = projResult.rows[0];
-      if (proj?.gc_email) {
+      const gcEmail = proj?.gc_email || proj?.gc_email_fallback;
+      if (gcEmail) {
         const apiKey = process.env.RESEND_API_KEY;
         const fromEmail = process.env.FROM_EMAIL || 'billing@varshyl.com';
+        const baseUrl = process.env.BASE_URL || 'https://constructinv.varshyl.com';
         if (apiKey) {
           const uploadedByName = uploaded_by || 'A subcontractor';
+          const docLabel = doc_type === 'other' ? 'document' : doc_type.replace(/_/g, ' ');
+          const amountLine = amount ? ` · Amount: $${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '';
           const html = `
             <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#fff">
               <h2 style="margin:0 0 8px;font-size:18px;color:#1a1a2e">
                 New document uploaded to ${proj.project_name}
               </h2>
               <p style="color:#555;font-size:14px;line-height:1.6;margin-bottom:20px">
-                ${uploadedByName} uploaded a ${doc_type === 'other' ? 'document' : doc_type} to your project Hub.
-                Review it in your Project Hub inbox when you're ready.
+                ${uploadedByName} uploaded a <strong>${docLabel}</strong> to your project Hub${amountLine}.
+                Review and approve it in your Project Hub inbox.
+              </p>
+              <a href="${baseUrl}/app.html"
+                 style="display:inline-block;background:#2563eb;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px">
+                Review in Hub →
+              </a>
+              <p style="color:#aaa;font-size:11px;margin-top:24px;border-top:1px solid #eee;padding-top:12px">
+                ConstructInvoice AI · constructinv.varshyl.com
               </p>
             </div>
           `;
@@ -533,7 +550,7 @@ router.post('/api/projects/:id/hub/uploads', auth, upload.single('file'), async 
             },
             body: JSON.stringify({
               from: fromEmail,
-              to: [proj.gc_email],
+              to: [gcEmail],
               subject: `New document in ${proj.project_name}`,
               html,
             }),
@@ -990,6 +1007,64 @@ router.post('/api/hub/magic/:token/upload', upload.single('file'), async (req, r
       trade_id: trade.id,
       doc_type: doc_type
     });
+
+    // Send email notification to GC about the new document
+    try {
+      const projResult = await pool.query(
+        `SELECT p.name as project_name, p.address,
+                u.email as gc_email,
+                cs.company_name, cs.contact_email as gc_contact_email
+         FROM projects p
+         JOIN users u ON u.id = p.user_id
+         LEFT JOIN company_settings cs ON cs.user_id = p.user_id
+         WHERE p.id = $1`,
+        [trade.project_id]
+      );
+      const proj = projResult.rows[0];
+      const gcEmail = proj?.gc_contact_email || proj?.gc_email;
+      if (gcEmail) {
+        const apiKey = process.env.RESEND_API_KEY;
+        const fromEmail = process.env.FROM_EMAIL || 'billing@varshyl.com';
+        const baseUrl = process.env.BASE_URL || 'https://constructinv.varshyl.com';
+        if (apiKey) {
+          const docLabel = doc_type === 'other' ? 'document' : doc_type.replace(/_/g, ' ');
+          const amountLine = amount ? ` · Amount: $${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '';
+          const html = `
+            <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#fff">
+              <h2 style="margin:0 0 8px;font-size:18px;color:#1a1a2e">
+                New document uploaded to ${proj.project_name}
+              </h2>
+              <p style="color:#555;font-size:14px;line-height:1.6;margin-bottom:20px">
+                ${uploadedBy} uploaded a <strong>${docLabel}</strong> to your project Hub${amountLine}.
+                Review and approve it in your Project Hub inbox.
+              </p>
+              <a href="${baseUrl}/app.html"
+                 style="display:inline-block;background:#2563eb;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px">
+                Review in Hub →
+              </a>
+              <p style="color:#aaa;font-size:11px;margin-top:24px;border-top:1px solid #eee;padding-top:12px">
+                ConstructInvoice AI · constructinv.varshyl.com
+              </p>
+            </div>
+          `;
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              from: fromEmail,
+              to: [gcEmail],
+              subject: `New document in ${proj.project_name}`,
+              html,
+            }),
+          }).catch((err) => console.error('[Hub] Magic link upload email error:', err.message));
+        }
+      }
+    } catch (e) {
+      console.error('[Hub] Error sending magic link notification email:', e.message);
+    }
 
     res.status(201).json({ data: result.rows[0], message: 'Upload received. Awaiting approval.' });
   } catch (e) {

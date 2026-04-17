@@ -724,6 +724,7 @@ async function initDB() {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_aria_lien_project ON aria_lien_alerts(project_id);
+    ALTER TABLE aria_lien_alerts ADD COLUMN IF NOT EXISTS stop_payment_deadline DATE;
 
     -- Cash flow forecasts (30-day projections, upserted daily)
     CREATE TABLE IF NOT EXISTS cash_flow_forecasts (

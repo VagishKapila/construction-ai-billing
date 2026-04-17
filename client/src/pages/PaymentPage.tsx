@@ -504,7 +504,7 @@ export function PaymentPage() {
               <div className="flex justify-between text-sm">
                 <span className="text-slate-600">Processing Fee</span>
                 <span className="text-slate-700">
-                  ${payAppData.ach_fee.toFixed(2)} (paid by contractor)
+                  {formatCurrency(payAppData.ach_fee)} (paid by contractor)
                 </span>
               </div>
             )}

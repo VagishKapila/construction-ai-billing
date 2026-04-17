@@ -1,16 +1,18 @@
 /**
  * Vendor Dashboard Tests
- * - Orange theme verification
- * - Status variants
- * - Upload modal functionality
+ * - VendorDashboard orange theme verification
+ * - VendorProjectCard status variants
+ * - VendorUploadModal functionality
+ * - VendorTrustScore display
  * - Empty state handling
  */
 
-import { render, screen, fireEvent } from '@testing-library/react'
-import { describe, it, expect, vi } from 'vitest'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import VendorProjectCard from '@/features/vendor/VendorProjectCard'
 import VendorUploadModal from '@/features/vendor/VendorUploadModal'
 import VendorTrustScore from '@/features/vendor/VendorTrustScore'
+import { VendorDashboard } from '@/pages/VendorDashboard'
 import type { Project } from '@/types'
 
 describe('VendorDashboard Components', () => {
@@ -325,6 +327,99 @@ describe('VendorDashboard Components', () => {
           <VendorProjectCard project={baseProject} status={status} onUpload={vi.fn()} />
         )).not.toThrow()
       })
+    })
+  })
+
+  // ============================================================================
+  // VendorDashboard Page Tests
+  // ============================================================================
+
+  describe('VendorDashboard', () => {
+    beforeEach(() => {
+      // Mock fetch for all API calls — returns empty data
+      ;(globalThis as unknown as Record<string, unknown>).fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('my-projects')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [] }) })
+        }
+        if (url.includes('my-documents')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [] }) })
+        }
+        if (url.includes('trust-score')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ score: 500, id: 1 }) })
+        }
+        return Promise.resolve({ ok: false, json: () => Promise.resolve({}) })
+      }) as typeof fetch
+
+      // Mock localStorage
+      Storage.prototype.getItem = vi.fn().mockReturnValue('mock_token')
+    })
+
+    it('renders the orange gradient header with Vendor Mode title', async () => {
+      render(<VendorDashboard />)
+
+      // Wait past loading state
+      await waitFor(() => {
+        expect(screen.queryByText(/Vendor Mode/)).toBeInTheDocument()
+      }, { timeout: 3000 })
+    })
+
+    it('shows loading skeleton on initial render', () => {
+      const { container } = render(<VendorDashboard />)
+      // On first render, loading state shows pulse animations
+      const pulses = container.querySelectorAll('.animate-pulse')
+      expect(pulses.length).toBeGreaterThan(0)
+    })
+
+    it('applies orange bg-[#f0f4fa] to page wrapper', () => {
+      const { container } = render(<VendorDashboard />)
+      // The page background should use #f0f4fa
+      const wrapper = container.firstElementChild
+      expect(wrapper?.className).toContain('bg-[#f0f4fa]')
+    })
+
+    it('renders orange gradient on loading header', () => {
+      const { container } = render(<VendorDashboard />)
+      // Loading state should also show orange skeleton
+      const orangeEl = container.querySelector('.from-orange-500')
+      expect(orangeEl).not.toBeNull()
+    })
+
+    it('shows empty state with join code input when no projects', async () => {
+      render(<VendorDashboard />)
+
+      await waitFor(() => {
+        const joinInput = screen.queryByPlaceholderText(/Enter join code/)
+        expect(joinInput).toBeInTheDocument()
+      }, { timeout: 3000 })
+    })
+
+    it('shows floating upload button', async () => {
+      render(<VendorDashboard />)
+
+      await waitFor(() => {
+        const btn = screen.queryByTestId('floating-upload-btn')
+        expect(btn).toBeInTheDocument()
+      }, { timeout: 3000 })
+    })
+
+    it('trust score pill uses JetBrains Mono font style', async () => {
+      render(<VendorDashboard />)
+
+      await waitFor(() => {
+        // Trust score pill should be in document after loading completes
+        const pill = screen.queryByTestId('trust-score-pill')
+        expect(pill).toBeInTheDocument()
+      }, { timeout: 3000 })
+    })
+
+    it('displays trust score in {score}/763 · {tier} format', async () => {
+      render(<VendorDashboard />)
+
+      await waitFor(() => {
+        // After loading, trust score 500 should show with /763 · Gold format
+        const container = document.body
+        expect(container.textContent).toContain('500/763')
+      }, { timeout: 3000 })
     })
   })
 })

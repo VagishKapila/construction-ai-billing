@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useLocation, Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import {
   Menu,
   LogOut,
@@ -9,38 +9,13 @@ import {
 } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useAuth } from '@/contexts/AuthContext'
+import { useRole } from '@/contexts/RoleContext'
+import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/cn'
 
 /**
  * Page title mapping — used for both desktop and mobile
  */
-const PAGE_TITLES: Record<string, string> = {
-  '/dashboard': 'Dashboard',
-  '/': 'Dashboard',
-  '/payments': 'Payments',
-  '/reports': 'Reports',
-  '/settings': 'Settings',
-  '/help': 'Help',
-  '/admin': 'Admin Dashboard',
-}
-
-/**
- * Get current page title based on route
- */
-function getPageTitle(pathname: string): string {
-  if (pathname in PAGE_TITLES) {
-    return PAGE_TITLES[pathname]
-  }
-
-  // Try prefix match for nested routes
-  for (const [route, title] of Object.entries(PAGE_TITLES)) {
-    if (pathname.startsWith(route) && route !== '/') {
-      return title
-    }
-  }
-
-  return 'ConstructInvoice AI'
-}
 
 /**
  * Top bar (64px, sticky)
@@ -51,11 +26,15 @@ export function TopBar({
 }: {
   onMenuToggle?: (open: boolean) => void
 }) {
-  const location = useLocation()
   const { user, logout } = useAuth()
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const { isContractor, isVendor, setRole } = useRole()
+  const navigate = useNavigate()
 
-  const pageTitle = getPageTitle(location.pathname)
+  const handleRole = (role: 'contractor' | 'vendor') => {
+    setRole(role)
+    navigate(role === 'vendor' ? '/vendor' : '/dashboard')
+  }
 
   /**
    * Generate user initials for avatar
@@ -80,26 +59,42 @@ export function TopBar({
         'md:left-[260px] md:w-[calc(100%-260px)]', // Desktop: offset by sidebar
       )}
     >
-      {/* Left side: hamburger (mobile) + page title */}
-      <div className="flex items-center gap-4">
-        {/* Mobile hamburger button */}
+      {/* Left: hamburger (mobile) + role switcher pills */}
+      <div className="flex items-center gap-3">
+        {/* Mobile hamburger */}
         <button
           onClick={() => onMenuToggle?.(true)}
           className="md:hidden p-2 hover:bg-[#fafafe] rounded-lg transition-colors"
           aria-label="Toggle sidebar"
-          aria-expanded="false"
         >
           <Menu size={20} className="text-[#555555]" />
         </button>
 
-        {/* Page title */}
-        <h1 className="text-lg font-semibold text-[#1a1a2e] hidden sm:block">
-          {pageTitle}
-        </h1>
+        {/* Role switcher — inline with logo row */}
+        <div className="hidden md:flex items-center gap-1 bg-[#f1f5f9] p-1 rounded-lg">
+          <button
+            onClick={() => handleRole('contractor')}
+            className={isContractor
+              ? 'px-3 py-1 text-sm font-semibold rounded-md bg-white text-[#2563eb] shadow-sm'
+              : 'px-3 py-1 text-sm font-medium rounded-md text-[#64748b] hover:text-[#1e293b]'
+            }
+          >🏗️ Contractor</button>
+          <button
+            onClick={() => handleRole('vendor')}
+            className={isVendor
+              ? 'px-3 py-1 text-sm font-semibold rounded-md bg-[#ea6c00] text-white shadow-sm'
+              : 'px-3 py-1 text-sm font-medium rounded-md text-[#64748b] hover:text-[#1e293b]'
+            }
+          >🔧 Vendor</button>
+        </div>
       </div>
 
-      {/* Right side: user menu */}
+      {/* Right: bell + user menu */}
       <div className="flex items-center gap-2">
+        {/* Notification bell */}
+        <button className="p-2 hover:bg-[#fafafe] rounded-lg transition-colors relative" title="Notifications">
+          <span className="text-lg">🔔</span>
+        </button>
         <DropdownMenu.Root open={dropdownOpen} onOpenChange={setDropdownOpen}>
           <DropdownMenu.Trigger asChild>
             <button

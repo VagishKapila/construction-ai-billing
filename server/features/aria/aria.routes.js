@@ -469,7 +469,6 @@ router.get('/api/aria/lien-alerts', auth, async (req, res) => {
           ala.work_start_date,
           ala.preliminary_notice_due,
           ala.mechanics_lien_deadline,
-          ala.stop_payment_deadline,
           ala.alert_day_15_sent,
           ala.alert_day_19_sent,
           ala.alert_day_20_sent,

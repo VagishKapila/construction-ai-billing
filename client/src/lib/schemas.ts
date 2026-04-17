@@ -333,3 +333,92 @@ export const HubUploadSchema = z.object({
 });
 
 export type HubUploadSchemaType = z.infer<typeof HubUploadSchema>;
+
+// ============================================================================
+// CONVENIENCE TYPE ALIASES (simpler names used in shared components)
+// ============================================================================
+
+// Simple project type for shared component props (subset of ProjectSchemaType)
+export type Project = {
+  id: number
+  name: string
+  address?: string | null
+  owner?: string | null
+  owner_name?: string | null
+  owner_email?: string | null
+  contract_amount?: number | null
+  original_contract?: number | null
+  payment_terms?: string | null
+  retainage_pct?: number | null
+  default_retainage?: number | null
+  status?: string | null
+  pay_app_count?: number | null
+  created_at?: string
+}
+
+// Simple pay app type for shared component props
+export type PayApp = {
+  id: number
+  pay_app_number: number
+  project_id: number
+  amount?: number | null
+  amount_due?: number | null
+  status: string
+  created_at: string
+  pay_token?: string | null
+  po_number?: string | null
+  notes?: string | null
+  submitted_at?: string | null
+  period_label?: string | null
+  payment_status?: string | null
+}
+
+// Simple hub upload type
+export type HubUpload = {
+  id: number
+  project_id: number
+  trade_id?: number | null
+  filename: string
+  doc_type?: string | null
+  status: string
+  source?: string | null
+  created_at: string
+  amount?: number | null
+  rejection_reason?: string | null
+  trade_name?: string | null
+  company_name?: string | null
+}
+
+// Simple trade type for shared component props
+export type Trade = {
+  id: number
+  project_id: number
+  trade_name: string
+  company_name?: string | null
+  status?: string | null
+  trust_score_cached?: number | null
+  trust_score?: number | null
+  email_alias?: string | null
+  contact_email?: string | null
+}
+
+// Lien alert type
+export const LienAlertSchema = z.object({
+  id: z.number(),
+  project_id: z.number(),
+  alert_type: z.string(),
+  deadline_date: z.string(),
+  days_remaining: z.number().nullable().optional(),
+  state: z.string(),
+})
+export type LienAlert = z.infer<typeof LienAlertSchema>
+
+// Revenue summary
+export const RevenueSummarySchema = z.object({
+  total_pipeline: z.union([z.string().transform(Number), z.number()]).nullable().optional(),
+  total_billed: z.union([z.string().transform(Number), z.number()]).nullable().optional(),
+  total_outstanding: z.union([z.string().transform(Number), z.number()]).nullable().optional(),
+  total_collected: z.union([z.string().transform(Number), z.number()]).nullable().optional(),
+  total_retainage: z.union([z.string().transform(Number), z.number()]).nullable().optional(),
+})
+export type RevenueSummary = z.infer<typeof RevenueSummarySchema>

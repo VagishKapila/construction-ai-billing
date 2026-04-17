@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { NotFound } from '@/pages/NotFound'
 
 describe('Bug Fixes', () => {
@@ -9,17 +10,16 @@ describe('Bug Fixes', () => {
     expect(ariaText).toBe('While you\'re on the job, ARIA helps you get paid faster')
   })
 
-  // BUG 8: NotFound page exists and renders 404
+  // BUG 8: NotFound page exists and renders page not found message
   it('NotFound page renders 404 text', () => {
-    render(<NotFound />)
-    expect(screen.getByText('404')).toBeInTheDocument()
+    render(<MemoryRouter><NotFound /></MemoryRouter>)
+    expect(screen.getByText('Page Not Found')).toBeInTheDocument()
   })
 
-  // BUG 8: NotFound page has "Back to Dashboard" link
+  // BUG 8: NotFound page has "Back to Dashboard" button
   it('NotFound page has Back to Dashboard link', () => {
-    render(<NotFound />)
-    const link = screen.getByRole('link', { name: /Back to Dashboard/i })
-    expect(link).toBeInTheDocument()
-    expect(link).toHaveAttribute('href', '/dashboard')
+    render(<MemoryRouter><NotFound /></MemoryRouter>)
+    const btn = screen.getByText(/Back to Dashboard/i)
+    expect(btn).toBeInTheDocument()
   })
 })

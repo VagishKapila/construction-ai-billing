@@ -89,7 +89,7 @@ export function VendorDashboard() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 bg-[#fef9f5] min-h-screen p-6">
+      <div className="space-y-6 bg-[#f0f4fa] min-h-screen p-6">
         <div className="h-12 bg-gradient-to-r from-orange-500 to-orange-600 rounded-lg animate-pulse" />
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
@@ -144,33 +144,62 @@ export function VendorDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fef9f5] p-6 space-y-8">
-      {/* Header Strip — Orange Gradient */}
+    <div className="min-h-screen bg-[#f0f4fa] space-y-8">
+      {/* Header Strip — Orange Gradient (135deg per design spec) */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl p-8 shadow-lg"
+        className="text-white rounded-b-xl shadow-lg"
+        style={{ background: 'linear-gradient(135deg, #ea6c00 0%, #c2540a 100%)', padding: '24px' }}
       >
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-3xl font-bold text-white font-display">🔧 Vendor Portal</h1>
-            <p className="text-orange-100 mt-2">Manage your projects, upload documents, and track your trust score</p>
+            <h1 className="text-3xl font-bold text-white">🔧 Vendor Mode</h1>
+            <p className="text-orange-100 mt-1 text-sm">Manage projects, upload documents, and track your trust score</p>
           </div>
+          {/* Trust score pill — JetBrains Mono, {score}/763 · {tier} */}
           <button
             onClick={() => setTrustScoreOpen(true)}
             className="text-right group hover:opacity-90 transition-opacity"
             aria-label="View trust score breakdown"
+            data-testid="trust-score-pill"
           >
-            <div className="text-sm text-orange-100 mb-2">Your Trust Score</div>
-            <div className="text-4xl font-bold text-white font-mono">
-              {trustScore}<span className="text-lg text-orange-100">/{MAX_SCORE}</span>
-            </div>
-            <div className="text-xs text-orange-100 mt-1 flex items-center justify-end gap-1">
-              {tierLabels[tierName]}
-              <ChevronRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
+            <div className="bg-white/20 px-4 py-2 rounded-xl">
+              <div className="text-white/70 text-xs mb-1">Trust Score</div>
+              <div
+                className="text-white font-bold text-lg"
+                style={{ fontFamily: "'JetBrains Mono', 'Fira Code', 'Courier New', monospace" }}
+              >
+                {trustScore}/{MAX_SCORE} · {tierLabels[tierName]}
+              </div>
+              <div className="text-xs text-orange-100 mt-0.5 flex items-center justify-end gap-1">
+                <ChevronRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
+              </div>
             </div>
           </button>
+        </div>
+
+        {/* Filter chips — in header per spec */}
+        <div className="flex gap-2 flex-wrap">
+          {['all', 'needs_upload', 'pending', 'approved', 'rejected', 'paid'].map((status) => (
+            <button
+              key={status}
+              onClick={() => setFilterStatus(status)}
+              className={`px-3 py-1.5 rounded-full font-medium transition-all text-xs ${
+                filterStatus === status
+                  ? 'bg-white text-orange-600 shadow-md'
+                  : 'bg-white/20 text-white hover:bg-white/30'
+              }`}
+            >
+              {status === 'all' && 'All'}
+              {status === 'needs_upload' && '⚠️ Needs Upload'}
+              {status === 'pending' && '⏳ Pending'}
+              {status === 'approved' && '✅ Approved'}
+              {status === 'rejected' && '❌ Rejected'}
+              {status === 'paid' && '💰 Paid'}
+            </button>
+          ))}
         </div>
       </motion.div>
 
@@ -196,30 +225,8 @@ export function VendorDashboard() {
         </motion.div>
       )}
 
-      {/* Filter Chips — Orange Active State */}
-      <div className="flex gap-2 flex-wrap">
-        {['all', 'needs_upload', 'pending', 'approved', 'rejected', 'paid'].map((status) => (
-          <button
-            key={status}
-            onClick={() => setFilterStatus(status)}
-            className={`px-4 py-2 rounded-full font-medium transition-all text-sm ${
-              filterStatus === status
-                ? 'bg-orange-500 text-white shadow-md'
-                : 'bg-white text-gray-700 border border-gray-200 hover:border-orange-300'
-            }`}
-          >
-            {status === 'all' && 'All'}
-            {status === 'needs_upload' && '⚠️ Needs Upload'}
-            {status === 'pending' && '⏳ Pending Review'}
-            {status === 'approved' && '✅ Approved'}
-            {status === 'rejected' && '❌ Rejected'}
-            {status === 'paid' && '💰 Paid'}
-          </button>
-        ))}
-      </div>
-
       {/* My Projects — Status Variants */}
-      <div>
+      <div className="px-6">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-gray-900">My Projects</h2>
           <span className="text-sm font-medium text-orange-600">{filteredProjects.length} projects</span>
@@ -304,7 +311,7 @@ export function VendorDashboard() {
       </div>
 
       {/* Document History Table */}
-      <div>
+      <div className="px-6">
         <h2 className="text-2xl font-bold text-gray-900 mb-6">Document History</h2>
         <Card className="overflow-hidden border border-gray-200">
           <div className="overflow-x-auto">
@@ -411,18 +418,21 @@ export function VendorDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Floating Upload Button */}
+      {/* Floating Upload Button — orange gradient per spec */}
       <motion.button
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.95 }}
+        whileHover={{ scale: 1.05, y: -2 }}
+        whileTap={{ scale: 0.97 }}
         onClick={() => {
           setSelectedProjectId(undefined)
           setUploadModalOpen(true)
         }}
-        className="fixed bottom-8 right-8 w-16 h-16 bg-orange-500 hover:bg-orange-600 text-white rounded-full shadow-2xl flex items-center justify-center text-2xl z-40 md:w-auto md:px-6 md:h-auto md:py-3 md:gap-2 md:rounded-full transition-all"
+        className="fixed bottom-6 right-6 flex items-center gap-2 px-5 py-3 rounded-2xl text-white font-semibold shadow-lg z-40"
+        style={{ background: 'linear-gradient(135deg, #ea6c00, #c2540a)' }}
+        data-testid="floating-upload-btn"
+        aria-label="Upload Document"
       >
-        <Upload className="w-6 h-6" />
-        <span className="hidden md:inline font-semibold">Upload</span>
+        <Upload className="w-5 h-5" />
+        <span className="font-semibold">Upload Document</span>
       </motion.button>
 
       {/* Upload Modal */}

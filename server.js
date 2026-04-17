@@ -299,7 +299,7 @@ app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
       [resetToken, user.id]
     );
     const appUrl = process.env.APP_URL || 'https://constructinv.varshyl.com';
-    const resetUrl = `${appUrl}/app.html?reset=${resetToken}`;
+    const resetUrl = `${appUrl}/reset-password?token=${resetToken}`;
     const apiKey   = process.env.RESEND_API_KEY;
     const fromEmail = process.env.FROM_EMAIL || 'noreply@varshyl.com';
     if (!apiKey) {
@@ -489,7 +489,7 @@ app.get('/api/auth/google', (req, res) => {
 
 app.get('/api/auth/google/callback', async (req, res) => {
   const { code, error } = req.query;
-  if (error || !code) return res.redirect('/app.html?auth_error=google_denied');
+  if (error || !code) return res.redirect('/?auth_error=google_denied');
   try {
     const redirectUri = `${process.env.APP_URL || 'http://localhost:3000'}/api/auth/google/callback`;
     // Exchange code for tokens
@@ -517,7 +517,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
       if (!user.google_id) {
         await pool.query('UPDATE users SET google_id=$1, email_verified=TRUE WHERE id=$2', [profile.id, user.id]);
       }
-      if (user.blocked) return res.redirect('/app.html?auth_error=account_blocked');
+      if (user.blocked) return res.redirect('/?auth_error=account_blocked');
     } else {
       // New user via Google — auto-verified
       const r = await pool.query(
@@ -534,10 +534,10 @@ app.get('/api/auth/google/callback', async (req, res) => {
     // Use URL fragment (#) instead of query string — fragments are NOT sent to servers,
     // NOT logged in access logs, and NOT included in Referer headers. This prevents
     // the JWT from leaking through browser history, server logs, or third-party referers.
-    res.redirect(`/app.html#google_token=${tok}`);
+    res.redirect(`/#google_token=${tok}`);
   } catch(e) {
     console.error('Google OAuth error:', e.message);
-    res.redirect('/app.html?auth_error=google_failed');
+    res.redirect('/?auth_error=google_failed');
   }
 });
 
@@ -688,10 +688,10 @@ app.get('/api/auth/verify/:token', async (req, res) => {
        RETURNING id,name,email`,
       [req.params.token]
     );
-    if (!r.rows[0]) return res.redirect('/app.html?verify_error=invalid_or_expired_token');
+    if (!r.rows[0]) return res.redirect('/?verify_error=invalid_or_expired_token');
     await logEvent(r.rows[0].id, 'email_verified', {});
-    res.redirect('/app.html?verified=1');
-  } catch(e) { res.redirect('/app.html?verify_error=server_error'); }
+    res.redirect('/?verified=1');
+  } catch(e) { res.redirect('/?verify_error=server_error'); }
 });
 
 app.post('/api/auth/resend-verification', auth, async (req, res) => {
@@ -4374,9 +4374,9 @@ app.get('/api/auth/accept-invite/:token', async (req, res) => {
        RETURNING *`,
       [req.params.token]
     );
-    if (!r.rows[0]) return res.redirect('/app.html?invite_error=invalid_or_expired');
-    res.redirect('/app.html?invite_accepted=1');
-  } catch(e) { res.redirect('/app.html?invite_error=server'); }
+    if (!r.rows[0]) return res.redirect('/?invite_error=invalid_or_expired');
+    res.redirect('/?invite_accepted=1');
+  } catch(e) { res.redirect('/?invite_error=server'); }
 });
 
 async function sendTeamInviteEmail(toEmail, toName, inviter, token) {

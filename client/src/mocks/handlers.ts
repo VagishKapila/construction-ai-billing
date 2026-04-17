@@ -166,4 +166,51 @@ export const handlers = [
       payouts_enabled: true,
     })
   }),
+
+  // Reports summary
+  http.get('/api/reports/summary', () => {
+    return HttpResponse.json({
+      total_pipeline: 268233,
+      total_billed: 85950,
+      total_outstanding: 0,
+      total_retainage: 8595,
+      total_collected: 85950,
+    })
+  }),
+
+  // ARIA lien alerts
+  http.get('/api/aria/lien-alerts', () => {
+    return HttpResponse.json([])
+  }),
+
+  // Hub trades (alternate route pattern)
+  http.get('/api/hub/projects/:id/trades', () => {
+    return HttpResponse.json([
+      {
+        id: 1,
+        project_id: 1,
+        trade_name: 'Plumbing',
+        company_name: 'Pacific Plumbing',
+        status: 'active',
+        trust_score: 712,
+        trust_score_cached: 712,
+        email_alias: 'plumbing-elm@hub.constructinv.com',
+        contact_email: 'dispatcher@pacificplumbing.com',
+      },
+    ])
+  }),
+
+  // Trial status
+  http.get('/api/trial/status', () => {
+    return HttpResponse.json({
+      user_id: 1,
+      subscription_status: 'trial',
+      plan_type: 'free_trial',
+      trial_start_date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      trial_end_date: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
+      days_remaining: 60,
+      is_expired: false,
+      is_pro: false,
+    })
+  }),
 ]

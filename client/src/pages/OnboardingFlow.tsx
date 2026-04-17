@@ -33,7 +33,9 @@ import {
 
 interface StepOneForm {
   companyName: string
+  contactName: string
   contactPhone: string
+  contactEmail: string
   licenseNumber: string
 }
 
@@ -50,7 +52,9 @@ function StepOne({ userName, onContinue }: StepOneProps) {
   const { saveSettings, uploadLogo } = useSettings()
   const [form, setForm] = useState<StepOneForm>({
     companyName: '',
+    contactName: '',
     contactPhone: '',
+    contactEmail: '',
     licenseNumber: '',
   })
   const [logoFile, setLogoFile] = useState<File | null>(null)
@@ -89,7 +93,9 @@ function StepOne({ userName, onContinue }: StepOneProps) {
     try {
       await saveSettings({
         company_name: form.companyName.trim(),
+        contact_name: form.contactName.trim() || null,
         contact_phone: form.contactPhone.trim() || null,
+        contact_email: form.contactEmail.trim() || null,
         license_number: form.licenseNumber.trim() || null,
         notifications_pay_app: true,
         notifications_payment: true,
@@ -164,6 +170,19 @@ function StepOne({ userName, onContinue }: StepOneProps) {
             />
           </div>
 
+          {/* Contact Name */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Your name
+            </label>
+            <Input
+              autoComplete="name"
+              placeholder="Jane Smith"
+              value={form.contactName}
+              onChange={(e) => setForm((p) => ({ ...p, contactName: e.target.value }))}
+            />
+          </div>
+
           {/* Phone */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -175,6 +194,20 @@ function StepOne({ userName, onContinue }: StepOneProps) {
               placeholder="(555) 123-4567"
               value={form.contactPhone}
               onChange={(e) => setForm((p) => ({ ...p, contactPhone: e.target.value }))}
+            />
+          </div>
+
+          {/* Contact Email */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Contact email
+            </label>
+            <Input
+              type="email"
+              autoComplete="email"
+              placeholder="your@email.com"
+              value={form.contactEmail}
+              onChange={(e) => setForm((p) => ({ ...p, contactEmail: e.target.value }))}
             />
           </div>
 
