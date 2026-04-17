@@ -5,13 +5,14 @@
  */
 
 import { useState, useEffect } from 'react'
-import { motion } from 'framer-motion'
-import { Upload, Building2, FileText, AlertCircle } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Upload, Building2, FileText, AlertCircle, X, Link2, ChevronRight } from 'lucide-react'
 import type { Project } from '@/types'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { formatCurrency } from '@/lib/formatters'
 import { MAX_SCORE, getTierName } from '@/features/trust/TrustScoreBadge'
+import TrustScoreBreakdown from '@/features/trust/TrustScoreBreakdown'
 import VendorProjectCard from '@/features/vendor/VendorProjectCard'
 import VendorUploadModal from '@/features/vendor/VendorUploadModal'
 
@@ -43,6 +44,11 @@ export function VendorDashboard() {
   const [selectedProjectId, setSelectedProjectId] = useState<number | undefined>()
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const [trustScore, setTrustScore] = useState(500)
+  const [trustScoreId, setTrustScoreId] = useState<number>(0)
+  const [trustScoreOpen, setTrustScoreOpen] = useState(false)
+  const [joinCode, setJoinCode] = useState('')
+  const [joinLoading, setJoinLoading] = useState(false)
+  const [joinError, setJoinError] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -69,6 +75,7 @@ export function VendorDashboard() {
         if (scoreRes.ok) {
           const data = await scoreRes.json()
           setTrustScore(data.score || 500)
+          if (data.id) setTrustScoreId(data.id)
         }
       } catch (err) {
         console.error('Failed to fetch vendor data:', err)
@@ -112,6 +119,30 @@ export function VendorDashboard() {
     review: 'Under Review',
   }
 
+  const handleJoinProject = async () => {
+    if (!joinCode.trim()) return
+    setJoinLoading(true)
+    setJoinError(null)
+    try {
+      const token = localStorage.getItem('auth_token') || ''
+      const res = await fetch('/api/hub/join', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ join_code: joinCode.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setJoinError(data.error || 'Invalid code — check with your contractor')
+      } else {
+        window.location.reload()
+      }
+    } catch {
+      setJoinError('Network error — please try again')
+    } finally {
+      setJoinLoading(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#fef9f5] p-6 space-y-8">
       {/* Header Strip — Orange Gradient */}
@@ -126,13 +157,20 @@ export function VendorDashboard() {
             <h1 className="text-3xl font-bold text-white font-display">🔧 Vendor Portal</h1>
             <p className="text-orange-100 mt-2">Manage your projects, upload documents, and track your trust score</p>
           </div>
-          <div className="text-right">
+          <button
+            onClick={() => setTrustScoreOpen(true)}
+            className="text-right group hover:opacity-90 transition-opacity"
+            aria-label="View trust score breakdown"
+          >
             <div className="text-sm text-orange-100 mb-2">Your Trust Score</div>
             <div className="text-4xl font-bold text-white font-mono">
               {trustScore}<span className="text-lg text-orange-100">/{MAX_SCORE}</span>
             </div>
-            <div className="text-xs text-orange-100 mt-1">{tierLabels[tierName]}</div>
-          </div>
+            <div className="text-xs text-orange-100 mt-1 flex items-center justify-end gap-1">
+              {tierLabels[tierName]}
+              <ChevronRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
+            </div>
+          </button>
         </div>
       </motion.div>
 
@@ -191,16 +229,48 @@ export function VendorDashboard() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-center py-16 rounded-xl bg-white border-2 border-orange-200"
+            className="rounded-xl bg-white border-2 border-orange-200 overflow-hidden"
           >
-            <Building2 className="w-16 h-16 text-orange-300 mx-auto mb-4" />
-            <p className="text-lg font-medium text-gray-900 mb-2">
-              {filterStatus === 'all' ? 'No projects yet' : `No ${filterStatus} projects`}
-            </p>
-            <p className="text-sm text-gray-600">
-              {filterStatus === 'all' && "Ask your contractor for an invite link to join their projects"}
-              {filterStatus !== 'all' && 'Try a different filter'}
-            </p>
+            {filterStatus === 'all' ? (
+              <div className="p-10 text-center">
+                <Building2 className="w-16 h-16 text-orange-300 mx-auto mb-4" />
+                <p className="text-lg font-semibold text-gray-900 mb-2">You haven't joined any projects yet</p>
+                <p className="text-sm text-gray-500 mb-6">Enter a join code from your contractor, or open the magic link they emailed you.</p>
+
+                {/* Join code input */}
+                <div className="max-w-sm mx-auto space-y-3">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={joinCode}
+                      onChange={(e) => { setJoinCode(e.target.value); setJoinError(null) }}
+                      onKeyDown={(e) => e.key === 'Enter' && handleJoinProject()}
+                      placeholder="Enter join code (e.g. PLM-7X2K)"
+                      className="flex-1 border border-orange-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                    />
+                    <button
+                      onClick={handleJoinProject}
+                      disabled={joinLoading || !joinCode.trim()}
+                      className="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-semibold px-4 py-2 rounded-lg text-sm transition-colors"
+                    >
+                      {joinLoading ? '...' : 'Join'}
+                    </button>
+                  </div>
+                  {joinError && <p className="text-sm text-red-600">{joinError}</p>}
+
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <Link2 size={12} />
+                    <span>No code? Ask your contractor to send you a magic link invite.</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="py-16 text-center">
+                <Building2 className="w-16 h-16 text-orange-300 mx-auto mb-4" />
+                <p className="text-lg font-medium text-gray-900 mb-2">No {filterStatus} projects</p>
+                <p className="text-sm text-gray-600">Try a different filter</p>
+              </div>
+            )}
           </motion.div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -299,6 +369,47 @@ export function VendorDashboard() {
           </div>
         </Card>
       </div>
+
+      {/* Trust Score Slide-out Panel */}
+      <AnimatePresence>
+        {trustScoreOpen && (
+          <>
+            <motion.div
+              key="backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 z-40"
+              onClick={() => setTrustScoreOpen(false)}
+            />
+            <motion.div
+              key="panel"
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 260 }}
+              className="fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl z-50 flex flex-col"
+            >
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                <h2 className="text-lg font-bold text-gray-900">Trust Score Breakdown</h2>
+                <button
+                  onClick={() => setTrustScoreOpen(false)}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <X size={20} className="text-gray-500" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6">
+                <TrustScoreBreakdown
+                  score={trustScore}
+                  maxScore={MAX_SCORE}
+                  trustScoreId={trustScoreId}
+                />
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Floating Upload Button */}
       <motion.button

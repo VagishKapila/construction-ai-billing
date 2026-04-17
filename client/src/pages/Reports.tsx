@@ -171,10 +171,11 @@ export function Reports() {
       };
     }
 
-    const totalBilled = payAppRows.reduce((sum, row) => sum + row.amount_due, 0);
+    // PostgreSQL NUMERIC columns come back as strings — coerce to Number to avoid string concat
+    const totalBilled = payAppRows.reduce((sum, row) => sum + (Number(row.amount_due) || 0), 0);
     const paid = payAppRows.reduce((sum, row) => {
       if (row.status === 'paid') {
-        return sum + row.amount_due;
+        return sum + (Number(row.amount_due) || 0);
       }
       return sum;
     }, 0);

@@ -20,6 +20,7 @@ import { PaymentPage } from '@/pages/PaymentPage'
 import { PaymentsDashboard } from '@/pages/PaymentsDashboard'
 import { Reports } from '@/pages/Reports'
 import { CashFlow } from '@/pages/CashFlow'
+import { LienDashboard } from '@/pages/LienDashboard'
 import { Settings } from '@/pages/Settings'
 import { AdminDashboard } from '@/pages/AdminDashboard'
 import { Help } from '@/pages/Help'
@@ -158,6 +159,14 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             <CashFlow />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/lien"
+        element={
+          <ProtectedRoute>
+            <LienDashboard />
           </ProtectedRoute>
         }
       />

@@ -1,9 +1,8 @@
 import React, { useState } from 'react'
-import { X } from 'lucide-react'
-import { Outlet } from 'react-router-dom'
+import { X, LayoutDashboard, CreditCard, BarChart3, TrendingUp, Settings, HelpCircle, Shield } from 'lucide-react'
+import { Outlet, Link, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
-import { TopNav } from './TopNav'
 import { MobileNav } from './MobileNav'
 import { AIChatWidget } from '@/components/ai'
 import { TrialBanner } from '@/components/trial/TrialBanner'
@@ -11,6 +10,7 @@ import { UpgradeModal } from '@/components/trial/UpgradeModal'
 import { UpgradeNudge } from '@/components/trial/UpgradeNudge'
 import { InstallPrompt } from '@/components/pwa'
 import { RoleProvider } from '@/contexts/RoleContext'
+import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/cn'
 
 /**
@@ -77,11 +77,8 @@ export function Shell({ children }: { children?: React.ReactNode }) {
               </button>
             </div>
 
-            {/* Navigation items (mobile version) */}
-            <nav className="flex-1 space-y-1 px-2 py-4">
-              {/* Navigation will be handled by the main Sidebar component if used here */}
-              <Sidebar isCollapsed={false} />
-            </nav>
+            {/* Navigation items (mobile version — inline links matching Sidebar nav) */}
+            <MobileOverlayNav onClose={() => setSidebarOpen(false)} />
           </div>
         </>
       )}
@@ -91,13 +88,8 @@ export function Shell({ children }: { children?: React.ReactNode }) {
         onMenuToggle={(open) => setSidebarOpen(open)}
       />
 
-      {/* Desktop TopNav (role switcher + notifications + user) */}
-      <div className="hidden md:block fixed top-[64px] left-[260px] right-0 z-40">
-        <TopNav />
-      </div>
-
       {/* Trial Banner — shows above content when trial nearing expiry */}
-      <div className="md:ml-[260px] pt-[64px] md:pt-[56px]">
+      <div className="md:ml-[260px] pt-[64px]">
         <TrialBanner onUpgradeClick={() => setUpgradeModalOpen(true)} />
       </div>
 
@@ -133,3 +125,53 @@ export function Shell({ children }: { children?: React.ReactNode }) {
     </RoleProvider>
   )
 }
+
+/**
+ * Nav links for the mobile overlay sidebar panel
+ * Mirrors the Sidebar nav items but renders as a flex column (no fixed positioning)
+ */
+function MobileOverlayNav({ onClose }: { onClose: () => void }) {
+  const location = useLocation()
+  const { isAdmin } = useAuth()
+
+  const isActive = (href: string) =>
+    href === '/dashboard'
+      ? location.pathname === '/dashboard' || location.pathname === '/'
+      : location.pathname.startsWith(href)
+
+  const navItems = [
+    { label: 'Projects', href: '/dashboard', icon: <LayoutDashboard size={20} /> },
+    { label: 'Cash Flow', href: '/cash-flow', icon: <TrendingUp size={20} /> },
+    { label: 'Payments', href: '/payments', icon: <CreditCard size={20} /> },
+    { label: 'Reports', href: '/reports', icon: <BarChart3 size={20} /> },
+    ...(isAdmin ? [{ label: 'Admin', href: '/admin', icon: <Shield size={20} /> }] : []),
+    { label: 'Settings', href: '/settings', icon: <Settings size={20} /> },
+    { label: 'Help', href: '/help', icon: <HelpCircle size={20} /> },
+  ]
+
+  return (
+    <nav className="flex-1 flex flex-col gap-1 px-2 py-4" aria-label="Mobile navigation">
+      {navItems.map((item) => {
+        const active = isActive(item.href)
+        return (
+          <Link
+            key={item.href}
+            to={item.href}
+            onClick={onClose}
+            className={cn(
+              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+              'border-l-4',
+              active
+                ? 'bg-[#eef2ff] border-l-[#6366f1] text-[#6366f1]'
+                : 'border-l-transparent text-[#555555] hover:bg-[#fafafe] hover:text-[#1a1a2e]',
+            )}
+          >
+            <span className="flex-shrink-0">{item.icon}</span>
+            <span className="flex-1">{item.label}</span>
+          </Link>
+        )
+      })}
+    </nav>
+  )
+}
+

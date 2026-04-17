@@ -517,7 +517,7 @@ export function ProjectDetail() {
           <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-text-primary mb-2">Project not found</h2>
           <p className="text-text-muted mb-6">We couldn't load the project details.</p>
-          <Button onClick={() => navigate('/projects')}>Back to Projects</Button>
+          <Button onClick={() => navigate('/dashboard')}>Back to Projects</Button>
         </div>
       </div>
     )
@@ -528,7 +528,7 @@ export function ProjectDetail() {
   // ═══════════════════════════════════════════════════════
 
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - 56px)' }} className="bg-gray-50">
+    <div style={{ display: 'flex', height: 'calc(100vh - 64px)' }} className="-mx-4 sm:-mx-6 md:-mx-8 -mt-4 md:-mt-6 -mb-20 md:-mb-4 bg-gray-50">
       {/* LEFT PANEL — 55% — Financial data, scrollable, white */}
       <div
         style={{

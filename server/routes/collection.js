@@ -30,7 +30,7 @@ router.get('/outstanding', async (req, res) => {
     const result = await pool.query(`
       SELECT
         pa.id,
-        pa.app_number as pay_app_number,
+        pa.pay_app_number,
         pa.amount_due,
         pa.amount_paid,
         pa.payment_due_date,
@@ -40,7 +40,7 @@ router.get('/outstanding', async (req, res) => {
         pa.payment_link_token,
         p.name as project_name,
         p.id as project_id,
-        p.owner_name,
+        p.owner as owner_name,
         p.owner_email,
         CASE
           WHEN pa.payment_due_date < NOW() THEN
@@ -55,7 +55,7 @@ router.get('/outstanding', async (req, res) => {
       FROM pay_apps pa
       JOIN projects p ON pa.project_id = p.id
       WHERE p.user_id = $1
-        AND pa.submitted_at IS NOT NULL
+        AND (pa.submitted_at IS NOT NULL OR pa.status NOT IN ('draft', 'void'))
         AND (pa.payment_status IS NULL OR pa.payment_status NOT IN ('paid'))
         AND (pa.bad_debt IS NULL OR pa.bad_debt = FALSE)
       ORDER BY
@@ -101,7 +101,7 @@ router.get('/overdue', async (req, res) => {
     const result = await pool.query(`
       SELECT
         pa.id,
-        pa.app_number,
+        pa.pay_app_number,
         pa.amount_due,
         pa.amount_paid,
         pa.payment_due_date,
@@ -109,7 +109,7 @@ router.get('/overdue', async (req, res) => {
         pa.payment_received,
         pa.bad_debt,
         p.name as project_name,
-        p.owner_name,
+        p.owner as owner_name,
         p.owner_email,
         EXTRACT(DAY FROM NOW() - pa.payment_due_date)::INTEGER as days_overdue,
         CASE
@@ -284,7 +284,7 @@ router.get('/payer-patterns', async (req, res) => {
 
     const result = await pool.query(`
       SELECT
-        p.owner_name,
+        p.owner as owner_name,
         p.owner_email,
         COUNT(pa.id) as total_invoices,
         COUNT(CASE WHEN pa.payment_received THEN 1 END) as paid_count,
@@ -303,7 +303,7 @@ router.get('/payer-patterns', async (req, res) => {
       JOIN projects p ON pa.project_id = p.id
       WHERE p.user_id = $1
         AND pa.submitted_at IS NOT NULL
-      GROUP BY p.owner_name, p.owner_email
+      GROUP BY p.owner, p.owner_email
       ORDER BY currently_owed DESC
     `, [req.user.id]);
 
@@ -447,7 +447,7 @@ router.get('/followup-history', async (req, res) => {
         pf.response_at,
         pf.notes,
         pf.created_at,
-        pa.app_number,
+        pa.pay_app_number,
         p.name as project_name
       FROM payment_followups pf
       JOIN pay_apps pa ON pf.pay_app_id = pa.id
@@ -496,14 +496,14 @@ router.post('/followup-draft/:payAppId', async (req, res) => {
     const result = await pool.query(`
       SELECT
         pa.id,
-        pa.app_number,
+        pa.pay_app_number,
         pa.amount_due,
         pa.payment_due_date,
         pa.submitted_at,
         pa.days_overdue,
         p.name as project_name,
         p.id as project_id,
-        p.owner_name,
+        p.owner as owner_name,
         p.owner_email,
         p.default_payment_terms,
         CASE
@@ -532,7 +532,7 @@ router.post('/followup-draft/:payAppId', async (req, res) => {
       ok: true,
       draft,
       payAppId: payApp.id,
-      appNumber: payApp.app_number,
+      appNumber: payApp.pay_app_number,
       amount: payApp.amount_due,
       daysOverdue: payApp.days_overdue || 0,
     });
@@ -572,7 +572,7 @@ router.post('/followup-record/:payAppId', async (req, res) => {
 
     // Verify ownership
     const payAppCheck = await pool.query(`
-      SELECT pa.id, pa.app_number
+      SELECT pa.id, pa.pay_app_number
       FROM pay_apps pa
       JOIN projects p ON pa.project_id = p.id
       WHERE pa.id = $1 AND p.user_id = $2
