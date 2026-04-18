@@ -26,7 +26,7 @@ interface ProjectCardProps {
   }>
   payApps?: Array<{
     id: number
-    pay_app_number: number
+    app_number: number
     status: string
     amount_due?: number | null
     period_label?: string | null

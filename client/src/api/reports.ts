@@ -32,6 +32,8 @@ export interface DashboardStats {
   payapps: number;
   total_billed: number;
   outstanding: number;
+  total_paid: number;
+  total_retention: number;
 }
 
 export interface RevenueSummary {

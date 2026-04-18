@@ -147,7 +147,7 @@ describe('Dashboard', () => {
           return HttpResponse.json([
             {
               id: 10,
-              pay_app_number: 1,
+              app_number: 1,
               project_id: 1,
               status: 'submitted',
               amount_due: 45000,
@@ -345,7 +345,7 @@ describe('Dashboard', () => {
   describe('ARIA urgent sort', () => {
     const overduePayApp = {
       id: 99,
-      pay_app_number: 1,
+      app_number: 1,
       project_id: 3,
       status: 'overdue',
       amount_due: 15000,
@@ -357,7 +357,7 @@ describe('Dashboard', () => {
 
     const normalPayApp = {
       id: 100,
-      pay_app_number: 1,
+      app_number: 1,
       project_id: 1,
       status: 'draft',
       amount_due: 45000,

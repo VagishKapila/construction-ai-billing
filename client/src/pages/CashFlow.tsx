@@ -76,7 +76,7 @@ function OutstandingInvoiceRow({ invoice }: OutstandingInvoiceRowProps) {
   return (
     <tr className="border-b border-gray-200 hover:bg-gray-50 transition-colors">
       <td className="px-4 py-3 text-sm font-medium text-gray-900">{invoice.project_name}</td>
-      <td className="px-4 py-3 text-sm text-gray-600">{`PA #${invoice.pay_app_number}`}</td>
+      <td className="px-4 py-3 text-sm text-gray-600">{`PA #${invoice.app_number}`}</td>
       <td className="px-4 py-3 text-sm text-gray-600">{invoice.owner_name}</td>
       <td className="px-4 py-3 text-sm font-mono font-semibold text-gray-900">
         {formatCurrency(invoice.amount_due)}
@@ -115,7 +115,7 @@ function OutstandingInvoiceRow({ invoice }: OutstandingInvoiceRowProps) {
               title="Send reminder email"
               className="h-8 w-8 p-0"
             >
-              <a href={`mailto:${invoice.owner_email}?subject=Payment Reminder - PA #${invoice.pay_app_number}`}>
+              <a href={`mailto:${invoice.owner_email}?subject=Payment Reminder - PA #${invoice.app_number}`}>
                 <Mail size={16} />
               </a>
             </Button>
@@ -152,7 +152,7 @@ function OutstandingInvoiceCard({ invoice }: OutstandingInvoiceCardProps) {
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex-1 min-w-0">
           <p className="text-xs text-gray-600 uppercase tracking-wide font-medium">{invoice.project_name}</p>
-          <p className="text-lg font-semibold text-gray-900 mt-0.5">{`PA #${invoice.pay_app_number}`}</p>
+          <p className="text-lg font-semibold text-gray-900 mt-0.5">{`PA #${invoice.app_number}`}</p>
         </div>
         <Badge variant={config.badge as 'danger' | 'warning' | 'success' | 'default' | 'secondary' | 'outline'}>
           {config.label}
@@ -200,7 +200,7 @@ function OutstandingInvoiceCard({ invoice }: OutstandingInvoiceCardProps) {
               asChild
               className="flex-1"
             >
-              <a href={`mailto:${invoice.owner_email}?subject=Payment Reminder - PA #${invoice.pay_app_number}`}>
+              <a href={`mailto:${invoice.owner_email}?subject=Payment Reminder - PA #${invoice.app_number}`}>
                 <Mail size={14} className="mr-1" />
                 Email
               </a>

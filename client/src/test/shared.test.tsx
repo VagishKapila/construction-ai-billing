@@ -196,7 +196,7 @@ describe('Shared Components', () => {
   describe('PayAppRow', () => {
     const mockPayApp = {
       id: 1,
-      pay_app_number: 1,
+      app_number: 1,
       status: 'paid',
       amount_due: 15000,
       period_label: 'March 2026',

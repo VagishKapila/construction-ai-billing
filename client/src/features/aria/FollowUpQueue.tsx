@@ -8,7 +8,7 @@ import React, { useEffect, useState } from 'react';
 
 interface PayAppWithTone {
   id: number;
-  pay_app_number: string;
+  app_number: string;
   project_name: string;
   owner_email: string;
   owner_name: string;
@@ -143,7 +143,7 @@ export const FollowUpQueue: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-center">
               <div className="md:col-span-2">
                 <p className="font-semibold text-gray-900">{payApp.project_name}</p>
-                <p className="text-sm text-gray-500">#{payApp.pay_app_number}</p>
+                <p className="text-sm text-gray-500">#{payApp.app_number}</p>
                 <p className="text-xs text-gray-400 mt-1">{payApp.owner_name}</p>
               </div>
 

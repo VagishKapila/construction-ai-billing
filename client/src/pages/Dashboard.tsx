@@ -33,7 +33,7 @@ import { Link } from 'react-router-dom'
 
 const PayAppSummarySchema = z.object({
   id: z.number(),
-  pay_app_number: z.number(),
+  app_number: z.number(),
   project_id: z.number().optional(),
   status: z.string(),
   amount_due: z.union([z.string().transform(Number), z.number()]).nullable().optional(),
@@ -565,12 +565,15 @@ export function Dashboard() {
   const totalPipeline = projects.reduce((s, p) => s + (Number(p.original_contract) || 0), 0)
   const totalBilled = stats?.total_billed ?? 0
   const totalOutstanding = stats?.outstanding ?? 0
-  const totalCollected = Math.max(0, totalBilled - totalOutstanding)
+  // Use actual collected amount from payments table (not derived)
+  const totalCollected = stats?.total_paid ?? Math.max(0, totalBilled - totalOutstanding)
   const readyToBill = Math.max(0, totalPipeline - totalBilled)
   const retentionHeld =
-    revenueSummary?.total_retainage != null
-      ? Number(revenueSummary.total_retainage)
-      : totalBilled * 0.1
+    stats?.total_retention != null && stats.total_retention > 0
+      ? Number(stats.total_retention)
+      : revenueSummary?.total_retainage != null
+        ? Number(revenueSummary.total_retainage)
+        : 0
 
   // Count pending pay apps from loaded row data
   const pendingPayApps = Array.from(rowDataMap.values()).reduce((n, row) => {
@@ -585,9 +588,15 @@ export function Dashboard() {
   // ── ARIA message ───────────────────────────────────────────────────────────
   const urgentCount = Array.from(rowDataMap.values()).filter(r => r.urgency === 'urgent').length
   const pendingDocsCount = Array.from(rowDataMap.values()).filter(r => r.hasNewDocs).length
-  const ariaMessage = urgentCount > 0
-    ? `Good morning, ${firstName}. You have ${urgentCount} project${urgentCount !== 1 ? 's' : ''} needing attention${pendingDocsCount > 0 ? ` and ${pendingDocsCount} hub document${pendingDocsCount !== 1 ? 's' : ''} to review` : ''}.`
-    : `Good morning, ${firstName}. ARIA is monitoring ${projects.length} project${projects.length !== 1 ? 's' : ''}. Everything looks on track.`
+  const ariaMessage = (() => {
+    if (urgentCount > 0) {
+      return `Good morning, ${firstName}. ${urgentCount} project${urgentCount !== 1 ? 's' : ''} need${urgentCount === 1 ? 's' : ''} attention${pendingDocsCount > 0 ? ` · ${pendingDocsCount} hub doc${pendingDocsCount !== 1 ? 's' : ''} pending` : ''}.`
+    }
+    if (totalOutstanding > 0) {
+      return `Good morning, ${firstName}. ${formatMoney(totalOutstanding)} outstanding across ${projects.length} project${projects.length !== 1 ? 's' : ''}. Click to view cash flow.`
+    }
+    return `Good morning, ${firstName}. ARIA is monitoring ${projects.length} project${projects.length !== 1 ? 's' : ''}. Everything looks on track.`
+  })()
 
   // ── Filter + Sort projects ─────────────────────────────────────────────────
   const filteredProjects = projects.filter(p => {
@@ -683,9 +692,9 @@ export function Dashboard() {
         <motion.div variants={fadeUpItem}>
           <ARIAStrip
             message={ariaMessage}
-            variant={urgentCount > 0 ? 'alert' : 'morning'}
-            actionLabel={urgentCount > 0 ? 'View Urgent →' : undefined}
-            onAction={urgentCount > 0 ? () => setActiveFilter('🔴 Overdue') : undefined}
+            variant={urgentCount > 0 ? 'alert' : totalOutstanding > 0 ? 'alert' : 'morning'}
+            actionLabel={urgentCount > 0 ? 'View Urgent →' : totalOutstanding > 0 ? 'View Cash Flow →' : undefined}
+            onAction={urgentCount > 0 ? () => setActiveFilter('🔴 Overdue') : totalOutstanding > 0 ? () => navigate('/cash-flow') : undefined}
           />
         </motion.div>
 

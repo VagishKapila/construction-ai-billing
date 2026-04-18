@@ -533,7 +533,7 @@ export interface StripeWebhookEvent {
 
 export interface OutstandingInvoice {
   id: number;
-  pay_app_number: number;
+  app_number: number;
   amount_due: number;
   amount_paid: number;
   payment_due_date: string | null;

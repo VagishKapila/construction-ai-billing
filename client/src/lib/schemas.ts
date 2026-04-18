@@ -359,7 +359,7 @@ export type Project = {
 // Simple pay app type for shared component props
 export type PayApp = {
   id: number
-  pay_app_number: number
+  app_number: number
   project_id: number
   amount?: number | null
   amount_due?: number | null

@@ -5,7 +5,7 @@ import { StatusChip } from './StatusChip'
 interface PayAppRowProps {
   payApp: {
     id: number
-    pay_app_number: number
+    app_number: number
     status: string
     amount_due?: number | null
     period_label?: string | null
@@ -32,7 +32,7 @@ export function PayAppRow({
       className="flex items-center justify-between px-4 py-3 border-b border-[#e2e8f0] hover:bg-[#f8fafc] transition-colors"
     >
       <div className="flex items-center gap-6 flex-1 min-w-0">
-        <span className="text-sm font-semibold text-[#0f172a] w-8"># {payApp.pay_app_number}</span>
+        <span className="text-sm font-semibold text-[#0f172a] w-8"># {payApp.app_number}</span>
         <span className="text-sm text-[#64748b] flex-1 truncate">{periodLabel}</span>
         <div className="w-24">
           <MoneyDisplay amount={payApp.amount_due} size="sm" />

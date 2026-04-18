@@ -4,7 +4,7 @@ import { PayAppRow } from '@/components/shared'
 
 const mockPayApp = {
   id: 1,
-  pay_app_number: 1,
+  app_number: 1,
   project_id: 1,
   amount_due: 15000,
   status: 'paid',

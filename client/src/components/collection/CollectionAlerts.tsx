@@ -119,7 +119,7 @@ export function CollectionAlerts({ overdue, isLoading }: CollectionAlertsProps) 
                     <div className="flex flex-col gap-2">
                       <div className="flex justify-between items-start gap-2">
                         <div className="min-w-0">
-                          <p className="font-medium text-gray-900">PA #{invoice.pay_app_number}</p>
+                          <p className="font-medium text-gray-900">PA #{invoice.app_number}</p>
                           <p className="text-xs text-gray-600 truncate">{invoice.project_name}</p>
                         </div>
                         <div className="text-right flex-shrink-0">

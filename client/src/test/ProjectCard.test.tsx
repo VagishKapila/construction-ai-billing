@@ -21,7 +21,7 @@ const mockTrades = [
 const mockPayApps = [
   {
     id: 1,
-    pay_app_number: 1,
+    app_number: 1,
     project_id: 1,
     amount_due: 85950,
     status: 'paid',

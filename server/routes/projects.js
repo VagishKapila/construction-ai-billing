@@ -10,6 +10,7 @@ const { upload, rejectFile, MIME_CONTRACT } = require('../middleware/fileValidat
 const { logEvent } = require('../lib/logEvent');
 
 // GET /api/projects — List all projects for authenticated user (includes pay app count)
+// Excludes automated test artifact projects (HubTest_*, E2E_*, CO_*, Playwright_*)
 router.get('/api/projects', auth, async (req, res) => {
   const r = await pool.query(
     `SELECT p.*, COALESCE(pa.pay_app_count, 0)::int AS pay_app_count
@@ -20,10 +21,35 @@ router.get('/api/projects', auth, async (req, res) => {
        GROUP BY project_id
      ) pa ON pa.project_id = p.id
      WHERE p.user_id=$1
+       AND p.name NOT LIKE 'HubTest%'
+       AND p.name NOT LIKE 'E2E%'
+       AND p.name NOT LIKE 'CO_%'
+       AND p.name NOT LIKE 'Playwright%'
+       AND p.name NOT LIKE 'api-test%'
+       AND p.name NOT LIKE 'unique-test%'
      ORDER BY p.created_at DESC`,
     [req.user.id]
   );
   res.json(r.rows);
+});
+
+// GET /api/projects/:id/pay-apps — Pay apps for a project (used by new React Dashboard)
+router.get('/api/projects/:id/pay-apps', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT id, app_number, period_label, status, amount_due, retention_held,
+              submitted_at, payment_status, amount_paid, payment_link_token,
+              payment_due_date, created_at
+       FROM pay_apps
+       WHERE project_id = $1 AND deleted_at IS NULL
+       ORDER BY app_number`,
+      [req.params.id]
+    );
+    res.json(r.rows);
+  } catch (e) {
+    console.error('[Projects API] /pay-apps error:', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // POST /api/projects — Create new project

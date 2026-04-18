@@ -9,6 +9,7 @@ import {
 import type { PayAppReport } from '@/api/reports';
 import { useReports } from '@/hooks/useReports';
 import { useProjects } from '@/hooks/useProjects';
+import { formatMoney } from '@/utils/formatMoney';
 import type { ReportFilters } from '@/api/reports';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card } from '@/components/ui/card';
@@ -126,7 +127,7 @@ function PayAppCard({ row }: PayAppCardProps) {
 }
 
 export function Reports() {
-  const { payAppRows, isLoading, error, setFilters, exportCSV, exportPDF } =
+  const { payAppRows, stats, isLoading, error, setFilters, exportCSV, exportPDF } =
     useReports();
   const { projects } = useProjects();
 
@@ -161,33 +162,34 @@ export function Reports() {
     }
   };
 
-  // Calculate summary metrics from filtered pay apps
+  // Calculate summary metrics from filtered pay apps + stats
   const summaryMetrics = useMemo(() => {
-    if (!payAppRows.length) {
-      return {
-        totalBilled: 0,
-        outstanding: 0,
-        collectionRate: 0,
-      };
-    }
-
     // PostgreSQL NUMERIC columns come back as strings — coerce to Number to avoid string concat
     const totalBilled = payAppRows.reduce((sum, row) => sum + (Number(row.amount_due) || 0), 0);
-    const paid = payAppRows.reduce((sum, row) => {
-      if (row.status === 'paid') {
-        return sum + (Number(row.amount_due) || 0);
+
+    // Use payment_status (not status) to determine if paid — 'paid', 'partial', 'processing'
+    const paidAmount = payAppRows.reduce((sum, row) => {
+      if (row.payment_status && ['paid', 'partial', 'processing'].includes(row.payment_status)) {
+        return sum + (Number(row.amount_paid || row.amount_due) || 0);
       }
       return sum;
     }, 0);
-    const outstanding = totalBilled - paid;
-    const collectionRate = totalBilled > 0 ? (paid / totalBilled) * 100 : 0;
+
+    const outstanding = Math.max(0, totalBilled - paidAmount);
+    const collectionRate = totalBilled > 0 ? (paidAmount / totalBilled) * 100 : 0;
+
+    // Retention held: from stats or computed from pay app lines
+    const retentionHeld = stats?.total_retention != null && stats.total_retention > 0
+      ? Number(stats.total_retention)
+      : payAppRows.reduce((sum, row) => sum + (Number(row.retainage_held) || 0), 0);
 
     return {
       totalBilled,
       outstanding,
       collectionRate,
+      retentionHeld,
     };
-  }, [payAppRows]);
+  }, [payAppRows, stats]);
 
   if (isLoading && !payAppRows.length) {
     return (
@@ -337,7 +339,7 @@ export function Reports() {
       )}
 
       {/* Summary KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <KPICard
           label="Total Billed"
           value={formatCurrency(summaryMetrics.totalBilled)}
@@ -347,13 +349,19 @@ export function Reports() {
         <KPICard
           label="Outstanding"
           value={formatCurrency(summaryMetrics.outstanding)}
-          sublabel={`${payAppRows.filter((p) => p.status !== 'paid').length} unpaid`}
+          sublabel={`${payAppRows.filter((p) => !p.payment_status || !['paid','partial','processing'].includes(p.payment_status)).length} unpaid`}
+          isLoading={isLoading}
+        />
+        <KPICard
+          label="Retention Held"
+          value={formatMoney(summaryMetrics.retentionHeld)}
+          sublabel="Withheld from billings"
           isLoading={isLoading}
         />
         <KPICard
           label="Collection Rate"
           value={formatPercent(summaryMetrics.collectionRate, 1)}
-          sublabel={`Of total billed`}
+          sublabel="Of total billed"
           isLoading={isLoading}
         />
       </div>
