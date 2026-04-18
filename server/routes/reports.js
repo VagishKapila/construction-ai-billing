@@ -375,7 +375,7 @@ router.get('/stats', async (req, res) => {
         COALESCE((SELECT SUM(pa.amount_due) FROM pay_apps pa JOIN projects p ON pa.project_id = p.id WHERE p.user_id = $1 AND pa.deleted_at IS NULL AND pa.status IN ('submitted', 'sent', 'approved')), 0) as total_billed,
         COALESCE((SELECT SUM(pa.amount_due) FROM pay_apps pa JOIN projects p ON pa.project_id = p.id WHERE p.user_id = $1 AND pa.deleted_at IS NULL AND pa.status IN ('submitted', 'sent', 'approved') AND COALESCE(pa.payment_status, 'unpaid') NOT IN ('paid', 'partial', 'processing')), 0) as outstanding,
         COALESCE((SELECT SUM(COALESCE(pa.amount_paid, 0)) FROM pay_apps pa JOIN projects p ON pa.project_id = p.id WHERE p.user_id = $1 AND pa.deleted_at IS NULL AND (pa.payment_received = true OR pa.payment_status IN ('paid', 'partial', 'processing'))), 0) as total_paid,
-        COALESCE((SELECT SUM(pal.scheduled_value * pal.retainage_pct / 100.0) FROM pay_app_lines pal JOIN pay_apps pa ON pa.id = pal.pay_app_id JOIN projects p ON pa.project_id = p.id WHERE p.user_id = $1 AND pa.deleted_at IS NULL AND pa.status IN ('submitted', 'sent', 'approved')), 0) as total_retention`,
+        COALESCE((SELECT SUM(COALESCE(pa.retention_held, 0)) FROM pay_apps pa JOIN projects p ON pa.project_id = p.id WHERE p.user_id = $1 AND pa.deleted_at IS NULL AND pa.status IN ('submitted', 'sent', 'approved')), 0) as total_retention`,
       [req.user.id]
     );
 
