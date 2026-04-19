@@ -3,8 +3,11 @@ import type { OutstandingInvoice, CashFlowForecast, PayerPattern } from '../type
 
 const API = import.meta.env.VITE_API_URL || '';
 
+// Must match TOKEN_KEY in client/src/api/client.ts
+const TOKEN_KEY = 'ci_token';
+
 function authHeader(): Record<string, string> {
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem(TOKEN_KEY);
   return token ? { 'Authorization': `Bearer ${token}` } : {};
 }
 

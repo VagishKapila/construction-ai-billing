@@ -643,6 +643,13 @@ export function Dashboard() {
     }
   }, [navigate, mostRecentProject])
 
+  const scrollToProjects = useCallback(() => {
+    const el = document.getElementById('project-cards')
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [])
+
   // ── Loading state ──────────────────────────────────────────────────────────
   if (isLoading) {
     return <DashboardSkeleton />
@@ -717,7 +724,7 @@ export function Dashboard() {
             pendingPayApps={pendingPayApps}
             approvedInvoices={approvedInvoices}
             onCTA={handleCreatePayAppCTA}
-            onCardClick={() => navigate('/dashboard')}
+            onCardClick={scrollToProjects}
           />
           <LienDeadlinesCard
             lienCount={lienCount}
@@ -744,7 +751,7 @@ export function Dashboard() {
             label="Pipeline"
             value={formatMoney(totalPipeline)}
             isMoney
-            onClick={() => navigate('/dashboard')}
+            onClick={scrollToProjects}
           />
           <KPICard
             label="Outstanding"
@@ -761,7 +768,7 @@ export function Dashboard() {
           <KPICard
             label="Hub Docs Pending"
             value={pendingDocsCount > 0 ? String(pendingDocsCount) : '—'}
-            onClick={() => navigate('/hub')}
+            onClick={scrollToProjects}
           />
           <KPICard
             label="Avg Days to Pay"
@@ -830,6 +837,7 @@ export function Dashboard() {
 
         {/* ── ROW 5: Project cards ─────────────────────────────────────────── */}
         <motion.div
+          id="project-cards"
           variants={staggerContainer}
           initial="hidden"
           animate="visible"
