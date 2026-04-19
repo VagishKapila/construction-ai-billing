@@ -37,11 +37,6 @@ function formatMoney(val: number | string | null | undefined): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
 }
 
-function formatPct(num: number, denom: number): string {
-  if (!denom || denom === 0) return '—'
-  return `${Math.round((num / denom) * 100)}%`
-}
-
 const fadeUp = { hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { duration: 0.22 } } }
 const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.06 } } }
 
