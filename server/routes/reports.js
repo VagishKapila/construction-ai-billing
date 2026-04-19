@@ -84,8 +84,16 @@ router.get('/pay-apps', async (req, res) => {
       paramIndex++;
     }
 
-    // Also filter out deleted pay apps
+    // Also filter out deleted pay apps and test artifacts
     whereConditions.push('pa.deleted_at IS NULL');
+    whereConditions.push("p.name NOT LIKE 'HubTest%'");
+    whereConditions.push("p.name NOT LIKE 'HubCore%'");
+    whereConditions.push("p.name NOT LIKE 'JoinTest%'");
+    whereConditions.push("p.name NOT LIKE 'E2E%'");
+    whereConditions.push("p.name NOT LIKE 'CO_%'");
+    whereConditions.push("p.name NOT LIKE 'Playwright%'");
+    whereConditions.push("p.name NOT LIKE 'PayApp%'");
+    whereConditions.push("p.name NOT LIKE 'Test Project%'");
 
     const whereClause = whereConditions.join(' AND ');
 
@@ -372,12 +380,14 @@ router.get('/stats', async (req, res) => {
       `SELECT
         (SELECT COUNT(*) FROM projects WHERE user_id = $1) as projects,
         (SELECT COUNT(*) FROM pay_apps pa JOIN projects p ON pa.project_id = p.id WHERE p.user_id = $1 AND pa.deleted_at IS NULL) as payapps,
-        COALESCE((SELECT SUM(pa.amount_due) FROM pay_apps pa JOIN projects p ON pa.project_id = p.id WHERE p.user_id = $1 AND pa.deleted_at IS NULL AND pa.status = 'submitted'), 0) as total_billed,
-        COALESCE((SELECT SUM(pa.amount_due) FROM pay_apps pa JOIN projects p ON pa.project_id = p.id WHERE p.user_id = $1 AND pa.deleted_at IS NULL AND pa.status = 'submitted' AND COALESCE(pa.payment_status, 'unpaid') NOT IN ('paid', 'partial', 'processing')), 0) as outstanding`,
+        COALESCE((SELECT SUM(pa.amount_due) FROM pay_apps pa JOIN projects p ON pa.project_id = p.id WHERE p.user_id = $1 AND pa.deleted_at IS NULL AND pa.status IN ('submitted', 'sent', 'approved')), 0) as total_billed,
+        COALESCE((SELECT SUM(pa.amount_due) FROM pay_apps pa JOIN projects p ON pa.project_id = p.id WHERE p.user_id = $1 AND pa.deleted_at IS NULL AND pa.status IN ('submitted', 'sent', 'approved') AND COALESCE(pa.payment_status, 'unpaid') NOT IN ('paid', 'partial', 'processing')), 0) as outstanding,
+        COALESCE((SELECT SUM(COALESCE(pa.amount_paid, 0)) FROM pay_apps pa JOIN projects p ON pa.project_id = p.id WHERE p.user_id = $1 AND pa.deleted_at IS NULL AND (pa.payment_received = true OR pa.payment_status IN ('paid', 'partial', 'processing'))), 0) as total_paid,
+        COALESCE((SELECT SUM(COALESCE(pa.retention_held, 0)) FROM pay_apps pa JOIN projects p ON pa.project_id = p.id WHERE p.user_id = $1 AND pa.deleted_at IS NULL AND pa.status IN ('submitted', 'sent', 'approved')), 0) as total_retention`,
       [req.user.id]
     );
 
-    const row = statsResult.rows[0] || { projects: 0, payapps: 0, total_billed: 0, outstanding: 0 };
+    const row = statsResult.rows[0] || { projects: 0, payapps: 0, total_billed: 0, outstanding: 0, total_paid: 0, total_retention: 0 };
 
     res.json({
       ok: true,
@@ -385,7 +395,9 @@ router.get('/stats', async (req, res) => {
         projects: parseInt(row.projects) || 0,
         payapps: parseInt(row.payapps) || 0,
         total_billed: parseFloat(row.total_billed) || 0,
-        outstanding: parseFloat(row.outstanding) || 0
+        outstanding: parseFloat(row.outstanding) || 0,
+        total_paid: parseFloat(row.total_paid) || 0,
+        total_retention: parseFloat(row.total_retention) || 0
       }
     });
   } catch (e) {

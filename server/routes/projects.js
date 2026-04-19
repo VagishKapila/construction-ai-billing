@@ -1,3 +1,4 @@
+const { california: lienModule } = require('../features/aria/lien');
 const express = require('express');
 const router = express.Router();
 const path = require('path');
@@ -9,6 +10,7 @@ const { upload, rejectFile, MIME_CONTRACT } = require('../middleware/fileValidat
 const { logEvent } = require('../lib/logEvent');
 
 // GET /api/projects — List all projects for authenticated user (includes pay app count)
+// Excludes automated test artifact projects
 router.get('/api/projects', auth, async (req, res) => {
   const r = await pool.query(
     `SELECT p.*, COALESCE(pa.pay_app_count, 0)::int AS pay_app_count
@@ -19,10 +21,39 @@ router.get('/api/projects', auth, async (req, res) => {
        GROUP BY project_id
      ) pa ON pa.project_id = p.id
      WHERE p.user_id=$1
+       AND p.name NOT LIKE 'HubTest%'
+       AND p.name NOT LIKE 'HubCore%'
+       AND p.name NOT LIKE 'JoinTest%'
+       AND p.name NOT LIKE 'E2E%'
+       AND p.name NOT LIKE 'CO_%'
+       AND p.name NOT LIKE 'Playwright%'
+       AND p.name NOT LIKE 'PayApp%'
+       AND p.name NOT LIKE 'api-test%'
+       AND p.name NOT LIKE 'unique-test%'
+       AND p.name NOT LIKE 'Test Project%'
      ORDER BY p.created_at DESC`,
     [req.user.id]
   );
   res.json(r.rows);
+});
+
+// GET /api/projects/:id/pay-apps — Pay apps for a project (used by new React Dashboard)
+router.get('/api/projects/:id/pay-apps', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT id, app_number, period_label, status, amount_due, retention_held,
+              submitted_at, payment_status, amount_paid, payment_link_token,
+              payment_due_date, created_at
+       FROM pay_apps
+       WHERE project_id = $1 AND deleted_at IS NULL
+       ORDER BY app_number`,
+      [req.params.id]
+    );
+    res.json(r.rows);
+  } catch (e) {
+    console.error('[Projects API] /pay-apps error:', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // POST /api/projects — Create new project
@@ -56,6 +87,29 @@ router.post('/api/projects', auth, trialGate, async (req, res) => {
     project_id: r.rows[0].id,
     contract_value: original_contract
   });
+
+  // Auto-create CA lien alerts — non-blocking, fire and forget
+  setImmediate(async () => {
+    try {
+      const workStart = contract_date || est_date || new Date().toISOString().slice(0,10);
+      const deadlines = lienModule.calculateDeadlines(workStart);
+      await pool.query(
+        `INSERT INTO aria_lien_alerts
+          (project_id, state, work_start_date, preliminary_notice_due, mechanics_lien_deadline)
+         VALUES ($1, 'CA', $2, $3, $4)
+         ON CONFLICT DO NOTHING`,
+        [
+          r.rows[0].id,
+          deadlines.work_start_date,
+          deadlines.preliminary_notice_due,
+          deadlines.mechanics_lien_deadline,
+        ]
+      );
+    } catch (e) {
+      console.error('[Lien] Auto-alert creation failed:', e.message);
+    }
+  });
+
   res.status(201).json(r.rows[0]);
 });
 

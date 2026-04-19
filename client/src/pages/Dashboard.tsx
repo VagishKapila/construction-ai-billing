@@ -1,466 +1,886 @@
 /**
- * Dashboard — Redesigned to match constructiinv_dashboard_final.html mockup
- * ARIA strip → Hero row → KPI row → Filter chips → Project cards (expanded)
+ * Dashboard — Main view for ConstructInvoice AI
+ * Layout: ARIAStrip → Hero row → KPI row → Filter chips → Project cards
+ *
+ * CASE 1: Zero projects → EmptyState (onboarding)
+ * CASE 2: Has projects → Full dashboard with ARIA briefing, hero cards, KPIs, filter+sort, project list
  */
 
-import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { motion, type Variants } from 'framer-motion'
+
 import { useProjects } from '@/hooks/useProjects'
 import { useReports } from '@/hooks/useReports'
 import { useTrial } from '@/hooks/useTrial'
 import { useAuth } from '@/contexts/AuthContext'
-import { api } from '@/api/client'
-import { formatCurrency } from '@/lib/formatters'
+
+import { ARIAStrip } from '@/components/shared/ARIAStrip'
+import { KPICard } from '@/components/shared/KPICard'
+import { ProjectCard } from '@/components/shared/ProjectCard'
+import { EmptyState } from '@/components/shared/EmptyState'
 import { StripeConnectBanner } from '@/components/payments/StripeConnectBanner'
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+import { formatMoney } from '@/utils/formatMoney'
+import { safeValidate } from '@/lib/schemas'
+import { api } from '@/api/client'
 
-interface PayAppSummary {
-  id: number
-  pay_app_number: number
-  status: string
-  amount_due?: number | null
-  period_label?: string | null
-  created_at: string
-  payment_link_token?: string | null
-}
+import { z } from 'zod'
+import type { Project } from '@/types'
+import { Link } from 'react-router-dom'
+
+// ─── Zod Schemas for per-project API responses ────────────────────────────────
+
+const PayAppSummarySchema = z.object({
+  id: z.number(),
+  app_number: z.number(),
+  project_id: z.number().optional(),
+  status: z.string(),
+  amount_due: z.union([z.string().transform(Number), z.number()]).nullable().optional(),
+  period_label: z.string().nullable().optional(),
+  created_at: z.string(),
+  payment_link_token: z.string().nullable().optional(),
+  payment_status: z.string().nullable().optional(),
+  payment_due_date: z.string().nullable().optional(),
+})
+
+const TradeSummarySchema = z.object({
+  id: z.number(),
+  trade_name: z.string(),
+  company_name: z.string().nullable().optional(),
+  trust_score: z.union([z.string().transform(Number), z.number()]).nullable().optional(),
+  status: z.string().nullable().optional(),
+})
+
+const LienAlertsResponseSchema = z.object({
+  count: z.number().optional(),
+  alerts: z.array(z.object({
+    project_id: z.number(),
+    project_name: z.string(),
+    days_remaining: z.number().nullable().optional(),
+  })).optional(),
+})
+
+type PayAppSummary = z.infer<typeof PayAppSummarySchema>
+type TradeSummary = z.infer<typeof TradeSummarySchema>
 
 // ─── Animation variants ───────────────────────────────────────────────────────
 
-const stagger = {
+const staggerContainer: Variants = {
   hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: { staggerChildren: 0.07 } },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.05 },
+  },
 }
-const fadeUp = {
+
+const fadeUpItem: Variants = {
   hidden: { opacity: 0, y: 16 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.28 } },
 }
 
-// ─── ARIA Strip ───────────────────────────────────────────────────────────────
+// ─── Filter / Sort types ──────────────────────────────────────────────────────
 
-function ARIAStrip({ userName }: { userName: string }) {
-  const first = userName.split(' ')[0] || 'there'
-  return (
-    <motion.div
-      variants={fadeUp}
-      onClick={() => {}}
-      style={{
-        background: 'linear-gradient(135deg,#0f172a,#1e3a5f)',
-        borderRadius: 12,
-        padding: '18px 24px',
-        color: '#e2e8f0',
-        marginBottom: 20,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 14,
-        cursor: 'pointer',
-        transition: 'box-shadow .15s',
-      }}
-      whileHover={{ boxShadow: '0 4px 20px rgba(15,23,42,0.35)' }}
-    >
-      <div style={{
-        width: 40, height: 40, borderRadius: '50%',
-        background: 'linear-gradient(135deg,#0891b2,#06b6d4)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 18, flexShrink: 0,
-      }}>✨</div>
-      <div style={{ flex: 1, fontSize: 14 }}>
-        <strong style={{ color: '#fff' }}>Good morning, {first}.</strong>{' '}
-        <span style={{ color: '#cbd5e1' }}>ARIA is monitoring your projects — check the Hub for new vendor documents.</span>
-      </div>
-      <Link to='/cash-flow' style={{ fontSize: 12, color: '#0891b2', fontWeight: 600, whiteSpace: 'nowrap', textDecoration: 'none' }} onClick={e => e.stopPropagation()}>Show me →</Link>
-    </motion.div>
-  )
+const FILTER_CHIPS = ['All', '🔴 Overdue', '⚠️ Lien Due', '💰 Ready to Bill', '📥 New Docs'] as const
+type FilterChip = typeof FILTER_CHIPS[number]
+
+const SORT_OPTIONS = [
+  { value: 'aria', label: '🤖 ARIA: Urgent first' },
+  { value: 'date', label: '📅 Date (newest)' },
+  { value: 'amount', label: '💰 Amount (highest)' },
+  { value: 'alpha', label: '🔤 A–Z' },
+] as const
+type SortOption = typeof SORT_OPTIONS[number]['value']
+
+// ─── Per-project data (fetched lazily in ProjectCard via ProjectCardWrapper) ──
+
+interface ProjectRowData {
+  project: Project
+  payApps: PayAppSummary[]
+  trades: TradeSummary[]
+  isOverdue: boolean
+  hasNewDocs: boolean
+  urgency: 'urgent' | 'action' | 'healthy'
 }
 
-// ─── KPI Card ────────────────────────────────────────────────────────────────
+// ─── Determine urgency for ARIA sort ─────────────────────────────────────────
 
-function KPICard({ label, value, color, href }: { label: string; value: string; color: string; href: string }) {
-  return (
-    <Link to={href} style={{ textDecoration: 'none', display: 'block' }}>
-    <motion.div
-      variants={fadeUp}
-      whileHover={{ y: -2, boxShadow: '0 8px 40px rgba(37,99,235,0.12)' }}
-      style={{
-        background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 12,
-        padding: 16, textAlign: 'center', cursor: 'pointer',
-        boxShadow: '0 4px 24px rgba(37,99,235,0.08)', transition: 'all .15s',
-      }}
-    >
-      <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 20, fontWeight: 700, color }}>{value}</div>
-      <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{label}</div>
-    </motion.div>
-    </Link>
-  )
+function getUrgency(_project: Project, payApps: PayAppSummary[]): 'urgent' | 'action' | 'healthy' {
+  const hasOverdue = payApps.some(pa => pa.payment_status === 'overdue' || pa.status === 'overdue')
+  if (hasOverdue) return 'urgent'
+  const hasSubmitted = payApps.some(pa => pa.status === 'submitted' && pa.payment_status !== 'paid')
+  if (hasSubmitted) return 'action'
+  return 'healthy'
 }
 
-// ─── Trade Dot ────────────────────────────────────────────────────────────────
+// ─── Sort projects by ARIA urgency ───────────────────────────────────────────
 
-const TRADE_COLORS = ['#2563eb','#059669','#d97706','#7c3aed','#dc2626','#0891b2','#ea6c00','#0f172a']
-
-function TradeDot({ letter, tooltip, color, onClick }: { letter: string; tooltip: string; color: string; onClick?: () => void }) {
-  const [show, setShow] = useState(false)
-  return (
-    <div style={{ position: 'relative', display: 'inline-block' }}>
-      <motion.div
-        whileHover={{ scale: 1.25 }}
-        onHoverStart={() => setShow(true)}
-        onHoverEnd={() => setShow(false)}
-        onClick={(e) => { e.stopPropagation(); onClick?.() }}
-        style={{
-          width: 22, height: 22, borderRadius: '50%',
-          background: color, color: '#fff',
-          fontSize: 9, fontWeight: 700,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', zIndex: 1,
-        }}
-      >
-        {letter}
-      </motion.div>
-      {show && (
-        <div style={{
-          position: 'absolute', top: -28, left: '50%', transform: 'translateX(-50%)',
-          background: '#0f172a', color: '#fff', padding: '4px 8px',
-          borderRadius: 4, fontSize: 10, whiteSpace: 'nowrap', zIndex: 20,
-          pointerEvents: 'none',
-        }}>{tooltip}</div>
-      )}
-    </div>
-  )
+function sortByARIA(rows: ProjectRowData[]): ProjectRowData[] {
+  const PRIORITY: Record<string, number> = { urgent: 0, action: 1, healthy: 2 }
+  return [...rows].sort((a, b) => {
+    const pa = PRIORITY[a.urgency] ?? 3
+    const pb = PRIORITY[b.urgency] ?? 3
+    if (pa !== pb) return pa - pb
+    // secondary: alphabetical
+    return a.project.name.localeCompare(b.project.name)
+  })
 }
 
-// ─── Pay App Row ──────────────────────────────────────────────────────────────
+// ─── ProjectCardWrapper: fetches pay apps + trades per project ────────────────
 
-function PayAppRow({ pa, projectId }: { pa: PayAppSummary; projectId: number }) {
-  const statusColor: Record<string, string> = {
-    paid: '#00b87a', submitted: '#2563eb', draft: '#94a3b8', overdue: '#dc2626', partial: '#d97706',
-  }
-  const color = statusColor[pa.status] ?? '#94a3b8'
-  return (
-    <Link
-      to={`/projects/${projectId}/pay-app/${pa.id}`}
-      style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '8px 0', borderBottom: '1px solid #f8fafc', fontSize: 13,
-        textDecoration: 'none', color: 'inherit',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontWeight: 600 }}>#{pa.pay_app_number}</span>
-        <span style={{ color: '#64748b', fontSize: 12 }}>{pa.period_label || pa.created_at?.slice(0,10)}</span>
-        <span style={{
-          fontFamily: "'JetBrains Mono',monospace", fontWeight: 600,
-        }}>{pa.amount_due != null ? formatCurrency(pa.amount_due) : '—'}</span>
-        <span style={{
-          display: 'inline-block', padding: '2px 8px', borderRadius: 4,
-          fontSize: 10, fontWeight: 700, background: color + '20', color,
-          textTransform: 'uppercase',
-        }}>{pa.status}</span>
-      </div>
-      <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
-        {[
-          { label: '↓ PDF', action: () => window.open(`/api/payapps/${pa.id}/pdf`, '_blank') },
-          { label: '✉ Send', action: () => { window.location.href = `/projects/${projectId}/pay-app/${pa.id}?send=1` } },
-          { label: '🔗 Share', action: () => { if (pa.payment_link_token) navigator.clipboard?.writeText(`${window.location.origin}/pay/${pa.payment_link_token}`) } },
-        ].map(btn => (
-          <button
-            key={btn.label}
-            onClick={btn.action}
-            style={{
-              padding: '4px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600,
-              cursor: 'pointer', border: '1px solid #e2e8f0', background: '#fff', color: '#64748b',
-              transition: 'all .1s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor='#2563eb'; e.currentTarget.style.color='#2563eb' }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor='#e2e8f0'; e.currentTarget.style.color='#64748b' }}
-          >{btn.label}</button>
-        ))}
-      </div>
-    </Link>
-  )
-}
+function ProjectCardWrapper({
+  project,
+  onReady,
+}: {
+  project: Project
+  onReady: (data: ProjectRowData) => void
+}) {
+  const navigate = useNavigate()
 
-// ─── Project Card ─────────────────────────────────────────────────────────────
-
-interface ProjectCardProps {
-  project: {
-    id: number; name: string; owner?: string | null;
-    original_contract?: number | null; payment_terms?: string | null;
-    status?: string | null; pay_app_count?: number;
-  }
-}
-
-function ProjectCard({ project }: ProjectCardProps) {
-  const [expanded, setExpanded] = useState(true)
   const [payApps, setPayApps] = useState<PayAppSummary[]>([])
-  const [trades, setTrades] = useState<Array<{ id: number; trade_name: string; company_name?: string | null; status?: string | null }>>([])
+  const [trades, setTrades] = useState<TradeSummary[]>([])
+  const [fetched, setFetched] = useState(false)
 
   useEffect(() => {
-    api.get<PayAppSummary[]>(`/api/projects/${project.id}/pay-apps`)
-      .then(r => { if (r.data) setPayApps(Array.isArray(r.data) ? r.data : []) })
-      .catch(() => {})
-    api.get<Array<{ id: number; trade_name: string; company_name?: string | null }>>(`/api/hub/projects/${project.id}/trades`)
-      .then(r => { if (r.data) setTrades(Array.isArray(r.data) ? r.data : []) })
-      .catch(() => {})
+    let cancelled = false
+    async function load() {
+      try {
+        const [paRes, trRes] = await Promise.allSettled([
+          api.get<unknown>(`/api/projects/${project.id}/pay-apps`),
+          api.get<unknown>(`/api/hub/projects/${project.id}/trades`),
+        ])
+
+        if (cancelled) return
+
+        let resolvedPayApps: PayAppSummary[] = []
+        if (paRes.status === 'fulfilled' && Array.isArray(paRes.value?.data)) {
+          const validated = paRes.value.data.map((pa: unknown) =>
+            safeValidate(PayAppSummarySchema, pa, `payApp-${project.id}`)
+          ).filter(Boolean) as PayAppSummary[]
+          resolvedPayApps = validated
+        }
+
+        let resolvedTrades: TradeSummary[] = []
+        if (trRes.status === 'fulfilled' && Array.isArray(trRes.value?.data)) {
+          const validated = trRes.value.data.map((t: unknown) =>
+            safeValidate(TradeSummarySchema, t, `trade-${project.id}`)
+          ).filter(Boolean) as TradeSummary[]
+          resolvedTrades = validated
+        }
+
+        setPayApps(resolvedPayApps)
+        setTrades(resolvedTrades)
+        setFetched(true)
+
+        const isOverdue = resolvedPayApps.some(
+          pa => pa.payment_status === 'overdue' || pa.status === 'overdue'
+        )
+        const urgency = getUrgency(project, resolvedPayApps)
+        onReady({
+          project,
+          payApps: resolvedPayApps,
+          trades: resolvedTrades,
+          isOverdue,
+          hasNewDocs: false,
+          urgency,
+        })
+      } catch {
+        setFetched(true)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.id])
 
-  return (
-    <motion.div variants={fadeUp} style={{ borderRadius: 12, overflow: 'hidden', marginBottom: 14 }}>
-      <div style={{ display: 'flex' }}>
-        <div style={{ width: 5, flexShrink: 0, background: '#00b87a' }} />
-        <div style={{
-          flex: 1, background: '#fff', border: '1.5px solid #e2e8f0',
-          borderLeft: 'none', borderRadius: '0 12px 12px 0', overflow: 'hidden',
-          boxShadow: '0 4px 24px rgba(37,99,235,0.08)',
-        }}>
-          {/* Header */}
-          <div style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div style={{ flex: 1 }}>
-              <Link
-                to={`/projects/${project.id}`}
-                style={{ textDecoration: 'none', color: '#0f172a', fontFamily: "'DM Serif Display',serif", fontSize: 16, display: 'block', marginBottom: 4 }}
-              >
-                📍 {project.name}
-              </Link>
-              <div style={{ fontSize: 13, color: '#64748b' }}>
-                {project.owner && <>{project.owner} · </>}
-                {project.original_contract != null && (
-                  <span style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 600 }}>
-                    {formatCurrency(project.original_contract)}
-                  </span>
-                )}
-                {project.payment_terms && <> · {project.payment_terms}</>}
-              </div>
-              {trades.length > 0 && (
-                <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap' }}>
-                  {trades.slice(0, 8).map((t, i) => (
-                    <Link key={t.id} to={`/projects/${project.id}`} style={{ textDecoration: 'none' }}>
-                      <TradeDot
-                        letter={t.trade_name.charAt(0).toUpperCase()}
-                        tooltip={`${t.trade_name}${t.company_name ? ' — ' + t.company_name : ''}`}
-                        color={TRADE_COLORS[i % TRADE_COLORS.length]}
-                      />
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, marginLeft: 12 }}>
-              <Link
-                to={`/projects/${project.id}`}
-                style={{
-                  padding: '6px 14px', borderRadius: 8,
-                  background: '#2563eb', color: '#fff', fontWeight: 600, fontSize: 11,
-                  textDecoration: 'none', display: 'inline-block',
-                }}
-              >+ Pay App</Link>
-              <button
-                onClick={() => setExpanded(v => !v)}
-                style={{
-                  width: 28, height: 28, borderRadius: 6, border: '1.5px solid #e2e8f0',
-                  background: '#fff', cursor: 'pointer', fontSize: 16, fontWeight: 700,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b',
-                }}
-              >{expanded ? '−' : '+'}</button>
-            </div>
-          </div>
+  const handleCreatePayApp = useCallback(() => {
+    navigate(`/projects/${project.id}`)
+  }, [navigate, project.id])
 
-          {/* Pay apps */}
-          {expanded && (
-            <div style={{ borderTop: '1px solid #f1f5f9', padding: '0 20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0 6px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                <span>Pay Applications ({payApps.length})</span>
-                <Link to={`/projects/${project.id}`} style={{ fontSize: 11, color: '#2563eb', fontWeight: 600 }}>View project →</Link>
-              </div>
-              {payApps.length === 0 ? (
-                <div style={{ padding: '12px 0', color: '#94a3b8', fontSize: 13 }}>
-                  No pay apps yet — <Link to={`/projects/${project.id}`} style={{ color: '#2563eb', fontWeight: 600 }}>open project to create one</Link>
-                </div>
-              ) : (
-                payApps.slice(0, 5).map(pa => <PayAppRow key={pa.id} pa={pa} projectId={project.id} />)
-              )}
-            </div>
-          )}
+  const handleArchive = useCallback(() => {
+    // Archive action — navigate to project for now
+    navigate(`/projects/${project.id}`)
+  }, [navigate, project.id])
+
+  const handleClick = useCallback(() => {
+    navigate(`/projects/${project.id}`)
+  }, [navigate, project.id])
+
+  const handleDownloadPdf = useCallback((payAppId: number) => {
+    window.open(`/api/payapps/${payAppId}/pdf`, '_blank')
+  }, [])
+
+  const handleSendEmail = useCallback((payAppId: number) => {
+    navigate(`/projects/${project.id}/pay-app/${payAppId}?send=1`)
+  }, [navigate, project.id])
+
+  const handleShareLink = useCallback((payAppId: number) => {
+    const pa = payApps.find(p => p.id === payAppId)
+    if (pa?.payment_link_token) {
+      navigator.clipboard?.writeText(`${window.location.origin}/pay/${pa.payment_link_token}`)
+    }
+  }, [payApps])
+
+  if (!fetched) {
+    return (
+      <div
+        style={{
+          height: 120,
+          background: '#fff',
+          borderRadius: 12,
+          marginBottom: 12,
+          border: '1.5px solid #e2e8f0',
+          opacity: 0.6,
+          animation: 'pulse 1.5s ease-in-out infinite',
+        }}
+      />
+    )
+  }
+
+  return (
+    <motion.div variants={fadeUpItem}>
+      <ProjectCard
+        project={project}
+        trades={trades}
+        payApps={payApps}
+        urgency={getUrgency(project, payApps)}
+        onCreatePayApp={handleCreatePayApp}
+        onArchive={handleArchive}
+        onClick={handleClick}
+        onDownloadPdf={handleDownloadPdf}
+        onSendEmail={handleSendEmail}
+        onShareLink={handleShareLink}
+      />
+    </motion.div>
+  )
+}
+
+// ─── Hero Card: Ready to Bill ─────────────────────────────────────────────────
+
+function ReadyToBillCard({
+  readyToBill,
+  totalPipeline,
+  totalBilled,
+  pendingPayApps,
+  approvedInvoices,
+  onCTA,
+  onCardClick,
+}: {
+  readyToBill: number
+  totalPipeline: number
+  totalBilled: number
+  pendingPayApps: number
+  approvedInvoices: number
+  onCTA: () => void
+  onCardClick: () => void
+}) {
+  return (
+    <motion.div
+      variants={fadeUpItem}
+      whileHover={{ y: -2, boxShadow: '0 8px 40px rgba(37,99,235,0.22)' }}
+      style={{
+        flex: 2,
+        background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+        borderRadius: 14,
+        padding: 28,
+        color: '#fff',
+        cursor: 'pointer',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+      }}
+      onClick={onCardClick}
+    >
+      <div style={{
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: '1px',
+        textTransform: 'uppercase',
+        opacity: 0.85,
+        fontFamily: "'DM Sans', sans-serif",
+      }}>
+        READY TO BILL
+      </div>
+
+      <div style={{
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: 36,
+        fontWeight: 700,
+        letterSpacing: '-0.5px',
+        lineHeight: 1.1,
+        margin: '4px 0',
+      }}>
+        {formatMoney(readyToBill)}
+      </div>
+
+      <div style={{ fontSize: 13, opacity: 0.85, fontFamily: "'DM Sans', sans-serif" }}>
+        Contract: {formatMoney(totalPipeline)} · Billed: {formatMoney(totalBilled)}
+      </div>
+
+      <div style={{ fontSize: 12, opacity: 0.75, fontFamily: "'DM Sans', sans-serif" }}>
+        {pendingPayApps} pay app{pendingPayApps !== 1 ? 's' : ''} pending
+        {approvedInvoices > 0 ? ` · ${approvedInvoices} invoice${approvedInvoices !== 1 ? 's' : ''} approved` : ''}
+      </div>
+
+      <motion.div
+        whileHover={{ scale: 1.03, boxShadow: '0 6px 20px rgba(0,0,0,0.15)' }}
+        whileTap={{ scale: 0.98 }}
+        onClick={(e) => { e.stopPropagation(); onCTA() }}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          marginTop: 10,
+          padding: '12px 24px',
+          background: '#fff',
+          color: '#2563eb',
+          borderRadius: 9,
+          fontWeight: 700,
+          fontSize: 15,
+          cursor: 'pointer',
+          alignSelf: 'flex-start',
+          fontFamily: "'DM Sans', sans-serif",
+        }}
+      >
+        📄 Create Pay App →
+      </motion.div>
+    </motion.div>
+  )
+}
+
+// ─── Hero Card: Lien Deadlines ────────────────────────────────────────────────
+
+function LienDeadlinesCard({
+  lienCount,
+  urgentDays,
+}: {
+  lienCount: number
+  urgentDays: number | null
+}) {
+  const navigate = useNavigate()
+  const isUrgent = urgentDays !== null && urgentDays < 30
+
+  return (
+    <motion.div
+      variants={fadeUpItem}
+      whileHover={{ y: -2, boxShadow: '0 8px 40px rgba(124,58,237,0.15)' }}
+      onClick={() => navigate('/lien')}
+      style={{
+        flex: 1,
+        background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)',
+        border: '1.5px solid #ddd6fe',
+        borderRadius: 14,
+        padding: 24,
+        cursor: 'pointer',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 4,
+      }}
+    >
+      <div style={{
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: '1px',
+        textTransform: 'uppercase',
+        color: '#7c3aed',
+        fontFamily: "'DM Sans', sans-serif",
+      }}>
+        ⚠️ LIEN DEADLINES
+      </div>
+
+      <div style={{
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: 36,
+        fontWeight: 700,
+        color: '#7c3aed',
+        lineHeight: 1.1,
+        margin: '4px 0',
+      }}>
+        {lienCount}
+      </div>
+
+      <div style={{ fontSize: 13, color: '#64748b', fontFamily: "'DM Sans', sans-serif" }}>
+        notices due this month
+      </div>
+
+      {isUrgent && urgentDays !== null && (
+        <div style={{
+          fontSize: 13,
+          fontWeight: 700,
+          color: '#dc2626',
+          fontFamily: "'JetBrains Mono', monospace",
+          marginTop: 4,
+        }}>
+          {urgentDays} day{urgentDays !== 1 ? 's' : ''} — URGENT
         </div>
+      )}
+
+      <div style={{
+        fontSize: 12,
+        color: '#7c3aed',
+        fontWeight: 600,
+        marginTop: 8,
+        fontFamily: "'DM Sans', sans-serif",
+      }}>
+        View Lien Alerts →
       </div>
     </motion.div>
   )
 }
 
-// ─── Empty State ──────────────────────────────────────────────────────────────
+// ─── Hero Card: Retention Held ────────────────────────────────────────────────
 
-function EmptyState({ firstName }: { firstName: string }) {
+function RetentionHeldCard({
+  retentionHeld,
+  projectCount,
+}: {
+  retentionHeld: number
+  projectCount: number
+}) {
+  const navigate = useNavigate()
+
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} style={{ textAlign: 'center', padding: '80px 24px', maxWidth: 640, margin: '0 auto' }}>
-      <h1 style={{ fontFamily: "'DM Serif Display',serif", fontSize: 36, color: '#0f172a', marginBottom: 8 }}>
-        Welcome to ConstructInvoice AI{firstName ? `, ${firstName}` : ''}! 🎉
-      </h1>
-      <p style={{ color: '#64748b', fontSize: 16, marginBottom: 40 }}>Get paid faster with AI-powered G702/G703 billing.</p>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 40 }}>
-        {[
-          { n: 1, t: 'Upload your SOV', d: 'Excel, PDF, or CSV' },
-          { n: 2, t: 'ARIA detects trades', d: 'AI finds work items & vendors' },
-          { n: 3, t: 'Generate invoice', d: 'AIA G702/G703 PDF ready to send' },
-        ].map(s => (
-          <motion.div key={s.n} whileHover={{ y: -4 }} style={{ background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: 24, boxShadow: '0 4px 24px rgba(37,99,235,0.08)' }}>
-            <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>{s.n}</div>
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>{s.t}</div>
-            <div style={{ fontSize: 12, color: '#94a3b8' }}>{s.d}</div>
-          </motion.div>
+    <motion.div
+      variants={fadeUpItem}
+      whileHover={{ y: -2, boxShadow: '0 8px 40px rgba(217,119,6,0.15)' }}
+      onClick={() => navigate('/reports')}
+      style={{
+        flex: 1,
+        background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
+        border: '1.5px solid #fde68a',
+        borderRadius: 14,
+        padding: 24,
+        cursor: 'pointer',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 4,
+      }}
+    >
+      <div style={{
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: '1px',
+        textTransform: 'uppercase',
+        color: '#d97706',
+        fontFamily: "'DM Sans', sans-serif",
+      }}>
+        💰 RETENTION HELD
+      </div>
+
+      <div style={{
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: 36,
+        fontWeight: 700,
+        color: '#92400e',
+        lineHeight: 1.1,
+        margin: '4px 0',
+      }}>
+        {formatMoney(retentionHeld)}
+      </div>
+
+      <div style={{ fontSize: 13, color: '#64748b', fontFamily: "'DM Sans', sans-serif" }}>
+        Across {projectCount} project{projectCount !== 1 ? 's' : ''}
+      </div>
+
+      <div style={{
+        fontSize: 12,
+        color: '#d97706',
+        fontWeight: 600,
+        marginTop: 8,
+        fontFamily: "'DM Sans', sans-serif",
+      }}>
+        View in Reports →
+      </div>
+    </motion.div>
+  )
+}
+
+// ─── Skeleton Loader ──────────────────────────────────────────────────────────
+
+function DashboardSkeleton() {
+  return (
+    <div style={{ padding: 24, background: '#f0f4fa', minHeight: '100%' }}>
+      {/* ARIA strip skeleton */}
+      <div style={{ height: 68, background: '#e2e8f0', borderRadius: 12, marginBottom: 20, opacity: 0.7 }} />
+      {/* Hero row skeleton */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
+        <div style={{ flex: 2, height: 180, background: '#e2e8f0', borderRadius: 14, opacity: 0.7 }} />
+        <div style={{ flex: 1, height: 180, background: '#e2e8f0', borderRadius: 14, opacity: 0.7 }} />
+        <div style={{ flex: 1, height: 180, background: '#e2e8f0', borderRadius: 14, opacity: 0.7 }} />
+      </div>
+      {/* KPI row skeleton */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12, marginBottom: 20 }}>
+        {[1,2,3,4,5].map(i => (
+          <div key={i} style={{ height: 90, background: '#e2e8f0', borderRadius: 12, opacity: 0.7 }} />
         ))}
       </div>
-      <motion.button
-        whileHover={{ scale: 1.02, boxShadow: '0 8px 40px rgba(37,99,235,0.2)' }}
-  
-        style={{ padding: '14px 32px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 16, cursor: 'pointer' }}
-      >Create Your First Project →</motion.button>
-    </motion.div>
+      {/* Project cards skeleton */}
+      {[1, 2, 3].map(i => (
+        <div key={i} style={{ height: 130, background: '#e2e8f0', borderRadius: 12, marginBottom: 14, opacity: 0.7 }} />
+      ))}
+    </div>
   )
 }
 
 // ─── MAIN DASHBOARD ───────────────────────────────────────────────────────────
 
-const FILTERS = ['All', '🔴 Overdue', '⚠️ Lien Due', '💰 Ready to Bill', '📥 New Docs'] as const
-type Filter = typeof FILTERS[number]
-
 export function Dashboard() {
+  const navigate = useNavigate()
   const { projects, isLoading } = useProjects()
   const { stats, revenueSummary } = useReports()
   const { isTrialGated } = useTrial()
   const { user } = useAuth()
-  const [filter, setFilter] = useState<Filter>('All')
+
+  const [activeFilter, setActiveFilter] = useState<FilterChip>('All')
+  const [sortBy, setSortBy] = useState<SortOption>('aria')
+  const [rowDataMap, setRowDataMap] = useState<Map<number, ProjectRowData>>(new Map())
+  const [lienCount, setLienCount] = useState<number>(0)
+  const [lienUrgentDays, setLienUrgentDays] = useState<number | null>(null)
 
   const firstName = user?.name?.split(' ')[0] || ''
+
+  // ── Fetch lien alerts ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (projects.length === 0) return
+    api.get<unknown>('/api/aria/lien-alerts')
+      .then(res => {
+        const validated = safeValidate(LienAlertsResponseSchema, res.data, 'lienAlerts')
+        if (validated) {
+          setLienCount(validated.count ?? validated.alerts?.length ?? 0)
+          const urgent = validated.alerts?.find(a => a.days_remaining !== null && a.days_remaining !== undefined && a.days_remaining < 30)
+          setLienUrgentDays(urgent?.days_remaining ?? null)
+        }
+      })
+      .catch(() => {})
+  }, [projects.length])
+
+  // ── Callback from ProjectCardWrapper when it finishes loading ─────────────
+  const handleProjectReady = useCallback((data: ProjectRowData) => {
+    setRowDataMap(prev => {
+      const next = new Map(prev)
+      next.set(data.project.id, data)
+      return next
+    })
+  }, [])
+
+  // ── Derived values ─────────────────────────────────────────────────────────
   const totalPipeline = projects.reduce((s, p) => s + (Number(p.original_contract) || 0), 0)
   const totalBilled = stats?.total_billed ?? 0
   const totalOutstanding = stats?.outstanding ?? 0
-  const totalCollected = Math.max(0, totalBilled - (stats?.outstanding ?? 0))
-  // Ready to Bill = remaining contract amount not yet billed (not outstanding invoices)
+  // Use actual collected amount from payments table (not derived)
+  const totalCollected = stats?.total_paid ?? Math.max(0, totalBilled - totalOutstanding)
   const readyToBill = Math.max(0, totalPipeline - totalBilled)
-  // Retention held: use revenueSummary if available, otherwise estimate at 10%
-  const retentionHeld = (revenueSummary?.total_retainage ?? null) !== null
-    ? (revenueSummary?.total_retainage ?? 0)
-    : totalBilled * 0.1
+  const retentionHeld =
+    stats?.total_retention != null && stats.total_retention > 0
+      ? Number(stats.total_retention)
+      : revenueSummary?.total_retainage != null
+        ? Number(revenueSummary.total_retainage)
+        : 0
 
+  // Count pending pay apps from loaded row data
+  const pendingPayApps = Array.from(rowDataMap.values()).reduce((n, row) => {
+    return n + row.payApps.filter(pa => pa.status === 'submitted' || pa.status === 'draft').length
+  }, 0)
+
+  // Count approved invoices from loaded row data
+  const approvedInvoices = Array.from(rowDataMap.values()).reduce((n, row) => {
+    return n + row.payApps.filter(pa => pa.status === 'approved').length
+  }, 0)
+
+  // ── ARIA message ───────────────────────────────────────────────────────────
+  const urgentCount = Array.from(rowDataMap.values()).filter(r => r.urgency === 'urgent').length
+  const pendingDocsCount = Array.from(rowDataMap.values()).filter(r => r.hasNewDocs).length
+  const ariaMessage = (() => {
+    if (urgentCount > 0) {
+      return `Good morning, ${firstName}. ${urgentCount} project${urgentCount !== 1 ? 's' : ''} need${urgentCount === 1 ? 's' : ''} attention${pendingDocsCount > 0 ? ` · ${pendingDocsCount} hub doc${pendingDocsCount !== 1 ? 's' : ''} pending` : ''}.`
+    }
+    if (totalOutstanding > 0) {
+      return `Good morning, ${firstName}. ${formatMoney(totalOutstanding)} outstanding across ${projects.length} project${projects.length !== 1 ? 's' : ''}. Click to view cash flow.`
+    }
+    return `Good morning, ${firstName}. ARIA is monitoring ${projects.length} project${projects.length !== 1 ? 's' : ''}. Everything looks on track.`
+  })()
+
+  // ── Filter + Sort projects ─────────────────────────────────────────────────
+  const filteredProjects = projects.filter(p => {
+    if (activeFilter === 'All') return true
+    const row = rowDataMap.get(p.id)
+    if (!row) return false
+    if (activeFilter === '🔴 Overdue') return row.isOverdue
+    if (activeFilter === '⚠️ Lien Due') return false // would need lien per-project data
+    if (activeFilter === '💰 Ready to Bill') {
+      const contract = Number(p.original_contract) || 0
+      const billed = row.payApps.reduce((s, pa) => s + (Number(pa.amount_due) || 0), 0)
+      return contract > billed
+    }
+    if (activeFilter === '📥 New Docs') return row.hasNewDocs
+    return true
+  })
+
+  const sortedProjects = (() => {
+    const rows = filteredProjects.map(p => rowDataMap.get(p.id) ?? {
+      project: p, payApps: [], trades: [], isOverdue: false, hasNewDocs: false, urgency: 'healthy' as const
+    })
+
+    if (sortBy === 'aria') return sortByARIA(rows).map(r => r.project)
+    if (sortBy === 'date') return [...filteredProjects].sort((a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )
+    if (sortBy === 'amount') return [...filteredProjects].sort((a, b) =>
+      (Number(b.original_contract) || 0) - (Number(a.original_contract) || 0)
+    )
+    if (sortBy === 'alpha') return [...filteredProjects].sort((a, b) => a.name.localeCompare(b.name))
+    return filteredProjects
+  })()
+
+  // ── Most recent active project for CTA ────────────────────────────────────
+  const mostRecentProject = projects.find(p => p.status !== 'completed') ?? projects[0]
+
+  const handleCreatePayAppCTA = useCallback(() => {
+    if (mostRecentProject) {
+      navigate(`/projects/${mostRecentProject.id}`)
+    } else {
+      navigate('/projects/new')
+    }
+  }, [navigate, mostRecentProject])
+
+  const scrollToProjects = useCallback(() => {
+    const el = document.getElementById('project-cards')
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [])
+
+  // ── Loading state ──────────────────────────────────────────────────────────
   if (isLoading) {
+    return <DashboardSkeleton />
+  }
+
+  // ── Empty state ────────────────────────────────────────────────────────────
+  if (!isLoading && projects.length === 0) {
     return (
-      <div style={{ padding: 24 }}>
-        {[1, 2, 3].map(i => (
-          <div key={i} style={{ height: 120, background: '#fff', borderRadius: 12, marginBottom: 16, opacity: 0.5 }} />
-        ))}
-      </div>
+      <EmptyState
+        firstName={firstName}
+        onCreateProject={() => navigate('/projects/new')}
+      />
     )
   }
 
-  if (!isLoading && projects.length === 0) {
-    return <EmptyState firstName={firstName} />
-  }
-
+  // ── Full Dashboard ─────────────────────────────────────────────────────────
   return (
-    <div style={{ padding: 24, background: '#f0f4fa', minHeight: '100%' }}>
+    <div
+      data-testid="dashboard"
+      style={{ padding: 24, background: '#f0f4fa', minHeight: '100%' }}
+    >
+      {/* Stripe Connect Banner */}
       <StripeConnectBanner />
+
+      {/* Trial expired banner */}
       {isTrialGated && (
-        <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: '#92400e', fontWeight: 600 }}>
-          ⏰ Your trial has ended. <Link to="/settings#billing" style={{ color: '#2563eb' }}>Upgrade to Pro</Link> to continue creating pay apps.
+        <div style={{
+          background: '#fef3c7',
+          border: '1px solid #fde68a',
+          borderRadius: 8,
+          padding: '10px 16px',
+          marginBottom: 16,
+          fontSize: 13,
+          color: '#92400e',
+          fontWeight: 600,
+          fontFamily: "'DM Sans', sans-serif",
+        }}>
+          ⏰ Your trial has ended.{' '}
+          <Link to="/settings#billing" style={{ color: '#2563eb' }}>
+            Upgrade to Pro
+          </Link>{' '}
+          to continue creating pay apps.
         </div>
       )}
 
-      <motion.div variants={stagger} initial="hidden" animate="visible">
+      <motion.div variants={staggerContainer} initial="hidden" animate="visible">
 
-        {/* ARIA Strip */}
-        <ARIAStrip userName={user?.name || ''} />
-
-        {/* Hero row */}
-        <motion.div variants={fadeUp} style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
-          {/* Ready to Bill CTA */}
-          <Link to='/projects' style={{ flex: 2, textDecoration: 'none', display: 'block' }}>
-          <motion.div
-            whileHover={{ y: -2, boxShadow: '0 8px 40px rgba(37,99,235,0.18)' }}
-            style={{ background: 'linear-gradient(135deg,#2563eb,#0ea5e9)', borderRadius: 14, padding: 24, color: '#fff', cursor: 'pointer', height: '100%' }}
-          >
-            <div style={{ fontSize: 12, opacity: 0.85, textTransform: 'uppercase', letterSpacing: 1 }}>Ready to Bill</div>
-            <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 32, fontWeight: 700, margin: '4px 0' }}>
-              {formatCurrency(readyToBill)}
-            </div>
-            <div style={{ fontSize: 13, opacity: 0.85 }}>
-              Contract: {formatCurrency(totalPipeline)} · Billed: {formatCurrency(totalBilled)}
-            </div>
-            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 12 }}>across {projects.length} active projects</div>
-            <div style={{ display: 'inline-block', padding: '10px 24px', background: '#fff', color: '#2563eb', borderRadius: 8, fontWeight: 700, fontSize: 14 }}>
-              📄 Create Pay App →
-            </div>
-          </motion.div>
-          </Link>
-
-          {/* Lien Deadlines */}
-          <Link to='/lien' style={{ flex: 1, textDecoration: 'none', display: 'block' }}>
-          <motion.div
-            whileHover={{ y: -2, boxShadow: '0 8px 40px rgba(124,58,237,0.12)' }}
-            style={{ borderRadius: 14, padding: 24, cursor: 'pointer', background: 'linear-gradient(135deg,#f5f3ff,#ede9fe)', border: '1.5px solid #ddd6fe', height: '100%' }}
-          >
-            <div style={{ fontSize: 12, color: '#7c3aed', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>⚠️ Lien Deadlines</div>
-            <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 36, fontWeight: 700, color: '#7c3aed' }}>0</div>
-            <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>notices due this month</div>
-            <div style={{ fontSize: 12, color: '#7c3aed', fontWeight: 600, marginTop: 8 }}>View Lien Alerts →</div>
-          </motion.div>
-          </Link>
-
-          {/* Retention Held */}
-          <Link to='/reports' style={{ flex: 1, textDecoration: 'none', display: 'block' }}>
-          <motion.div
-            whileHover={{ y: -2, boxShadow: '0 8px 40px rgba(217,119,6,0.12)' }}
-            style={{ borderRadius: 14, padding: 24, cursor: 'pointer', background: 'linear-gradient(135deg,#fffbeb,#fef3c7)', border: '1.5px solid #fde68a', height: '100%' }}
-          >
-            <div style={{ fontSize: 12, color: '#d97706', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>💰 Retention Held</div>
-            <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 36, fontWeight: 700, color: '#92400e' }}>
-              {formatCurrency(retentionHeld)}
-            </div>
-            <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>across active projects</div>
-            <div style={{ fontSize: 12, color: '#d97706', fontWeight: 600, marginTop: 8 }}>View in Reports →</div>
-          </motion.div>
-          </Link>
+        {/* ── ROW 1: ARIA Strip ───────────────────────────────────────────── */}
+        <motion.div variants={fadeUpItem}>
+          <ARIAStrip
+            message={ariaMessage}
+            variant={urgentCount > 0 ? 'alert' : totalOutstanding > 0 ? 'alert' : 'morning'}
+            actionLabel={urgentCount > 0 ? 'View Urgent →' : totalOutstanding > 0 ? 'View Cash Flow →' : undefined}
+            onAction={urgentCount > 0 ? () => setActiveFilter('🔴 Overdue') : totalOutstanding > 0 ? () => navigate('/cash-flow') : undefined}
+          />
         </motion.div>
 
-        {/* KPI Row */}
-        <motion.div variants={fadeUp} style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12, marginBottom: 20 }}>
-          <KPICard label="Pipeline" value={formatCurrency(totalPipeline)} color="#2563eb" href='/reports' />
-          <KPICard label="Outstanding" value={formatCurrency(totalOutstanding)} color="#d97706" href='/payments' />
-          <KPICard label="Collected" value={formatCurrency(totalCollected)} color="#00b87a" href='/payments' />
-          <KPICard label="Hub Docs Pending" value="—" color="#0891b2" href='/payments' />
-          <KPICard label="Avg Days to Pay" value="—" color="#00b87a" href='/reports' />
+        {/* ── ROW 2: Hero Row ─────────────────────────────────────────────── */}
+        <motion.div
+          variants={fadeUpItem}
+          style={{
+            display: 'flex',
+            gap: 16,
+            marginBottom: 20,
+            flexWrap: 'wrap',
+          }}
+        >
+          <ReadyToBillCard
+            readyToBill={readyToBill}
+            totalPipeline={totalPipeline}
+            totalBilled={totalBilled}
+            pendingPayApps={pendingPayApps}
+            approvedInvoices={approvedInvoices}
+            onCTA={handleCreatePayAppCTA}
+            onCardClick={scrollToProjects}
+          />
+          <LienDeadlinesCard
+            lienCount={lienCount}
+            urgentDays={lienUrgentDays}
+          />
+          <RetentionHeldCard
+            retentionHeld={retentionHeld}
+            projectCount={projects.length}
+          />
         </motion.div>
 
-        {/* Filter + Sort */}
-        <motion.div variants={fadeUp} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
-          {FILTERS.map(f => (
+        {/* ── ROW 3: KPI Cards ────────────────────────────────────────────── */}
+        <motion.div
+          variants={fadeUpItem}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(5, 1fr)',
+            gap: 12,
+            marginBottom: 20,
+          }}
+          className="kpi-grid"
+        >
+          <KPICard
+            label="Pipeline"
+            value={formatMoney(totalPipeline)}
+            isMoney
+            onClick={scrollToProjects}
+          />
+          <KPICard
+            label="Outstanding"
+            value={formatMoney(totalOutstanding)}
+            isMoney
+            onClick={() => navigate('/cash-flow')}
+          />
+          <KPICard
+            label="Collected"
+            value={formatMoney(totalCollected)}
+            isMoney
+            onClick={() => navigate('/payments')}
+          />
+          <KPICard
+            label="Hub Docs Pending"
+            value={pendingDocsCount > 0 ? String(pendingDocsCount) : '—'}
+            onClick={scrollToProjects}
+          />
+          <KPICard
+            label="Avg Days to Pay"
+            value="—"
+            onClick={() => navigate('/reports')}
+          />
+        </motion.div>
+
+        {/* ── ROW 4: Filter chips + sort dropdown ─────────────────────────── */}
+        <motion.div
+          variants={fadeUpItem}
+          style={{
+            display: 'flex',
+            gap: 8,
+            alignItems: 'center',
+            marginBottom: 16,
+            flexWrap: 'wrap',
+          }}
+          data-testid="filter-row"
+        >
+          {FILTER_CHIPS.map(chip => (
             <button
-              key={f}
-              onClick={() => setFilter(f)}
+              key={chip}
+              data-testid={`filter-chip-${chip}`}
+              onClick={() => setActiveFilter(chip)}
               style={{
-                padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600,
-                cursor: 'pointer', border: '1.5px solid',
-                borderColor: filter === f ? '#2563eb' : '#e2e8f0',
-                background: filter === f ? '#2563eb' : '#fff',
-                color: filter === f ? '#fff' : '#1e293b',
-                transition: 'all .15s',
+                padding: '6px 14px',
+                borderRadius: 20,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+                border: '1.5px solid',
+                borderColor: activeFilter === chip ? '#2563eb' : '#e2e8f0',
+                background: activeFilter === chip ? '#2563eb' : '#fff',
+                color: activeFilter === chip ? '#fff' : '#1e293b',
+                transition: 'all 0.15s ease',
+                fontFamily: "'DM Sans', sans-serif",
               }}
-            >{f}{f === 'All' ? ` (${projects.length})` : ''}</button>
+            >
+              {chip}{chip === 'All' ? ` (${projects.length})` : ''}
+            </button>
           ))}
+
           <div style={{ marginLeft: 'auto' }}>
-            <select style={{ padding: '8px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 12, background: '#fff', cursor: 'pointer' }}>
-              <option>🤖 ARIA: Urgent first</option>
-              <option>📅 Date (newest)</option>
-              <option>💰 Amount (highest)</option>
-              <option>🔤 A–Z</option>
+            <select
+              data-testid="sort-select"
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value as SortOption)}
+              style={{
+                padding: '8px 12px',
+                border: '1.5px solid #e2e8f0',
+                borderRadius: 8,
+                fontSize: 12,
+                background: '#fff',
+                cursor: 'pointer',
+                fontFamily: "'DM Sans', sans-serif",
+                color: '#1e293b',
+              }}
+            >
+              {SORT_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
             </select>
           </div>
         </motion.div>
 
-        {/* Project Cards */}
-        {projects.map(p => (
-          <ProjectCard key={p.id} project={p} />
-        ))}
+        {/* ── ROW 5: Project cards ─────────────────────────────────────────── */}
+        <motion.div
+          id="project-cards"
+          variants={staggerContainer}
+          initial="hidden"
+          animate="visible"
+          data-testid="project-list"
+        >
+          {sortedProjects.length === 0 ? (
+            <motion.div
+              variants={fadeUpItem}
+              style={{
+                textAlign: 'center',
+                padding: '48px 24px',
+                background: '#fff',
+                borderRadius: 12,
+                border: '1.5px solid #e2e8f0',
+                color: '#64748b',
+                fontFamily: "'DM Sans', sans-serif",
+              }}
+            >
+              No projects match this filter.{' '}
+              <button
+                onClick={() => setActiveFilter('All')}
+                style={{
+                  color: '#2563eb',
+                  fontWeight: 600,
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                Show all
+              </button>
+            </motion.div>
+          ) : (
+            sortedProjects.map(project => (
+              <div key={project.id} style={{ marginBottom: 14 }}>
+                <ProjectCardWrapper
+                  project={project}
+                  onReady={handleProjectReady}
+                />
+              </div>
+            ))
+          )}
+        </motion.div>
 
       </motion.div>
     </div>
