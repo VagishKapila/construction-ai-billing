@@ -211,7 +211,7 @@ router.get('/summary', async (req, res) => {
          AND p.name NOT ILIKE 'HubCore%'
          AND p.name NOT ILIKE 'JoinTest%'
          AND p.name NOT ILIKE 'E2E%'
-         AND p.name NOT ILIKE 'CO\_%' ESCAPE '\'
+         AND p.name NOT LIKE 'CO!_%' ESCAPE '!'
          AND p.name NOT ILIKE 'Playwright%'
          AND p.name NOT ILIKE 'PayApp%'
          AND p.name NOT ILIKE 'Test Project%'
