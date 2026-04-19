@@ -264,6 +264,7 @@ function ReadyToBillCard({
   pendingPayApps,
   approvedInvoices,
   onCTA,
+  onCardClick,
 }: {
   readyToBill: number
   totalPipeline: number
@@ -271,6 +272,7 @@ function ReadyToBillCard({
   pendingPayApps: number
   approvedInvoices: number
   onCTA: () => void
+  onCardClick: () => void
 }) {
   return (
     <motion.div
@@ -287,7 +289,7 @@ function ReadyToBillCard({
         flexDirection: 'column',
         gap: 6,
       }}
-      onClick={onCTA}
+      onClick={onCardClick}
     >
       <div style={{
         fontSize: 11,
@@ -715,6 +717,7 @@ export function Dashboard() {
             pendingPayApps={pendingPayApps}
             approvedInvoices={approvedInvoices}
             onCTA={handleCreatePayAppCTA}
+            onCardClick={() => navigate('/projects')}
           />
           <LienDeadlinesCard
             lienCount={lienCount}
@@ -741,13 +744,13 @@ export function Dashboard() {
             label="Pipeline"
             value={formatMoney(totalPipeline)}
             isMoney
-            onClick={() => navigate('/reports')}
+            onClick={() => navigate('/projects')}
           />
           <KPICard
             label="Outstanding"
             value={formatMoney(totalOutstanding)}
             isMoney
-            onClick={() => navigate('/payments')}
+            onClick={() => navigate('/cash-flow')}
           />
           <KPICard
             label="Collected"

@@ -760,10 +760,15 @@ export function ProjectDetail() {
   const nextPayAppNumber = (payApps[payApps.length - 1]?.app_number ?? 0) + 1
 
   const readyToBill = useMemo(() => {
-    if (!reconciliation?.summary) return 0
+    const contractAmount = Number(project?.original_contract) || 0
+    if (!reconciliation?.summary) {
+      // No pay apps yet — full contract is available to bill
+      const totalBilledFromPayApps = payApps.reduce((sum, pa) => sum + (Number(pa.amount_due) || 0), 0)
+      return Math.max(0, contractAmount - totalBilledFromPayApps)
+    }
     const { total_work_completed = 0, total_billed = 0 } = reconciliation.summary
     return Math.max(0, total_work_completed - total_billed)
-  }, [reconciliation])
+  }, [reconciliation, project, payApps])
 
   const isFullyBilled = reconciliation?.summary?.is_fully_reconciled ?? false
 
