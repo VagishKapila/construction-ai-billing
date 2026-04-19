@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Payout Dashboard — ConstructInvoice AI</title>
+  <style>
+    /* ── Reset & base ───────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --navy:       #1A2230;
+      --navy-light: #243044;
+      --navy-mid:   #2c3b52;
+      --orange:     #E8622A;
+      --orange-dim: #c44e1c;
+      --white:      #ffffff;
+      --text:       #e2e8f0;
+      --muted:      #8a9bb5;
+      --border:     #2c3b52;
+      --green:      #22c55e;
+      --yellow:     #f59e0b;
+      --red:        #ef4444;
+      --blue:       #3b82f6;
+      --card-bg:    #ffffff;
+      --card-text:  #1e293b;
+      --radius:     8px;
+      --sidebar-w:  240px;
+    }
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif; font-size: 14px; background: #f1f5f9; color: var(--card-text); }
+
+    /* ── Layout ─────────────────────────────────────────────────────── */
+    .app { display: flex; height: 100vh; overflow: hidden; }
+
+    /* Sidebar */
+    .sidebar {
+      width: var(--sidebar-w); background: var(--navy); color: var(--text);
+      display: flex; flex-direction: column; flex-shrink: 0; overflow-y: auto;
+    }
+    .sidebar-brand {
+      padding: 24px 20px 16px; border-bottom: 1px solid var(--border);
+    }
+    .sidebar-brand .logo { display: flex; align-items: center; gap: 10px; }
+    .sidebar-brand .logo-icon {
+      width: 32px; height: 32px; background: var(--orange); border-radius: 6px;
+      display: flex; align-items: center; justify-content: center; font-size: 16px;
+    }
+    .sidebar-brand .product-name { font-size: 13px; font-weight: 700; color: var(--white); line-height: 1.2; }
+    .sidebar-brand .sub-name { font-size: 11px; color: var(--orange); font-weight: 600; letter-spacing: 0.05em; }
+    .sidebar-nav { padding: 12px 0; flex: 1; }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px; padding: 10px 20px;
+      color: var(--muted); font-size: 13px; font-weight: 500; cursor: pointer;
+      transition: all 0.15s; border-left: 3px solid transparent; text-decoration: none;
+    }
+    .nav-item:hover { color: var(--white); background: var(--navy-light); }
+    .nav-item.active { color: var(--white); background: var(--navy-light); border-left-color: var(--orange); }
+    .nav-item .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+    .sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--border); }
+    .sidebar-footer small { color: var(--muted); font-size: 11px; }
+
+    /* Main content */
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .topbar {
+      background: var(--white); border-bottom: 1px solid #e2e8f0;
+      padding: 0 28px; height: 60px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+    }
+    .topbar-left h1 { font-size: 17px; font-weight: 700; color: var(--card-text); }
+    .topbar-left .sync-info { font-size: 12px; color: #64748b; margin-top: 2px; }
+    .topbar-right { display: flex; align-items: center; gap: 12px; }
+    .btn {
+      padding: 8px 16px; border-radius: var(--radius); font-size: 13px; font-weight: 600;
+      cursor: pointer; border: none; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px;
+    }
+    .btn-primary { background: var(--orange); color: var(--white); }
+    .btn-primary:hover { background: var(--orange-dim); }
+    .btn-outline { background: transparent; color: var(--card-text); border: 1.5px solid #cbd5e1; }
+    .btn-outline:hover { background: #f8fafc; }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .content { flex: 1; overflow-y: auto; padding: 28px; }
+
+    /* ── Summary cards ──────────────────────────────────────────────── */
+    .cards-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+    .card {
+      background: var(--white); border-radius: var(--radius); padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06); border: 1px solid #e2e8f0;
+    }
+    .card-label { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+    .card-value { font-size: 28px; font-weight: 800; color: var(--card-text); line-height: 1; }
+    .card-value.red { color: var(--red); }
+    .card-value.green { color: #16a34a; }
+    .card-sub { font-size: 12px; color: #94a3b8; margin-top: 6px; }
+
+    /* ── Section ────────────────────────────────────────────────────── */
+    .section { margin-bottom: 28px; }
+    .section-header {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;
+    }
+    .section-title { font-size: 15px; font-weight: 700; color: var(--card-text); }
+    .section-action { font-size: 12px; color: var(--orange); cursor: pointer; font-weight: 600; }
+
+    /* ── Table ──────────────────────────────────────────────────────── */
+    .table-card { background: var(--white); border-radius: var(--radius); box-shadow: 0 1px 3px rgba(0,0,0,.06); border: 1px solid #e2e8f0; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    thead tr { background: #f8fafc; border-bottom: 1.5px solid #e2e8f0; }
+    th { padding: 11px 16px; font-size: 11px; font-weight: 700; color: #64748b; text-align: left; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+    td { padding: 13px 16px; font-size: 13px; color: var(--card-text); border-bottom: 1px solid #f1f5f9; }
+    tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: #fafbfc; }
+    .empty-state { text-align: center; padding: 40px; color: #94a3b8; font-size: 13px; }
+    .empty-state .empty-icon { font-size: 32px; margin-bottom: 8px; }
+
+    /* ── Badges ─────────────────────────────────────────────────────── */
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap;
+    }
+    .badge-green  { background: #dcfce7; color: #15803d; }
+    .badge-yellow { background: #fef9c3; color: #b45309; }
+    .badge-red    { background: #fee2e2; color: #b91c1c; }
+    .badge-blue   { background: #dbeafe; color: #1d4ed8; }
+    .badge-gray   { background: #f1f5f9; color: #64748b; }
+
+    /* ── Alerts panel ───────────────────────────────────────────────── */
+    .alert-item {
+      display: flex; align-items: flex-start; gap: 14px;
+      padding: 14px 16px; border-bottom: 1px solid #f1f5f9;
+    }
+    .alert-item:last-child { border-bottom: none; }
+    .alert-icon { font-size: 18px; margin-top: 1px; flex-shrink: 0; }
+    .alert-body { flex: 1; min-width: 0; }
+    .alert-title { font-weight: 600; font-size: 13px; color: var(--card-text); }
+    .alert-msg { font-size: 12px; color: #64748b; margin-top: 3px; line-height: 1.4; }
+    .alert-meta { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+
+    /* ── Transfers timeline ─────────────────────────────────────────── */
+    .transfer-item {
+      display: flex; align-items: center; gap: 14px;
+      padding: 12px 16px; border-bottom: 1px solid #f1f5f9;
+    }
+    .transfer-item:last-child { border-bottom: none; }
+    .transfer-icon { width: 32px; height: 32px; background: #f0fdf4; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+    .transfer-info { flex: 1; }
+    .transfer-dest { font-weight: 600; font-size: 13px; }
+    .transfer-meta { font-size: 12px; color: #64748b; margin-top: 2px; }
+    .transfer-amount { font-size: 15px; font-weight: 700; color: #15803d; }
+
+    /* ── Loading ────────────────────────────────────────────────────── */
+    .loading { text-align: center; padding: 40px; color: #94a3b8; }
+    .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid #e2e8f0; border-top-color: var(--orange); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Money ──────────────────────────────────────────────────────── */
+    .money { font-variant-numeric: tabular-nums; font-weight: 600; }
+    .money-large { font-size: 18px; font-weight: 800; color: #15803d; }
+
+    /* ── Responsive ─────────────────────────────────────────────────── */
+    @media (max-width: 1100px) { .cards-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 700px) { .sidebar { display: none; } .cards-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 480px) { .cards-grid { grid-template-columns: 1fr; } .content { padding: 16px; } }
+  </style>
+</head>
+<body>
+<div class="app">
+  <!-- ── Sidebar ──────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="logo">
+        <div class="logo-icon">💳</div>
+        <div>
+          <div class="product-name">ConstructInvoice AI</div>
+          <div class="sub-name">PAYOUT DASHBOARD</div>
+        </div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <a class="nav-item active" onclick="showSection('overview')" href="#">
+        <span class="nav-icon">📊</span> Overview
+      </a>
+      <a class="nav-item" onclick="showSection('accounts')" href="#">
+        <span class="nav-icon">🏦</span> Connected Accounts
+      </a>
+      <a class="nav-item" onclick="showSection('alerts')" href="#">
+        <span class="nav-icon">🔔</span> Alerts <span id="alert-badge" style="margin-left:auto;background:#ef4444;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;display:none"></span>
+      </a>
+      <a class="nav-item" onclick="showSection('transfers')" href="#">
+        <span class="nav-icon">↗️</span> Transfers
+      </a>
+      <a class="nav-item" onclick="showSection('events')" href="#">
+        <span class="nav-icon">📋</span> Webhook Events
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <small>ConstructInvoice AI<br>Payout Dashboard v1.0</small>
+    </div>
+  </aside>
+
+  <!-- ── Main ─────────────────────────────────────────────────────── -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-left">
+        <h1>Payout Dashboard</h1>
+        <div class="sync-info" id="sync-info">Loading…</div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-outline btn-sm" onclick="loadAll()">↻ Refresh</button>
+        <button class="btn btn-primary btn-sm" id="sync-btn" onclick="triggerSync()">⚡ Sync Now</button>
+      </div>
+    </div>
+
+    <div class="content">
+      <!-- Summary cards -->
+      <div class="cards-grid" id="summary-cards">
+        <div class="card"><div class="card-label">Total Available</div><div class="card-value" id="c-available">…</div><div class="card-sub">Across all accounts</div></div>
+        <div class="card"><div class="card-label">Total Pending</div><div class="card-value" id="c-pending">…</div><div class="card-sub">Clearing now</div></div>
+        <div class="card"><div class="card-label">Active Accounts</div><div class="card-value" id="c-accounts">…</div><div class="card-sub">Payouts enabled</div></div>
+        <div class="card"><div class="card-label">Open Alerts</div><div class="card-value" id="c-alerts">…</div><div class="card-sub">Unresolved issues</div></div>
+      </div>
+
+      <!-- Overview (default section) -->
+      <div id="section-overview">
+        <!-- Accounts table -->
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">Connected Accounts</div>
+            <span class="section-action" onclick="showSection('accounts')">View all →</span>
+          </div>
+          <div class="table-card">
+            <table>
+              <thead><tr>
+                <th>Account / Business</th><th>Bank</th><th>Available</th>
+                <th>Last Payout</th><th>Last Amount</th><th>Status</th>
+              </tr></thead>
+              <tbody id="accounts-table-body"><tr><td colspan="6" class="loading"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Alerts panel -->
+        <div class="section" id="alerts-section-overview" style="display:none">
+          <div class="section-header">
+            <div class="section-title">🔔 Open Alerts</div>
+            <span class="section-action" onclick="showSection('alerts')">View all →</span>
+          </div>
+          <div class="table-card" id="alerts-panel-overview"></div>
+        </div>
+      </div>
+
+      <!-- Accounts detail section -->
+      <div id="section-accounts" style="display:none">
+        <div class="section">
+          <div class="section-header"><div class="section-title">All Connected Accounts</div></div>
+          <div class="table-card">
+            <table>
+              <thead><tr>
+                <th>Account ID</th><th>Email</th><th>Business</th><th>Bank Last4</th>
+                <th>Available</th><th>Pending</th><th>Schedule</th>
+                <th>Last Payout</th><th>Status</th><th>Alerts</th>
+              </tr></thead>
+              <tbody id="accounts-full-table-body"><tr><td colspan="10" class="loading"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Alerts section -->
+      <div id="section-alerts" style="display:none">
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">All Alerts</div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-outline btn-sm" onclick="loadAlerts(false)">Open</button>
+              <button class="btn btn-outline btn-sm" onclick="loadAlerts(true)">Resolved</button>
+            </div>
+          </div>
+          <div class="table-card" id="alerts-full-panel"></div>
+        </div>
+      </div>
+
+      <!-- Transfers section -->
+      <div id="section-transfers" style="display:none">
+        <div class="section">
+          <div class="section-header"><div class="section-title">Transfer Timeline (Last 20)</div></div>
+          <div class="table-card" id="transfers-panel"></div>
+        </div>
+      </div>
+
+      <!-- Events section -->
+      <div id="section-events" style="display:none">
+        <div class="section">
+          <div class="section-header"><div class="section-title">Webhook Events (Last 50)</div></div>
+          <div class="table-card">
+            <table>
+              <thead><tr><th>Event Type</th><th>Account</th><th>Amount</th><th>Status</th><th>Failure</th><th>Time</th></tr></thead>
+              <tbody id="events-table-body"><tr><td colspan="6" class="loading"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<script>
+  'use strict';
+
+  // ── Config — set this to your API base URL ───────────────────────────
+  const API_BASE = window.location.hostname === 'localhost'
+    ? 'http://localhost:3000'
+    : '';  // same origin in production
+
+  let authToken = localStorage.getItem('payout_dashboard_token') || '';
+
+  // ── Utility ──────────────────────────────────────────────────────────
+  const fmt = (n) => typeof n === 'number' ? '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+  const fmtDate = (s) => s ? new Date(s).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : '—';
+  const fmtAge  = (s) => {
+    if (!s) return '—';
+    const diff = Date.now() - new Date(s).getTime();
+    const h = Math.floor(diff/3600000); const d = Math.floor(h/24);
+    return d > 0 ? `${d}d ago` : h > 0 ? `${h}h ago` : 'just now';
+  };
+
+  function statusBadge(status, lastPayout) {
+    if (!status && !lastPayout) return '<span class="badge badge-gray">No Payouts</span>';
+    if (status === 'paid' || status === 'in_transit') return '<span class="badge badge-green">✓ ' + (status === 'paid' ? 'Paid' : 'In Transit') + '</span>';
+    if (status === 'failed') return '<span class="badge badge-red">✗ Failed</span>';
+    if (status === 'pending') return '<span class="badge badge-yellow">⏳ Pending</span>';
+    return '<span class="badge badge-gray">' + (status || '—') + '</span>';
+  }
+
+  function alertIcon(type) {
+    return { payout_delayed:'⏰', payout_failed:'🔴', verification_required:'⚠️', bank_not_connected:'🏦' }[type] || '🔔';
+  }
+
+  async function apiFetch(path, opts = {}) {
+    const res = await fetch(API_BASE + path, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { 'Authorization': 'Bearer ' + authToken } : {}),
+      },
+      ...opts,
+    });
+    if (res.status === 401) {
+      // Ask for token
+      const tok = prompt('Enter your admin JWT token:');
+      if (tok) { authToken = tok; localStorage.setItem('payout_dashboard_token', tok); }
+      throw new Error('Auth required — please refresh');
+    }
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  // ── Navigation ───────────────────────────────────────────────────────
+  function showSection(name) {
+    ['overview','accounts','alerts','transfers','events'].forEach(s => {
+      const el = document.getElementById('section-' + s);
+      if (el) el.style.display = s === name ? '' : 'none';
+    });
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    const active = document.querySelector(`.nav-item[onclick*="${name}"]`);
+    if (active) active.classList.add('active');
+
+    if (name === 'accounts')  loadAccountsFull();
+    if (name === 'alerts')    loadAlerts(false);
+    if (name === 'transfers') loadTransfers();
+    if (name === 'events')    loadEvents();
+  }
+
+  // ── Summary cards ────────────────────────────────────────────────────
+  async function loadSummary(accounts, alerts) {
+    const totalAvail   = accounts.reduce((s, a) => s + (parseFloat(a.available_balance) || 0), 0);
+    const totalPending = accounts.reduce((s, a) => s + (parseFloat(a.pending_balance)   || 0), 0);
+    const activeCount  = accounts.filter(a => a.payouts_enabled).length;
+    const alertCount   = alerts.length;
+
+    document.getElementById('c-available').textContent = fmt(totalAvail);
+    document.getElementById('c-available').className   = 'card-value ' + (totalAvail > 0 ? 'green' : '');
+    document.getElementById('c-pending').textContent   = fmt(totalPending);
+    document.getElementById('c-accounts').textContent  = activeCount;
+    document.getElementById('c-alerts').textContent    = alertCount;
+    document.getElementById('c-alerts').className      = 'card-value ' + (alertCount > 0 ? 'red' : '');
+
+    // Alert badge on nav
+    const badge = document.getElementById('alert-badge');
+    badge.textContent  = alertCount;
+    badge.style.display = alertCount > 0 ? '' : 'none';
+  }
+
+  // ── Accounts table (overview) ────────────────────────────────────────
+  function renderAccountsTable(accounts, tbodyId) {
+    const tbody = document.getElementById(tbodyId);
+    if (!accounts.length) {
+      tbody.innerHTML = '<tr><td colspan="10" class="empty-state"><div class="empty-icon">🏦</div>No connected accounts found.<br>Run <code>POST /payout-dashboard/sync</code> to seed from Stripe.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = accounts.map(a => `
+      <tr>
+        <td>
+          <div style="font-weight:600">${a.business_name || '—'}</div>
+          <div style="font-size:11px;color:#64748b">${a.email || a.account_id}</div>
+        </td>
+        <td>${a.bank_last4 ? `••••${a.bank_last4}` : '<span style="color:#94a3b8">No bank</span>'}</td>
+        <td class="money" style="color:${parseFloat(a.available_balance)>0?'#15803d':'inherit'}">${fmt(parseFloat(a.available_balance) || 0)}</td>
+        <td>${fmtDate(a.last_payout_date)}</td>
+        <td class="money">${a.last_payout_amount ? fmt(parseFloat(a.last_payout_amount)) : '—'}</td>
+        <td>${statusBadge(a.last_payout_status, a.last_payout_date)}</td>
+      </tr>
+    `).join('');
+  }
+
+  function renderAccountsFullTable(accounts) {
+    const tbody = document.getElementById('accounts-full-table-body');
+    if (!accounts.length) {
+      tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No accounts in database.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = accounts.map(a => `
+      <tr>
+        <td><code style="font-size:11px;color:#6366f1">${a.account_id}</code></td>
+        <td style="font-size:12px">${a.email || '—'}</td>
+        <td style="font-weight:600">${a.business_name || '—'}</td>
+        <td>${a.bank_last4 ? `••••${a.bank_last4}` : '<span class="badge badge-red">None</span>'}</td>
+        <td class="money" style="color:${parseFloat(a.available_balance)>0?'#15803d':'inherit'}">${fmt(parseFloat(a.available_balance)||0)}</td>
+        <td class="money">${fmt(parseFloat(a.pending_balance)||0)}</td>
+        <td><span class="badge badge-gray">${a.payout_schedule || 'daily'} / ${a.payout_delay_days || 2}d</span></td>
+        <td style="font-size:12px">${a.last_payout_date ? fmtDate(a.last_payout_date) : '—'}</td>
+        <td>${statusBadge(a.last_payout_status, a.last_payout_date)}</td>
+        <td><span class="badge ${parseInt(a.open_alert_count)>0?'badge-red':'badge-gray'}">${a.open_alert_count||0}</span></td>
+      </tr>
+    `).join('');
+  }
+
+  // ── Alerts panel ─────────────────────────────────────────────────────
+  function renderAlerts(alerts, containerId, limit = 999) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    if (!alerts.length) {
+      el.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div>No alerts — all accounts healthy.</div>';
+      return;
+    }
+    el.innerHTML = alerts.slice(0, limit).map(a => `
+      <div class="alert-item">
+        <div class="alert-icon">${alertIcon(a.alert_type)}</div>
+        <div class="alert-body">
+          <div class="alert-title">${a.business_name || a.account_id} — ${a.alert_type.replace(/_/g,' ')}</div>
+          <div class="alert-msg">${a.message}</div>
+          <div class="alert-meta">${fmtAge(a.created_at)} · ${a.alert_type}</div>
+        </div>
+        ${!a.resolved ? `<button class="btn btn-outline btn-sm" onclick="resolveAlert(${a.id}, this)">Resolve</button>` : '<span class="badge badge-green">Resolved</span>'}
+      </div>
+    `).join('');
+  }
+
+  async function resolveAlert(id, btn) {
+    btn.disabled = true;
+    try {
+      await apiFetch(`/payout-dashboard/alerts/${id}/resolve`, { method: 'POST' });
+      btn.closest('.alert-item').style.opacity = '0.4';
+      btn.textContent = '✓ Resolved';
+      loadAll(); // refresh counts
+    } catch (e) {
+      alert('Failed to resolve: ' + e.message);
+      btn.disabled = false;
+    }
+  }
+
+  // ── Transfers ────────────────────────────────────────────────────────
+  function renderTransfers(transfers) {
+    const el = document.getElementById('transfers-panel');
+    if (!transfers.length) {
+      el.innerHTML = '<div class="empty-state"><div class="empty-icon">↗️</div>No transfers have been made yet.</div>';
+      return;
+    }
+    el.innerHTML = transfers.map(t => `
+      <div class="transfer-item">
+        <div class="transfer-icon">↗️</div>
+        <div class="transfer-info">
+          <div class="transfer-dest">${t.destination || '—'}</div>
+          <div class="transfer-meta">${t.transfer_group || t.id} · ${fmtDate(t.created)}</div>
+        </div>
+        <div class="transfer-amount">${fmt(t.amount)}</div>
+      </div>
+    `).join('');
+  }
+
+  // ── Events table ─────────────────────────────────────────────────────
+  function renderEvents(events) {
+    const tbody = document.getElementById('events-table-body');
+    if (!events.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No webhook events recorded yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = events.map(e => `
+      <tr>
+        <td><span class="badge badge-blue" style="font-size:10px">${e.event_type}</span></td>
+        <td style="font-size:11px;font-family:monospace">${(e.connected_account_id||'platform').replace('acct_','acct_…')}</td>
+        <td class="money">${e.amount != null ? fmt(parseFloat(e.amount)) : '—'}</td>
+        <td>${e.status ? `<span class="badge ${e.status==='paid'?'badge-green':e.status==='failed'?'badge-red':'badge-gray'}">${e.status}</span>` : '—'}</td>
+        <td style="font-size:11px;color:#ef4444;max-width:200px;overflow:hidden;text-overflow:ellipsis">${e.failure_message||''}</td>
+        <td style="font-size:11px;color:#64748b">${fmtAge(e.created_at)}</td>
+      </tr>
+    `).join('');
+  }
+
+  // ── Data loading ─────────────────────────────────────────────────────
+  async function loadAccounts() {
+    try {
+      const { data } = await apiFetch('/payout-dashboard/accounts');
+      renderAccountsTable(data, 'accounts-table-body');
+      return data;
+    } catch (e) {
+      document.getElementById('accounts-table-body').innerHTML =
+        `<tr><td colspan="6" class="empty-state" style="color:#ef4444">Error: ${e.message}</td></tr>`;
+      return [];
+    }
+  }
+
+  async function loadAccountsFull() {
+    try {
+      const { data } = await apiFetch('/payout-dashboard/accounts');
+      renderAccountsFullTable(data);
+    } catch (e) {
+      document.getElementById('accounts-full-table-body').innerHTML =
+        `<tr><td colspan="10" class="empty-state" style="color:#ef4444">Error: ${e.message}</td></tr>`;
+    }
+  }
+
+  async function loadAlerts(showResolved = false) {
+    try {
+      const { data } = await apiFetch(`/payout-dashboard/alerts?resolved=${showResolved}`);
+      renderAlerts(data, 'alerts-full-panel');
+      renderAlerts(data.filter(a=>!a.resolved), 'alerts-panel-overview', 5);
+      document.getElementById('alerts-section-overview').style.display = data.length ? '' : 'none';
+      return data.filter(a => !a.resolved);
+    } catch (e) {
+      const el = document.getElementById('alerts-full-panel');
+      if (el) el.innerHTML = `<div class="empty-state" style="color:#ef4444">Error: ${e.message}</div>`;
+      return [];
+    }
+  }
+
+  async function loadTransfers() {
+    try {
+      const { data } = await apiFetch('/payout-dashboard/transfers');
+      renderTransfers(data);
+    } catch (e) {
+      const el = document.getElementById('transfers-panel');
+      if (el) el.innerHTML = `<div class="empty-state" style="color:#ef4444">Error: ${e.message}</div>`;
+    }
+  }
+
+  async function loadEvents() {
+    try {
+      const { data } = await apiFetch('/payout-dashboard/events');
+      renderEvents(data);
+    } catch (e) {
+      document.getElementById('events-table-body').innerHTML =
+        `<tr><td colspan="6" class="empty-state" style="color:#ef4444">Error: ${e.message}</td></tr>`;
+    }
+  }
+
+  async function loadAll() {
+    document.getElementById('sync-info').textContent = 'Loading…';
+    const [accounts, alerts] = await Promise.all([loadAccounts(), loadAlerts(false)]);
+    await loadSummary(accounts, alerts);
+    document.getElementById('sync-info').textContent = 'Last updated: ' + new Date().toLocaleTimeString();
+  }
+
+  async function triggerSync() {
+    const btn = document.getElementById('sync-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Syncing…';
+    try {
+      await apiFetch('/payout-dashboard/sync', { method: 'POST' });
+      await loadAll();
+    } catch (e) {
+      alert('Sync failed: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '⚡ Sync Now';
+    }
+  }
+
+  // ── Boot ─────────────────────────────────────────────────────────────
+  loadAll();
+  // Auto-refresh every 5 minutes
+  setInterval(loadAll, 5 * 60 * 1000);
+</script>
+</body>
+</html>
