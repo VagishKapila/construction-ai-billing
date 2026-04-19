@@ -84,8 +84,16 @@ router.get('/pay-apps', async (req, res) => {
       paramIndex++;
     }
 
-    // Also filter out deleted pay apps
+    // Also filter out deleted pay apps and test artifacts
     whereConditions.push('pa.deleted_at IS NULL');
+    whereConditions.push("p.name NOT LIKE 'HubTest%'");
+    whereConditions.push("p.name NOT LIKE 'HubCore%'");
+    whereConditions.push("p.name NOT LIKE 'JoinTest%'");
+    whereConditions.push("p.name NOT LIKE 'E2E%'");
+    whereConditions.push("p.name NOT LIKE 'CO_%'");
+    whereConditions.push("p.name NOT LIKE 'Playwright%'");
+    whereConditions.push("p.name NOT LIKE 'PayApp%'");
+    whereConditions.push("p.name NOT LIKE 'Test Project%'");
 
     const whereClause = whereConditions.join(' AND ');
 
