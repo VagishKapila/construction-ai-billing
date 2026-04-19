@@ -92,18 +92,12 @@ router.post('/api/projects', auth, trialGate, async (req, res) => {
   setImmediate(async () => {
     try {
       const workStart = contract_date || est_date || new Date().toISOString().slice(0,10);
-      const deadlines = lienModule.calculateDeadlines(workStart);
+      // Insert using new schema: alert_type + deadline_date (preliminary notice = 20 days from work start)
       await pool.query(
-        `INSERT INTO aria_lien_alerts
-          (project_id, state, work_start_date, preliminary_notice_due, mechanics_lien_deadline)
-         VALUES ($1, 'CA', $2, $3, $4)
+        `INSERT INTO aria_lien_alerts (project_id, state, alert_type, deadline_date)
+         VALUES ($1, 'CA', 'preliminary_20day', $2::date + INTERVAL '20 days')
          ON CONFLICT DO NOTHING`,
-        [
-          r.rows[0].id,
-          deadlines.work_start_date,
-          deadlines.preliminary_notice_due,
-          deadlines.mechanics_lien_deadline,
-        ]
+        [r.rows[0].id, workStart]
       );
     } catch (e) {
       console.error('[Lien] Auto-alert creation failed:', e.message);

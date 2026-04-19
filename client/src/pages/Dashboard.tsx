@@ -443,7 +443,7 @@ function RetentionHeldCard({
     <motion.div
       variants={fadeUpItem}
       whileHover={{ y: -2, boxShadow: '0 8px 40px rgba(217,119,6,0.15)' }}
-      onClick={() => navigate('/reports')}
+      onClick={() => navigate('/retention')}
       style={{
         flex: 1,
         background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
@@ -489,7 +489,7 @@ function RetentionHeldCard({
         marginTop: 8,
         fontFamily: "'DM Sans', sans-serif",
       }}>
-        View in Reports →
+        View Retention Breakdown →
       </div>
     </motion.div>
   )

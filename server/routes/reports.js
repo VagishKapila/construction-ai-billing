@@ -190,12 +190,14 @@ router.get('/summary', async (req, res) => {
       [req.user.id, month]
     );
 
-    // Per-project breakdown
+    // Per-project breakdown (retention view)
     const projectResult = await pool.query(
       `SELECT
         p.id,
         p.name,
         p.number,
+        p.status,
+        COALESCE(p.original_contract, 0) as original_contract,
         COALESCE(SUM(sl.scheduled_value), 0) as total_scheduled,
         COALESCE(SUM(sl.scheduled_value * pal.this_pct / 100.0), 0) as total_work_completed,
         COALESCE(SUM(sl.scheduled_value * pal.this_pct / 100.0 * pal.retainage_pct / 100.0), 0) as total_retainage,
@@ -205,7 +207,15 @@ router.get('/summary', async (req, res) => {
        LEFT JOIN pay_app_lines pal ON pal.pay_app_id = pa.id
        LEFT JOIN sov_lines sl ON sl.id = pal.sov_line_id
        WHERE p.user_id = $1
-       GROUP BY p.id, p.name, p.number
+         AND p.name NOT ILIKE 'HubTest%'
+         AND p.name NOT ILIKE 'HubCore%'
+         AND p.name NOT ILIKE 'JoinTest%'
+         AND p.name NOT ILIKE 'E2E%'
+         AND p.name NOT ILIKE 'CO\_%' ESCAPE '\'
+         AND p.name NOT ILIKE 'Playwright%'
+         AND p.name NOT ILIKE 'PayApp%'
+         AND p.name NOT ILIKE 'Test Project%'
+       GROUP BY p.id, p.name, p.number, p.status, p.original_contract
        ORDER BY p.created_at DESC`,
       [req.user.id]
     );

@@ -919,6 +919,14 @@ async function initDB() {
       ADD COLUMN IF NOT EXISTS owner_name VARCHAR(300);
 
     CREATE INDEX IF NOT EXISTS idx_followups_token ON payment_followups(followup_token);
+
+    -- Backfill CA lien alerts for existing projects that have none (Apr 19 2026)
+    INSERT INTO aria_lien_alerts (project_id, state, alert_type, deadline_date)
+    SELECT p.id, 'CA', 'preliminary_20day', p.created_at::date + INTERVAL '20 days'
+    FROM projects p
+    WHERE NOT EXISTS (
+      SELECT 1 FROM aria_lien_alerts ala WHERE ala.project_id = p.id
+    );
   `);
   console.log('Database ready');
 }

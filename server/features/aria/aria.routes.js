@@ -458,7 +458,6 @@ router.get('/api/aria/lien-alerts', auth, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // Check if aria_lien_alerts table exists
     let alerts = [];
     try {
       const alertResult = await pool.query(
@@ -466,34 +465,25 @@ router.get('/api/aria/lien-alerts', auth, async (req, res) => {
           ala.id,
           ala.project_id,
           p.name AS project_name,
-          ala.work_start_date,
-          ala.preliminary_notice_due,
-          ala.mechanics_lien_deadline,
-          ala.alert_day_15_sent,
-          ala.alert_day_19_sent,
-          ala.alert_day_20_sent,
-          COALESCE(
-            NOT ala.alert_day_15_sent OR
-            NOT ala.alert_day_19_sent OR
-            NOT ala.alert_day_20_sent,
-            false
-          ) as has_pending_alerts
+          ala.alert_type AS notice_type,
+          ala.deadline_date,
+          ala.state,
+          EXTRACT(DAY FROM (ala.deadline_date::date - CURRENT_DATE))::integer AS days_remaining
          FROM aria_lien_alerts ala
          JOIN projects p ON ala.project_id = p.id
          WHERE p.user_id = $1
-         ORDER BY ala.preliminary_notice_due ASC`,
+         ORDER BY ala.deadline_date ASC`,
         [userId]
       );
 
       alerts = alertResult.rows;
     } catch (alertError) {
-      // aria_lien_alerts table may not exist yet
-      console.warn('[ARIA Lien Alerts] aria_lien_alerts table not found or not ready');
+      console.warn('[ARIA Lien Alerts] Query failed:', alertError.message);
     }
 
     res.json({
-      data: alerts,
-      message: `Found ${alerts.filter((a) => a.has_pending_alerts).length} projects with pending lien alerts`,
+      count: alerts.length,
+      alerts,
     });
   } catch (e) {
     console.error('[ARIA Lien Alerts]', e.message);
@@ -524,100 +514,35 @@ router.post('/api/aria/lien-alerts/:projectId', auth, async (req, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    // Calculate deadlines
-    const deadlines = california.calculateDeadlines(work_start_date);
-    const today = new Date();
+    // Preliminary notice deadline = work_start + 20 days (CA Civil Code §8204)
+    const startDate = new Date(work_start_date);
+    const prelimDeadline = new Date(startDate);
+    prelimDeadline.setDate(prelimDeadline.getDate() + 20);
+    const deadlineStr = prelimDeadline.toISOString().slice(0, 10);
 
-    // Check if we should send the 15-day alert
-    const alertDay15 = new Date(deadlines.alert_day_15);
-    const alertDay19 = new Date(deadlines.alert_day_19);
-    const alertDay20 = new Date(deadlines.alert_day_20);
-    const shouldSendAlert = today >= alertDay15 && today < alertDay20;
-
-    // Try to upsert lien alert (table may not exist)
+    // Upsert lien alert using new schema
     let result;
     try {
       result = await pool.query(
-        `INSERT INTO aria_lien_alerts (
-          project_id,
-          work_start_date,
-          preliminary_notice_due,
-          mechanics_lien_deadline,
-          stop_payment_deadline,
-          alert_day_15_sent,
-          created_at,
-          updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        ON CONFLICT (project_id) DO UPDATE SET
-          work_start_date = $2,
-          preliminary_notice_due = $3,
-          mechanics_lien_deadline = $4,
-          stop_payment_deadline = $5,
-          updated_at = CURRENT_TIMESTAMP
-        RETURNING *`,
-        [
-          projectId,
-          work_start_date,
-          deadlines.preliminary_notice_due,
-          deadlines.mechanics_lien_deadline,
-          deadlines.stop_payment_deadline,
-          shouldSendAlert ? true : false,
-        ]
+        `INSERT INTO aria_lien_alerts (project_id, state, alert_type, deadline_date)
+         VALUES ($1, 'CA', 'preliminary_20day', $2)
+         ON CONFLICT DO NOTHING
+         RETURNING *`,
+        [projectId, deadlineStr]
       );
     } catch (alertError) {
-      // aria_lien_alerts table doesn't exist yet — return calculated deadlines
-      console.warn('[ARIA Create Lien Alert] aria_lien_alerts table not ready, returning calculated values');
+      console.warn('[ARIA Create Lien Alert] Insert failed:', alertError.message);
       return res.json({
         data: {
           project_id: projectId,
           work_start_date,
-          deadlines,
-          alert_eligibility: shouldSendAlert ? 'eligible' : 'not_yet_due',
+          deadline_date: deadlineStr,
         },
       });
     }
 
-    // Try to send email if alert is due (if project has owner_email)
-    if (shouldSendAlert) {
-      try {
-        const projectData = await pool.query(
-          'SELECT owner_email, owner AS owner_name, name AS project_name FROM projects WHERE id = $1',
-          [projectId]
-        );
-
-        if (projectData.rows.length > 0 && projectData.rows[0].owner_email) {
-          const proj = projectData.rows[0];
-          const fromEmail = process.env.FROM_EMAIL || 'noreply@constructinv.varshyl.com';
-
-          try {
-            await sendEmail({
-              from: fromEmail,
-              to: proj.owner_email,
-              subject: `⚖️ CA Preliminary Notice Deadline - ${proj.project_name}`,
-              text: `This is a reminder that the deadline for providing preliminary notice under California Civil Code §8204 is approaching.
-
-Project: ${proj.project_name}
-Deadline: ${california.formatDate(deadlines.preliminary_notice_due)}
-
-A Preliminary Notice must be provided to all parties by this date to preserve mechanics lien rights.`,
-            });
-
-            // Mark alert as sent
-            await pool.query(
-              `UPDATE aria_lien_alerts SET alert_day_15_sent = true, updated_at = CURRENT_TIMESTAMP WHERE project_id = $1`,
-              [projectId]
-            );
-          } catch (emailError) {
-            console.error('[Resend Lien Alert Email]', emailError.message);
-          }
-        }
-      } catch (emailError) {
-        // Continue without sending email
-      }
-    }
-
     res.json({
-      data: result.rows[0] || { project_id: projectId, deadlines },
+      data: result.rows[0] || { project_id: projectId, deadline_date: deadlineStr },
       message: 'Lien alert created/updated',
     });
   } catch (e) {

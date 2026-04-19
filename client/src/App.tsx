@@ -28,6 +28,7 @@ import { MagicLinkHub } from '@/pages/MagicLinkHub'
 import { VendorDashboard } from '@/pages/VendorDashboard'
 import { NotFound } from '@/pages/NotFound'
 import { OnboardingFlow } from '@/pages/OnboardingFlow'
+import { RetentionBreakdown } from '@/pages/RetentionBreakdown'
 
 /**
  * Protected route wrapper — requires authentication
@@ -167,6 +168,14 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             <LienDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/retention"
+        element={
+          <ProtectedRoute>
+            <RetentionBreakdown />
           </ProtectedRoute>
         }
       />
