@@ -717,7 +717,7 @@ export function Dashboard() {
             pendingPayApps={pendingPayApps}
             approvedInvoices={approvedInvoices}
             onCTA={handleCreatePayAppCTA}
-            onCardClick={() => navigate('/projects')}
+            onCardClick={() => navigate('/dashboard')}
           />
           <LienDeadlinesCard
             lienCount={lienCount}
@@ -744,7 +744,7 @@ export function Dashboard() {
             label="Pipeline"
             value={formatMoney(totalPipeline)}
             isMoney
-            onClick={() => navigate('/projects')}
+            onClick={() => navigate('/dashboard')}
           />
           <KPICard
             label="Outstanding"
